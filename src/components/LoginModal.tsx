@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Eye, EyeOff, X, ArrowRight, CheckCircle2, MessageCircle, ShieldCheck } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, X, ArrowRight, CheckCircle2, MessageCircle, ShieldCheck, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GYM_CONTACT } from '../data/gymData';
+import { useAuth } from '../context/AuthContext';
+import { signInWithGoogle, signInWithEmail } from '../lib/supabase';
 
 export interface LoginModalProps {
   isOpen: boolean;
@@ -9,18 +11,43 @@ export interface LoginModalProps {
   onOpenTourModal?: () => void;
 }
 
+function GoogleIcon({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24">
+      <path
+        fill="#4285F4"
+        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.17 0 10.02 0 12s.45 3.83 1.25 5.42l4.03-3.15z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+      />
+    </svg>
+  );
+}
+
 export default function LoginModal({
   isOpen,
   onClose,
   onOpenTourModal,
 }: LoginModalProps): React.JSX.Element | null {
+  const { user, isConfigured, signOut } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [demoLoggedInUser, setDemoLoggedInUser] = useState<string | null>(null);
 
   // Lock body scroll while open
   useEffect(() => {
@@ -49,15 +76,42 @@ export default function LoginModal({
   const handleModalClose = () => {
     onClose();
     setTimeout(() => {
-      setIsSuccess(false);
       setErrorMessage('');
       setIdentifier('');
       setPassword('');
       setIsLoading(false);
+      setIsGoogleLoading(false);
+      setDemoLoggedInUser(null);
     }, 250);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleGoogleSignIn = async () => {
+    setErrorMessage('');
+    setIsGoogleLoading(true);
+
+    if (!isConfigured) {
+      // Friendly simulation if env vars are not configured yet
+      setTimeout(() => {
+        setIsGoogleLoading(false);
+        setDemoLoggedInUser('socio.google@gmail.com');
+      }, 700);
+      return;
+    }
+
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) {
+        setErrorMessage(error.message);
+        setIsGoogleLoading(false);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al conectar con Google OAuth';
+      setErrorMessage(msg);
+      setIsGoogleLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier.trim() || !password.trim()) {
       setErrorMessage('Por favor ingresa tu DNI / correo y contraseña.');
@@ -67,16 +121,33 @@ export default function LoginModal({
     setErrorMessage('');
     setIsLoading(true);
 
-    // Simulate login authentication
-    setTimeout(() => {
+    if (!isConfigured) {
+      // Local simulation
+      setTimeout(() => {
+        setIsLoading(false);
+        setDemoLoggedInUser(identifier.trim());
+      }, 700);
+      return;
+    }
+
+    try {
+      const { error } = await signInWithEmail(identifier.trim(), password);
       setIsLoading(false);
-      setIsSuccess(true);
-    }, 900);
+      if (error) {
+        setErrorMessage(error.message);
+      } else {
+        handleModalClose();
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
+      setErrorMessage(msg);
+      setIsLoading(false);
+    }
   };
 
   const handleResetPasswordViaWhatsApp = () => {
     const text = encodeURIComponent(
-      `Hola Trankilandia Gym, necesito ayuda para recuperar la contraseña de mi cuenta de socio (DNI: ${identifier.trim() || 'No especificado'}).`
+      `Hola Trankilandia Gym, necesito ayuda para recuperar la contraseña de mi cuenta de socio (Usuario: ${identifier.trim() || 'No especificado'}).`
     );
     window.open(`https://wa.me/${GYM_CONTACT.phone.replace(/[^0-9]/g, '')}?text=${text}`, '_blank');
   };
@@ -87,6 +158,8 @@ export default function LoginModal({
       onOpenTourModal?.();
     }, 150);
   };
+
+  const activeUserEmail = user?.email || demoLoggedInUser;
 
   return (
     <AnimatePresence>
@@ -132,7 +205,7 @@ export default function LoginModal({
               <X className="w-4 h-4" />
             </button>
 
-            {!isSuccess ? (
+            {!activeUserEmail ? (
               <div>
                 {/* Header */}
                 <div className="mb-6">
@@ -151,6 +224,16 @@ export default function LoginModal({
                   </p>
                 </div>
 
+                {/* Supabase Notice banner if not configured yet */}
+                {!isConfigured && (
+                  <div className="mb-5 p-3 rounded-xl bg-amber-400/10 border border-amber-400/25 flex items-start gap-2.5 text-xs text-amber-300">
+                    <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <span className="leading-snug">
+                      <strong>Conexión con Supabase &amp; Google:</strong> Configura tus variables en <code className="bg-black/40 px-1 py-0.5 rounded font-mono text-[11px]">.env</code> para habilitar OAuth oficial. Puedes probar el botón abajo en modo demostración.
+                    </span>
+                  </div>
+                )}
+
                 {/* Error Banner */}
                 {errorMessage && (
                   <motion.div
@@ -161,6 +244,37 @@ export default function LoginModal({
                     {errorMessage}
                   </motion.div>
                 )}
+
+                {/* 1. GOOGLE ONE-CLICK SIGN IN BUTTON */}
+                <motion.button
+                  type="button"
+                  disabled={isGoogleLoading || isLoading}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleGoogleSignIn}
+                  className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-100 text-zinc-900 font-extrabold py-3.5 px-4 rounded-xl text-sm transition-all shadow-md cursor-pointer disabled:opacity-60"
+                >
+                  {isGoogleLoading ? (
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-zinc-900 border-t-transparent rounded-full animate-spin" />
+                      <span>CONECTANDO CON GOOGLE...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <GoogleIcon className="w-5 h-5" />
+                      <span>CONTINUAR CON GOOGLE</span>
+                    </>
+                  )}
+                </motion.button>
+
+                {/* Divider */}
+                <div className="my-5 flex items-center gap-3">
+                  <div className="flex-1 h-px bg-white/10" />
+                  <span className="text-[11px] font-mono uppercase text-zinc-500 tracking-wider">
+                    o con tu DNI / correo
+                  </span>
+                  <div className="flex-1 h-px bg-white/10" />
+                </div>
 
                 {/* Form */}
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -246,7 +360,7 @@ export default function LoginModal({
                   <div className="pt-2">
                     <motion.button
                       type="submit"
-                      disabled={isLoading}
+                      disabled={isLoading || isGoogleLoading}
                       whileHover={{ scale: 1.01 }}
                       whileTap={{ scale: 0.98 }}
                       className="w-full bg-amber-400 hover:bg-amber-300 disabled:opacity-60 text-black font-black uppercase tracking-wider py-3.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 cursor-pointer transition-all"
@@ -287,16 +401,18 @@ export default function LoginModal({
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <h3 className="text-2xl font-black uppercase text-white tracking-tight">
-                  ¡BIENVENIDO, SOCIO!
+                  ¡SESIÓN ACTIVA!
                 </h3>
                 <p className="text-zinc-300 text-sm mt-2 font-sans">
-                  Tu sesión ha sido verificada correctamente. Accediendo a tus datos de membresía...
+                  Has iniciado sesión correctamente en el portal de Trankilandia Gym.
                 </p>
 
                 <div className="mt-6 p-4 rounded-2xl bg-zinc-950 border border-white/10 text-left space-y-2">
                   <div className="flex justify-between text-xs">
-                    <span className="text-zinc-400 font-mono">Usuario activo:</span>
-                    <span className="text-white font-mono font-bold">{identifier}</span>
+                    <span className="text-zinc-400 font-mono">Usuario conectado:</span>
+                    <span className="text-white font-mono font-bold truncate max-w-[200px]">
+                      {activeUserEmail}
+                    </span>
                   </div>
                   <div className="flex justify-between text-xs">
                     <span className="text-zinc-400 font-mono">Estado membresía:</span>
@@ -314,12 +430,22 @@ export default function LoginModal({
                     onClick={handleModalClose}
                     className="w-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold py-3 rounded-xl text-sm transition-colors cursor-pointer"
                   >
-                    CERRAR VENTANA
+                    CONTINUAR NAVEGANDO
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await signOut();
+                      setDemoLoggedInUser(null);
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-red-300 hover:text-red-200 py-2.5 rounded-xl text-xs font-mono transition-colors cursor-pointer"
+                  >
+                    <span>Cerrar Sesión</span>
                   </button>
                   <button
                     type="button"
                     onClick={handleResetPasswordViaWhatsApp}
-                    className="w-full inline-flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 py-2.5 rounded-xl text-xs font-mono transition-colors cursor-pointer"
+                    className="w-full inline-flex items-center justify-center gap-2 bg-transparent hover:bg-white/5 text-zinc-400 py-2 rounded-xl text-xs font-mono transition-colors cursor-pointer"
                   >
                     <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
                     <span>Soporte por WhatsApp</span>

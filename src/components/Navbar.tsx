@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Dumbbell, Menu, X, MapPin, User, Ticket } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from '../context/AuthContext';
 
 export interface NavbarProps {
   onOpenLoginModal?: () => void;
@@ -18,6 +19,7 @@ const NAV_LINKS = [
 export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
 
   // Close mobile drawer on escape key
   useEffect(() => {
@@ -103,19 +105,45 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
           })}
         </nav>
 
-        {/* Desktop Login Button */}
+        {/* Desktop Login / Profile Button */}
         <div className="hidden md:flex items-center gap-3">
-          <motion.button
-            type="button"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
-            onClick={() => onOpenLoginModal?.()}
-            className="flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap shadow-lg shadow-amber-400/10 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-          >
-            <User className="w-4 h-4" />
-            <span>INICIAR SESIÓN</span>
-          </motion.button>
+          {user ? (
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => onOpenLoginModal?.()}
+              className="flex items-center gap-2.5 bg-zinc-900 border border-amber-400/40 hover:border-amber-400 px-4 py-2 rounded-xl text-xs font-mono transition-all cursor-pointer shadow-md shadow-amber-400/10"
+            >
+              {user.user_metadata?.avatar_url ? (
+                <img
+                  src={user.user_metadata.avatar_url}
+                  alt={user.user_metadata.full_name || 'Socio'}
+                  className="w-5 h-5 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-5 h-5 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-[10px]">
+                  {(user.email?.[0] || 'S').toUpperCase()}
+                </div>
+              )}
+              <span className="text-white font-bold max-w-[120px] truncate">
+                {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'Mi Cuenta'}
+              </span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+            </motion.button>
+          ) : (
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+              onClick={() => onOpenLoginModal?.()}
+              className="flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap shadow-lg shadow-amber-400/10 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+            >
+              <User className="w-4 h-4" />
+              <span>INICIAR SESIÓN</span>
+            </motion.button>
+          )}
         </div>
 
         {/* Mobile Hamburger Button */}
@@ -167,18 +195,50 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
                 <MapPin className="w-4 h-4 text-amber-400" />
                 <span>Huamanga, Ayacucho, Perú</span>
               </div>
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.97 }}
-                onClick={() => {
-                  closeMenu();
-                  onOpenLoginModal?.();
-                }}
-                className="w-full flex items-center justify-center gap-2 bg-amber-400 text-black font-extrabold py-3.5 rounded-xl text-sm shadow-lg shadow-amber-400/10 cursor-pointer"
-              >
-                <User className="w-4 h-4" />
-                <span>INICIAR SESIÓN</span>
-              </motion.button>
+              {user ? (
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    closeMenu();
+                    onOpenLoginModal?.();
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-zinc-900 border border-amber-400/40 text-white font-bold text-sm cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    {user.user_metadata?.avatar_url ? (
+                      <img
+                        src={user.user_metadata.avatar_url}
+                        alt="Usuario"
+                        className="w-6 h-6 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-6 h-6 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-xs">
+                        {(user.email?.[0] || 'S').toUpperCase()}
+                      </div>
+                    )}
+                    <span className="truncate max-w-[180px]">
+                      {user.user_metadata?.full_name || user.email}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">
+                    CONECTADO
+                  </span>
+                </motion.button>
+              ) : (
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    closeMenu();
+                    onOpenLoginModal?.();
+                  }}
+                  className="w-full flex items-center justify-center gap-2 bg-amber-400 text-black font-extrabold py-3.5 rounded-xl text-sm shadow-lg shadow-amber-400/10 cursor-pointer"
+                >
+                  <User className="w-4 h-4" />
+                  <span>INICIAR SESIÓN</span>
+                </motion.button>
+              )}
               <button
                 type="button"
                 onClick={() => {
