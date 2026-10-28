@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Ticket, MapPin } from 'lucide-react';
+import { ArrowRight, Ticket } from 'lucide-react';
 import { motion } from 'motion/react';
 
 export interface HeroProps {
@@ -10,14 +10,14 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
   return (
     <section
       id="inicio"
-      className="relative min-h-[85vh] lg:min-h-[88vh] flex items-center overflow-hidden pt-28 pb-16 selection:bg-amber-400 selection:text-black"
+      className="relative min-h-[85vh] lg:min-h-[88vh] flex items-center overflow-hidden pt-24 pb-16 selection:bg-amber-400 selection:text-black"
     >
       {/* Background athlete photo with dark cinematic overlays */}
       <div className="absolute inset-0 z-0">
         <img
           src="https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&w=1920&q=85"
-          alt="Comunidad y entrenamiento en Trankilandia Gym Huamanga Ayacucho"
-          className="w-full h-full object-cover object-center lg:object-[center_top] brightness-[0.55] select-none"
+          alt="Entrenamiento y comunidad en Trankilandia Gym"
+          className="w-full h-full object-cover object-center lg:object-[center_top] brightness-[0.52] select-none"
           loading="eager"
         />
         {/* Horizontal gradient: deep black on the left for maximum text contrast */}
@@ -42,67 +42,42 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
         }}
         className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full my-auto"
       >
-        {/* Natural GEO / Local Brand Tag */}
+        {/* Club Brand Tag */}
         <motion.div
           variants={{
             hidden: { opacity: 0, y: 10 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="text-xs font-mono uppercase tracking-[0.2em] text-zinc-400 mb-5 flex items-center gap-2.5 flex-wrap"
+          className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-400 mb-5 flex items-center gap-2.5 flex-wrap"
         >
-          <span className="w-6 h-px bg-amber-400" />
-          <span className="text-amber-400 font-bold">GIMNASIO EN AYACUCHO</span>
-          <span className="text-zinc-600">·</span>
-          <span className="flex items-center gap-1.5 text-zinc-300">
-            <MapPin className="w-3.5 h-3.5 text-amber-400" />
-            HUAMANGA, PERÚ
-          </span>
+          <span className="w-8 h-px bg-amber-400" />
+          <span className="text-amber-400 font-bold">TRANKILANDIA CLUB</span>
+          <span className="text-zinc-600">/</span>
+          <span className="text-zinc-400">CENTRO DE ENTRENAMIENTO & BOXEO</span>
         </motion.div>
 
-        {/* H1: Authentic motto & emotional connection */}
+        {/* H1: World-class Gym Power & Energy */}
         <motion.h1
           variants={{
             hidden: { opacity: 0, y: 14, scale: 0.98 },
             visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.45, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black uppercase tracking-tight leading-[0.96] text-white max-w-3xl"
+          className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black uppercase tracking-tight leading-[0.92] text-white max-w-4xl"
         >
-          MÁS QUE UN GIMNASIO,<br />
-          <span className="text-amber-400">SOMOS FAMILIA.</span>
+          ENTRENA DURO.<br />
+          <span className="text-amber-400">SUPÉRATE CADA DÍA.</span>
         </motion.h1>
 
-        {/* Subtext: Warm, motivating, community-driven */}
+        {/* Subtext: Concise, athletic, community-driven (<= 20 words per taste skill) */}
         <motion.p
           variants={{
             hidden: { opacity: 0, y: 12 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="mt-5 text-base sm:text-lg text-zinc-300 max-w-2xl font-normal leading-relaxed font-sans"
+          className="mt-6 text-base sm:text-lg text-zinc-300 max-w-xl font-normal leading-relaxed font-sans"
         >
-          El espacio en Ayacucho donde encuentras motivación sincera, compañeros que te impulsan y entrenadores dedicados a guiarte desde tu primer día. Desarrolla tu fuerza en nuestra completa sala de pesas o aprende la disciplina y agilidad del boxeo.
+          Musculación de alto nivel, peso libre y escuela de boxeo. Más que un gimnasio, una familia que te impulsa a romper tus límites.
         </motion.p>
-
-        {/* Friendly Trust Highlights: Human, welcoming, non-dictatorial */}
-        <motion.div
-          variants={{
-            hidden: { opacity: 0, y: 10 },
-            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
-          }}
-          className="mt-6 flex flex-wrap items-center gap-6 text-xs sm:text-sm text-zinc-300"
-        >
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span>Ambiente cálido y motivador</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span>Entrenadores de sala siempre a tu lado</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-            <span>Clases de Boxeo para todos los niveles</span>
-          </div>
-        </motion.div>
 
         {/* Action Buttons */}
         <motion.div
@@ -117,9 +92,9 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-7 py-4 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 cursor-pointer"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 bg-amber-400 hover:bg-amber-300 text-black font-black px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 cursor-pointer"
             >
-              <span>CONOCE NUESTROS PLANES</span>
+              <span>VER PLANES Y PRECIOS</span>
               <ArrowRight className="w-4 h-4" />
             </motion.div>
           </Link>
@@ -130,11 +105,33 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
             onClick={onOpenTourModal}
-            className="inline-flex items-center justify-center gap-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-semibold px-7 py-4 rounded-xl text-sm sm:text-base tracking-wide cursor-pointer"
+            className="inline-flex items-center justify-center gap-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-bold px-7 py-4 rounded-xl text-sm sm:text-base tracking-wide cursor-pointer"
           >
             <Ticket className="w-4 h-4 text-amber-400" />
-            <span>SOLICITA TU CLASE DE PRUEBA</span>
+            <span>SOLICITAR CLASE GRATIS</span>
           </motion.button>
+        </motion.div>
+
+        {/* Athletic Proof Metrics Strip (Equinox / Gold's Gym style) */}
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 10 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
+          }}
+          className="mt-12 pt-8 border-t border-white/10 grid grid-cols-3 gap-6 max-w-lg"
+        >
+          <div>
+            <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">LIBRE</div>
+            <div className="text-xs text-zinc-400 mt-1 font-mono uppercase tracking-wider">Sin turnos ni límites</div>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-black text-amber-400 font-mono tracking-tight">BOXEO</div>
+            <div className="text-xs text-zinc-400 mt-1 font-mono uppercase tracking-wider">Escuela & Ring</div>
+          </div>
+          <div>
+            <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">+500</div>
+            <div className="text-xs text-zinc-400 mt-1 font-mono uppercase tracking-wider">Atletas en comunidad</div>
+          </div>
         </motion.div>
       </motion.div>
     </section>

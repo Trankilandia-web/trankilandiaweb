@@ -44,7 +44,7 @@ export default function AboutSection() {
                   </div>
                 </div>
                 <span className="hidden sm:inline-block text-[10px] font-mono uppercase px-2.5 py-1 rounded bg-white/5 border border-white/10 text-zinc-300">
-                  AYACUCHO · PERÚ
+                  SEDE PRINCIPAL
                 </span>
               </div>
             </div>

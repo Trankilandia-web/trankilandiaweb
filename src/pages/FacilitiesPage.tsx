@@ -106,7 +106,7 @@ export default function FacilitiesPage({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
             <div className="lg:col-span-8">
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                INSTALACIONES · HUAMANGA, AYACUCHO
+                ESPACIOS &amp; ZONAS DE ENTRENAMIENTO
               </span>
               <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
                 ESPACIOS PARA TU MEJOR VERSIÓN.
@@ -119,7 +119,7 @@ export default function FacilitiesPage({
             {/* Ficha técnica resumida */}
             <div className="lg:col-span-4 bg-zinc-900/80 border border-white/10 p-5 rounded-2xl">
               <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-3 font-bold flex items-center justify-between">
-                <span>SEDE AYACUCHO</span>
+                <span>SEDE PRINCIPAL</span>
                 <span className="text-zinc-500 font-mono">TRANKILANDIA</span>
               </div>
               <ul className="space-y-2.5 text-xs text-zinc-300 font-sans">
@@ -214,7 +214,7 @@ export default function FacilitiesPage({
                           </span>
                           <span className="w-8 h-px bg-white/20" />
                           <span className="text-zinc-400 text-xs font-mono uppercase tracking-wider">
-                            TRANKILANDIA AYACUCHO
+                            TRANKILANDIA CLUB
                           </span>
                         </div>
 
@@ -370,13 +370,13 @@ export default function FacilitiesPage({
         >
           <div className="relative z-10 max-w-3xl mx-auto">
             <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-3">
-              VEN A CONOCERNOS EN AYACUCHO
+              VEN A CONOCERNOS
             </span>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight mb-4">
               Comprueba el Ambiente de Trankilandia Gym
             </h2>
             <p className="text-zinc-400 text-sm sm:text-base leading-relaxed mb-8 max-w-2xl mx-auto font-sans">
-              Ven a conocer la sala de musculación, prueba las máquinas y consulta por las clases de boxeo. Te esperamos con los brazos abiertos en Huamanga.
+              Ven a conocer la sala de musculación, prueba las máquinas y consulta por las clases de boxeo. Te esperamos con los brazos abiertos.
             </p>
 
             <motion.button

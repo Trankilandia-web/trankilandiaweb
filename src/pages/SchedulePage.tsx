@@ -134,7 +134,7 @@ export default function SchedulePage({
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                CLASES &amp; BOXEO · HUAMANGA, AYACUCHO
+                HORARIOS &amp; CLASES
               </span>
               <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter text-white leading-none">
                 HORARIOS DE CLASES.

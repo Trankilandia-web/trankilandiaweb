@@ -66,7 +66,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
                 <div>
                   <div className="inline-flex items-center gap-2 text-amber-400 text-xs font-mono font-semibold uppercase tracking-wider mb-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    <span>HORARIOS DE CLASES & BOXEO EN AYACUCHO</span>
+                    <span>PROGRAMACIÓN SEMANAL &amp; BOXEO</span>
                   </div>
                   <h3 className="text-xl sm:text-2xl font-black uppercase text-white tracking-tight">
                     Consulta la Programación Semanal Completa
@@ -96,20 +96,20 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
           <div className="flex flex-col lg:flex-row lg:items-end justify-between mb-12 gap-6">
             <div>
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                TARIFAS EN SOLES (S/.) · AYACUCHO
+                MEMBRESÍAS &amp; PLANES
               </span>
               <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
-                PLANES CON INGRESO LIBRE.
+                ELIGE TU COMPROMISO.
               </h2>
               <p className="mt-3 text-zinc-400 text-base max-w-xl font-sans">
-                Sin plazos forzosos. Todos nuestros planes incluyen <strong>ingreso libre e ilimitado</strong> en sala de musculación. Elige la duración que prefieras.
+                Sin plazos forzosos. Todos nuestros planes incluyen <strong>ingreso libre e ilimitado</strong> a sala de musculación y pesas. Elige la duración que prefieras.
               </p>
             </div>
 
             {/* 4 Periods Selector */}
             <div className="flex flex-col items-start lg:items-end">
               <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2">
-                SELECCIONA EL PERIODO:
+                DURACIÓN DEL PLAN:
               </span>
               <div className="p-1.5 bg-zinc-900 border border-white/10 rounded-2xl flex items-center flex-wrap gap-1 shadow-xl relative">
                 {(
@@ -269,7 +269,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             <div className="lg:col-span-8">
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-400 block mb-2">
-                INSTALACIONES EN HUAMANGA, AYACUCHO
+                NUESTRAS INSTALACIONES
               </span>
               <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight">
                 Espacios Diseñados para Exigirte y Cuidarte

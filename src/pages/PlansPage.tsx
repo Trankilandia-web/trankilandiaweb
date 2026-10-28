@@ -101,20 +101,20 @@ export default function PlansPage({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
             <div className="lg:col-span-7">
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                TARIFAS EN SOLES (S/.) · AYACUCHO
+                MEMBRESÍAS &amp; PLANES
               </span>
               <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
-                PLANES CON INGRESO LIBRE.
+                ELIGE TU COMPROMISO.
               </h1>
               <p className="mt-4 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-xl font-sans">
-                Sin plazos forzosos. Todos nuestros planes garantizan <strong>ingreso libre e ilimitado</strong> en sala de musculación. Puedes elegir entre 1 mes, 3 meses, 6 meses o 1 año, y sumar clases de boxeo como actividad adicional.
+                Sin plazos forzosos. Todos nuestros planes incluyen <strong>ingreso libre e ilimitado</strong> a sala de musculación y pesas. Selecciona la duración que mejor se adapte a tu ritmo.
               </p>
             </div>
 
             {/* Selector de los 4 Periodos */}
             <div className="lg:col-span-5 flex flex-col items-start lg:items-end justify-end">
               <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2">
-                MODALIDAD DE TIEMPO:
+                DURACIÓN DEL PLAN:
               </span>
               <div className="p-1.5 bg-zinc-900 border border-white/10 rounded-2xl flex items-center flex-wrap gap-1 shadow-xl relative">
                 {(
@@ -158,9 +158,6 @@ export default function PlansPage({
                   );
                 })}
               </div>
-              <span className="text-[11px] font-mono text-zinc-500 mt-2">
-                *Tarifas oficiales en Soles peruanos (S/.) para Huamanga, Ayacucho.
-              </span>
             </div>
           </div>
         </div>
@@ -232,7 +229,7 @@ export default function PlansPage({
                         )}
                       </div>
                       <p className="text-[11px] text-zinc-500 font-mono">
-                        Pago único en soles por los {billingPeriod === 'trimestral' ? '3 meses' : billingPeriod === 'semestral' ? '6 meses' : '12 meses'} completos
+                        Pago único por los {billingPeriod === 'trimestral' ? '3 meses' : billingPeriod === 'semestral' ? '6 meses' : '12 meses'} completos
                       </p>
                     </div>
                   ) : (
@@ -297,7 +294,7 @@ export default function PlansPage({
             <div className="lg:col-span-8">
               <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-amber-400 font-bold mb-3">
                 <Zap className="w-4 h-4" />
-                <span>DISCIPLINA COMPLEMENTARIA EN AYACUCHO</span>
+                <span>ESCUELA DE BOXEO</span>
               </div>
               <h3 className="text-3xl sm:text-4xl font-black uppercase text-white tracking-tight">
                 {BOXING_ADDON.title}
@@ -354,7 +351,7 @@ export default function PlansPage({
               COMPARATIVA DETALLADA DE PLANES
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
-              Revisa lo que incluye cada opción y elige la que mejor se adapte a tus metas y presupuesto en Ayacucho.
+              Revisa lo que incluye cada opción y elige la que mejor se adapte a tus metas y estilo de entrenamiento.
             </p>
           </div>
 
@@ -492,7 +489,7 @@ export default function PlansPage({
               PREGUNTAS FRECUENTES SOBRE PLANES
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
-              Claridad en pagos en soles, ingreso libre, horarios y clases adicionales de boxeo.
+              Respuestas claras sobre membresías, ingreso libre, horarios y clases de boxeo.
             </p>
           </div>
 
@@ -559,7 +556,7 @@ export default function PlansPage({
               ¿Quieres Conocer el Gimnasio Antes de Decidir?
             </h3>
             <p className="text-zinc-400 text-sm mt-2 max-w-xl font-sans">
-              Solicita tu pase de cortesía sin costo. Conoce nuestra sala de pesas, entrena por 1 día y siente el ambiente de la familia Trankilandia en Ayacucho.
+              Solicita tu pase de cortesía sin costo. Conoce nuestra sala de pesas, entrena por 1 día y siente el ambiente de la familia Trankilandia.
             </p>
           </div>
           <motion.button

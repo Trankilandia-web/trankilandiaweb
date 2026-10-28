@@ -40,7 +40,7 @@ export const FEATURE_HIGHLIGHTS: FeatureHighlight[] = [
   {
     id: 'family-community',
     title: 'Más que un Gym, Familia',
-    description: 'Un ambiente cálido y motivador en Huamanga donde entrenas con amigos y entrenadores que te apoyan en cada paso.',
+    description: 'Un ambiente cálido y motivador donde entrenas rodeado de compañeros y entrenadores que te impulsan en cada repetición.',
     iconName: 'Users',
   },
 ];
@@ -85,11 +85,11 @@ export const PROGRAMS_DATA: Program[] = [
 ];
 
 export const ABOUT_DATA: AboutData = {
-  badge: 'TRANKILANDIA GYM · HUAMANGA, AYACUCHO',
+  badge: 'TRANKILANDIA CLUB · FILOSOFÍA',
   title: 'MÁS QUE UN GIMNASIO, SOMOS FAMILIA.',
   paragraphs: [
     'En Trankilandia Gym entendemos que la constancia y la salud florecen cuando estás en un lugar donde te sientes bienvenido, respetado y respaldado.',
-    'Ubicados en Ayacucho (Huamanga), ponemos a tu disposición una completa sala de pesas y musculación, instructores cercanos que te enseñan la técnica correcta y clases dirigidas de boxeo para poner a prueba tu agilidad y resistencia.',
+    'Ponemos a tu disposición una completa sala de pesas y musculación, instructores cercanos que cuidan tu técnica en todo momento y clases dirigidas de boxeo para poner a prueba tu agilidad y resistencia.',
   ],
   imageUrl: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&w=1200&q=80',
   stats: [
@@ -121,7 +121,7 @@ export const MEMBERSHIP_PLANS: PlanTier[] = [
   {
     id: 'estudiante',
     name: 'Plan Estudiante',
-    tagline: 'Tarifa especial para universitarios y escolares de Ayacucho',
+    tagline: 'Tarifa preferencial para universitarios y escolares con carné vigente',
     monthlyPrice: 75,
     quarterlyPrice: 200,    // S/. 66.6 / mes · Ahorras S/. 25
     semiannualPrice: 370,   // S/. 61.6 / mes · Ahorras S/. 80
@@ -605,7 +605,7 @@ export const MEMBERSHIP_FAQS: FaqItem[] = [
     category: 'Entrenamiento',
   },
   {
-    question: '¿Dónde están ubicados en Ayacucho?',
+    question: '¿Dónde están ubicados y cómo llegar?',
     answer: 'Estamos ubicados en Huamanga, Ayacucho, Perú. Escríbenos directamente por WhatsApp al +51 999 787 489 para compartirte la ubicación exacta en el mapa y darte la bienvenida al club.',
     category: 'Ubicación',
   },
