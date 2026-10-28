@@ -1,6 +1,7 @@
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import ProgramsSection from './components/ProgramsSection';
+import AboutSection from './components/AboutSection';
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <main>
         <Hero />
         <ProgramsSection />
+        <AboutSection />
       </main>
     </div>
   );
