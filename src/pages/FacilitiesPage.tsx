@@ -1,10 +1,8 @@
 import React from 'react';
 import {
   Check,
-  Maximize2,
   Dumbbell,
-  Flame,
-  Wind,
+  Calendar,
   Volume2,
   Droplets,
   Lock,
@@ -13,7 +11,6 @@ import {
   ArrowRight,
   Layers,
   Sparkles,
-  Calendar,
 } from 'lucide-react';
 import { FACILITY_ZONES } from '../data/gymData';
 import type { FacilityZone } from '../types';
@@ -85,25 +82,6 @@ const CLUB_AMENITIES: ClubAmenity[] = [
   },
 ];
 
-const SPEC_PILLS = [
-  {
-    icon: Maximize2,
-    text: '1,500 m² Totales',
-  },
-  {
-    icon: Dumbbell,
-    text: 'Maquinaria Oficial Hammer Strength & Eleiko',
-  },
-  {
-    icon: Flame,
-    text: 'Recovery Spa & Sauna',
-  },
-  {
-    icon: Wind,
-    text: 'Ambiente Climatizado y Acústico',
-  },
-];
-
 export default function FacilitiesPage({
   onOpenTourModal,
 }: FacilitiesPageProps = {}): React.JSX.Element {
@@ -131,48 +109,47 @@ export default function FacilitiesPage({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
-        {/* 1. CABECERA DE PÁGINA */}
+        {/* 1. CABECERA EDITORIAL ARQUITECTÓNICA */}
         {/* ========================================================= */}
-        <header className="text-center max-w-4xl mx-auto mb-20">
-          {/* Eyebrow mono en ámbar */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 mb-6 shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-              ESPACIOS & BIOMECÁNICA DE ÉLITE
-            </span>
-          </div>
+        <header className="pb-12 mb-16 border-b border-white/10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
+            <div className="lg:col-span-8">
+              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
+                ESPECIFICACIÓN ARQUITECTÓNICA & BIOMECÁNICA
+              </span>
+              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
+                1,500 M² DE PRECISIÓN BIOMECÁNICA.
+              </h1>
+              <p className="mt-4 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-2xl font-sans">
+                Distribución espacial planificada para erradicar cuellos de botella y maximizar el flujo de entrenamiento continuo. Equipamiento oficial de alta competencia calibrado milimétricamente.
+              </p>
+            </div>
 
-          {/* H1 imponente */}
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight text-white leading-[1.08]">
-            1,500 M² DISEÑADOS PARA EL RENDIMIENTO.{' '}
-            <span className="text-amber-400">SIN COMPROMISOS.</span>
-          </h1>
-
-          {/* Subtexto técnico y aspiracional */}
-          <p className="mt-6 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-3xl mx-auto font-sans">
-            Cada rincón de Trankilandia Gym responde a una rigurosa planificación espacial
-            y biomecánica. Eliminamos la aglomeración, garantizamos el flujo continuo entre estaciones
-            y dotamos a cada zona del equipamiento más laureado en el deporte de alta competición.
-          </p>
-
-          {/* 4 Píldoras de especificaciones */}
-          <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 max-w-5xl mx-auto">
-            {SPEC_PILLS.map((pill, idx) => {
-              const Icon = pill.icon;
-              return (
-                <div
-                  key={idx}
-                  className="flex items-center gap-3 px-4 py-3 rounded-xl bg-zinc-900/70 border border-white/10 backdrop-blur-sm hover:border-amber-400/30 transition-colors"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-amber-400/10 border border-amber-400/25 flex items-center justify-center shrink-0">
-                    <Icon className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <span className="text-xs sm:text-sm font-semibold text-zinc-200 tracking-wide text-left">
-                    {pill.text}
-                  </span>
-                </div>
-              );
-            })}
+            {/* Ficha técnica resumida estilo blueprint */}
+            <div className="lg:col-span-4 bg-zinc-900/80 border border-white/10 p-5 rounded-2xl">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-3 font-bold flex items-center justify-between">
+                <span>ESTÁNDAR DEL COMPLEJO</span>
+                <span className="text-zinc-500">REV. 2026</span>
+              </div>
+              <ul className="space-y-2.5 text-xs text-zinc-300 font-sans">
+                <li className="flex items-center justify-between border-b border-white/5 pb-2">
+                  <span className="text-zinc-400">Superficie Total:</span>
+                  <span className="font-mono font-bold text-white">1,500 m²</span>
+                </li>
+                <li className="flex items-center justify-between border-b border-white/5 pb-2">
+                  <span className="text-zinc-400">Maquinaria Oficial:</span>
+                  <span className="font-mono font-bold text-white">Eleiko & Hammer Strength</span>
+                </li>
+                <li className="flex items-center justify-between border-b border-white/5 pb-2">
+                  <span className="text-zinc-400">Zona Húmeda:</span>
+                  <span className="font-mono font-bold text-white">Sauna Finlandés & Spa</span>
+                </li>
+                <li className="flex items-center justify-between">
+                  <span className="text-zinc-400">Climatización:</span>
+                  <span className="font-mono font-bold text-white">Microfiltrado HEPA 22°C</span>
+                </li>
+              </ul>
+            </div>
           </div>
         </header>
 

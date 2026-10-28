@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import {
   Clock,
   User,
-  Users,
-  Calendar,
   Sparkles,
   Flame,
   Dumbbell,
@@ -131,40 +129,38 @@ export default function SchedulePage({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
-        {/* 1. CABECERA DE PÁGINA */}
+        {/* 1. CABECERA EDITORIAL DE HORARIOS */}
         {/* ========================================================= */}
-        <header className="text-center max-w-4xl mx-auto mb-14">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 mb-5 shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-              CALENDARIO & DISCIPLINAS
-            </span>
-          </div>
-
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight text-white leading-[1.08] mb-5">
-            HORARIOS DE CLASES.{' '}
-            <span className="text-amber-400">ENTRENA A TU RITMO.</span>
-          </h1>
-
-          <p className="text-zinc-400 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto">
-            Entrenamiento grupal de alta exigencia técnica guiado por coaches de élite.
-            Cupos controlados por sesión para corrección postural personalizada, máxima
-            intensidad y seguridad biomecánica.
-          </p>
-
-          {/* Píldoras de resumen */}
-          <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4 mt-8">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900/90 border border-white/10 text-xs sm:text-sm font-medium text-zinc-300 shadow-sm backdrop-blur-sm">
-              <Calendar className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="font-semibold text-white">20+ Clases Semanales</span>
+        <header className="pb-8 mb-10 border-b border-white/10">
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+            <div>
+              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
+                PROGRAMACIÓN SEMANAL · TEMPORADA 2026
+              </span>
+              <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter text-white leading-none">
+                HORARIOS DE CLASES.
+              </h1>
+              <p className="mt-3 text-zinc-400 text-sm sm:text-base leading-relaxed max-w-xl font-sans">
+                Sesiones guiadas por coaches especializados con corrección postural personalizada, sobrecarga progresiva y cupos controlados.
+              </p>
             </div>
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900/90 border border-white/10 text-xs sm:text-sm font-medium text-zinc-300 shadow-sm backdrop-blur-sm">
-              <Users className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="font-semibold text-white">Grupos Reducidos</span>
-            </div>
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-zinc-900/90 border border-white/10 text-xs sm:text-sm font-medium text-zinc-300 shadow-sm backdrop-blur-sm">
-              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="font-semibold text-white">Coaches de Élite</span>
+
+            {/* Métricas clave compactas e integradas */}
+            <div className="flex items-center gap-6 sm:gap-8 bg-zinc-900/60 border border-white/5 px-6 py-3.5 rounded-2xl shrink-0 self-start lg:self-end">
+              <div>
+                <span className="text-xl sm:text-2xl font-black text-white block font-mono">22</span>
+                <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">Sesiones / Sem</span>
+              </div>
+              <div className="w-px h-8 bg-white/10" />
+              <div>
+                <span className="text-xl sm:text-2xl font-black text-white block font-mono">14</span>
+                <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">Cupo Máximo</span>
+              </div>
+              <div className="w-px h-8 bg-white/10" />
+              <div>
+                <span className="text-xl sm:text-2xl font-black text-amber-400 block font-mono">100%</span>
+                <span className="text-[11px] font-mono text-zinc-400 uppercase tracking-wider">Supervisadas</span>
+              </div>
             </div>
           </div>
         </header>

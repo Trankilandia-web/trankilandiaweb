@@ -4,12 +4,8 @@ import {
   Minus,
   ChevronDown,
   Sparkles,
-  ShieldCheck,
   Ticket,
   ArrowRight,
-  Zap,
-  Clock,
-  HeartHandshake,
 } from 'lucide-react';
 import {
   MEMBERSHIP_PLANS,
@@ -63,97 +59,64 @@ export default function PlansPage({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
-        {/* 1. CABECERA DE PÁGINA */}
+        {/* 1. CABECERA EDITORIAL DE PLANES CON TOGGLE INTEGRADO */}
         {/* ========================================================= */}
-        <div className="text-center max-w-4xl mx-auto mb-14">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 mb-5 shadow-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-              PLANES & TARIFAS TRANKILANDIA
-            </span>
-          </div>
-
-          <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black uppercase tracking-tight text-white leading-[1.08]">
-            INVIERTE EN TU MEJOR VERSIÓN.{' '}
-            <span className="text-amber-400">SIN LETRAS CHICAS.</span>
-          </h1>
-
-          <p className="mt-5 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-2xl mx-auto font-sans">
-            Sin contratos forzosos ni plazos obligatorios en modalidad mensual.
-            Elige la membresía adecuada a tu ritmo, cancela o congela cuando lo necesites
-            y entrena en el centro de fuerza y acondicionamiento más completo de la ciudad.
-          </p>
-
-          {/* Sellos de Confianza y Garantía */}
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3 sm:gap-6 text-xs font-mono text-zinc-400">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900/60 border border-white/5">
-              <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Cancelación Libre Mensual</span>
-            </div>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900/60 border border-white/5">
-              <Zap className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Sin Cuotas Ocultas</span>
-            </div>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900/60 border border-white/5">
-              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Congelamiento Incluido</span>
-            </div>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900/60 border border-white/5">
-              <HeartHandshake className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Garantía de Satisfacción 7 Días</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ========================================================= */}
-        {/* 2. TOGGLE INTERACTIVO MENSUAL / ANUAL */}
-        {/* ========================================================= */}
-        <div className="flex flex-col items-center justify-center mb-16">
-          <div className="p-1.5 bg-zinc-900/90 border border-white/10 rounded-2xl flex items-center shadow-xl backdrop-blur-md">
-            {/* Opción Mensual */}
-            <button
-              type="button"
-              onClick={() => setBillingCycle('monthly')}
-              className={`px-5 sm:px-7 py-3 rounded-xl text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-                billingCycle === 'monthly'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              Facturación Mensual
-            </button>
-
-            {/* Opción Anual */}
-            <button
-              type="button"
-              onClick={() => setBillingCycle('annual')}
-              className={`relative flex items-center gap-2 px-5 sm:px-7 py-3 rounded-xl text-xs sm:text-sm font-extrabold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
-                billingCycle === 'annual'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              <span>Facturación Anual</span>
-              <span
-                className={`hidden sm:inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-mono font-black tracking-wide ${
-                  billingCycle === 'annual'
-                    ? 'bg-black text-amber-400'
-                    : 'bg-amber-400/15 border border-amber-400/30 text-amber-400'
-                }`}
-              >
-                -20% OFF
+        <div className="pb-12 mb-16 border-b border-white/10">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
+            <div className="lg:col-span-7">
+              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
+                MEMBRESÍAS & CUOTAS 2026
               </span>
-            </button>
-          </div>
+              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
+                INVERSIÓN EN RENDIMIENTO.
+              </h1>
+              <p className="mt-4 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-xl font-sans">
+                Sin plazos forzosos en modalidad mensual. Acceso ilimitado a maquinaria oficial Hammer Strength y plataformas olímpicas Eleiko. Cancela o congela cuando lo necesites.
+              </p>
+            </div>
 
-          {/* Badge visible en móviles y descriptor del beneficio anual */}
-          <div className="mt-3 inline-flex items-center gap-1.5 text-xs font-mono text-amber-400">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="font-bold tracking-wide">
-              {billingCycle === 'annual'
-                ? 'Modalidad Anual activa: -20% OFF + MATRÍCULA GRATIS ($0 de inscripción)'
-                : 'Cambia a facturación anual y ahorra 2 meses libres de entrenamiento'}
-            </span>
+            {/* Toggle de Facturación integrado */}
+            <div className="lg:col-span-5 flex flex-col items-start lg:items-end justify-end">
+              <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2">
+                MODALIDAD DE PAGO
+              </span>
+              <div className="p-1.5 bg-zinc-900 border border-white/10 rounded-2xl flex items-center shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle('monthly')}
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                    billingCycle === 'monthly'
+                      ? 'bg-white/15 text-white shadow-sm'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Mensual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillingCycle('annual')}
+                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                    billingCycle === 'annual'
+                      ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <span>Anual</span>
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold ${
+                      billingCycle === 'annual'
+                        ? 'bg-black text-amber-400'
+                        : 'bg-amber-400/20 text-amber-400'
+                    }`}
+                  >
+                    -20% OFF
+                  </span>
+                </button>
+              </div>
+              <span className="text-[11px] font-mono text-zinc-500 mt-2">
+                *Modalidad anual incluye matrícula $0 y evaluación InBody
+              </span>
+            </div>
           </div>
         </div>
 

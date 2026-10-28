@@ -86,10 +86,9 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
 
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-7">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 font-mono text-xs uppercase tracking-wider mb-3">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  <span>BOLETÍN EXCLUSIVO DE ENTRENAMIENTO</span>
-                </div>
+                <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
+                  BOLETÍN EXCLUSIVO
+                </span>
                 <h3 className="text-2xl sm:text-3xl lg:text-4xl font-black uppercase text-white tracking-tight">
                   TRANKILANDIA INSIDER
                 </h3>

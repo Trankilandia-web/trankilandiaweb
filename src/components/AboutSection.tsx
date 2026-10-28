@@ -33,7 +33,7 @@ export default function AboutSection() {
               {/* Badge flotante interior estilizado - branding ambiental */}
               <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 p-4 rounded-xl bg-zinc-950/85 backdrop-blur-md border border-white/10 flex items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-3">
-                  <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-amber-400" />
                   <div>
                     <p className="text-xs font-mono font-bold tracking-widest text-amber-400 uppercase">
                       TRANKILANDIA CLUB
@@ -52,19 +52,15 @@ export default function AboutSection() {
 
           {/* Columna Derecha (Manifiesto y Métricas) */}
           <div className="flex flex-col items-start">
-            {/* Eyebrow */}
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/25 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-                {ABOUT_DATA.badge}
-              </span>
-            </div>
+            {/* Athletic Brand Tag */}
+            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
+              FILOSOFÍA DEL CLUB
+            </span>
 
             {/* H2 Display */}
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white uppercase leading-tight">
-              MÁS QUE UN GIMNASIO,{' '}
-              <br className="hidden sm:inline" />
-              <span className="text-amber-400">SOMOS UNA COMUNIDAD.</span>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tighter text-white uppercase leading-[0.95]">
+              MÁS QUE UN GIMNASIO, <br className="hidden sm:inline" />
+              UN CENTRO DE ALTO RENDIMIENTO.
             </h2>
 
             {/* Manifiesto */}
