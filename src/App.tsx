@@ -1,23 +1,69 @@
-import { BrowserRouter } from 'react-router-dom';
+import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Hero from './components/Hero';
-import ProgramsSection from './components/ProgramsSection';
-import AboutSection from './components/AboutSection';
-import QuickInfoBar from './components/QuickInfoBar';
 import Footer from './components/Footer';
+import ScrollToTop from './components/ScrollToTop';
+import TourModal from './components/TourModal';
+import HomePage from './pages/HomePage';
+import PlansPage from './pages/PlansPage';
+import SchedulePage from './pages/SchedulePage';
+import FacilitiesPage from './pages/FacilitiesPage';
 
 export default function App() {
+  const [isTourModalOpen, setIsTourModalOpen] = useState(false);
+  const [tourInitialPlan, setTourInitialPlan] = useState<string | undefined>(undefined);
+
+  const handleOpenTour = (planId?: string) => {
+    setTourInitialPlan(planId);
+    setIsTourModalOpen(true);
+  };
+
+  const handleCloseTour = () => {
+    setIsTourModalOpen(false);
+  };
+
   return (
     <BrowserRouter>
-      <div className="min-h-screen bg-zinc-950 text-white font-display antialiased selection:bg-amber-400 selection:text-black">
-        <Navbar />
-        <main>
-          <Hero />
-          <ProgramsSection />
-          <AboutSection />
-          <QuickInfoBar />
+      <div className="min-h-screen flex flex-col bg-zinc-950 text-white font-display antialiased selection:bg-amber-400 selection:text-black">
+        <ScrollToTop />
+        <Navbar onOpenTourModal={() => handleOpenTour()} />
+        <main className="flex-1">
+          <Routes>
+            <Route
+              path="/"
+              element={<HomePage onOpenTourModal={() => handleOpenTour()} />}
+            />
+            <Route
+              path="/planes"
+              element={
+                <PlansPage
+                  onSelectPlan={(id) => handleOpenTour(id)}
+                  onOpenTourModal={() => handleOpenTour()}
+                />
+              }
+            />
+            <Route
+              path="/clases"
+              element={
+                <SchedulePage
+                  onBookClass={() => handleOpenTour()}
+                  onOpenTourModal={() => handleOpenTour()}
+                />
+              }
+            />
+            <Route
+              path="/instalaciones"
+              element={<FacilitiesPage onOpenTourModal={() => handleOpenTour()} />}
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
         </main>
-        <Footer />
+        <Footer onOpenTourModal={() => handleOpenTour()} />
+        <TourModal
+          isOpen={isTourModalOpen}
+          onClose={handleCloseTour}
+          initialPlan={tourInitialPlan}
+        />
       </div>
     </BrowserRouter>
   );
