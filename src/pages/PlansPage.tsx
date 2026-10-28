@@ -7,6 +7,7 @@ import {
   Ticket,
   ArrowRight,
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   MEMBERSHIP_PLANS,
   PLAN_COMPARISON_CATEGORIES,
@@ -59,7 +60,7 @@ export default function PlansPage({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
-        {/* 1. CABECERA EDITORIAL DE PLANES CON TOGGLE INTEGRADO */}
+        {/* 1. CABECERA EDITORIAL DE PLANES CON TOGGLE FLUIDO */}
         {/* ========================================================= */}
         <div className="pb-12 mb-16 border-b border-white/10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
@@ -75,32 +76,43 @@ export default function PlansPage({
               </p>
             </div>
 
-            {/* Toggle de Facturación integrado */}
+            {/* Toggle de Facturación con layoutId de Emil Kowalski */}
             <div className="lg:col-span-5 flex flex-col items-start lg:items-end justify-end">
               <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2">
                 MODALIDAD DE PAGO
               </span>
-              <div className="p-1.5 bg-zinc-900 border border-white/10 rounded-2xl flex items-center shadow-xl">
+              <div className="p-1.5 bg-zinc-900 border border-white/10 rounded-2xl flex items-center shadow-xl relative">
                 <button
                   type="button"
                   onClick={() => setBillingCycle('monthly')}
-                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer ${
-                    billingCycle === 'monthly'
-                      ? 'bg-white/15 text-white shadow-sm'
-                      : 'text-zinc-400 hover:text-white'
+                  className={`relative px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer z-10 ${
+                    billingCycle === 'monthly' ? 'text-black' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
-                  Mensual
+                  {billingCycle === 'monthly' && (
+                    <motion.div
+                      layoutId="billing-active-tab"
+                      transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
+                      className="absolute inset-0 bg-white rounded-xl z-[-1]"
+                    />
+                  )}
+                  <span>Mensual</span>
                 </button>
+
                 <button
                   type="button"
                   onClick={() => setBillingCycle('annual')}
-                  className={`px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                    billingCycle === 'annual'
-                      ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
-                      : 'text-zinc-400 hover:text-white'
+                  className={`relative px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors flex items-center gap-2 cursor-pointer z-10 ${
+                    billingCycle === 'annual' ? 'text-black' : 'text-zinc-400 hover:text-white'
                   }`}
                 >
+                  {billingCycle === 'annual' && (
+                    <motion.div
+                      layoutId="billing-active-tab"
+                      transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
+                      className="absolute inset-0 bg-amber-400 rounded-xl z-[-1]"
+                    />
+                  )}
                   <span>Anual</span>
                   <span
                     className={`text-[10px] font-mono px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold ${
@@ -121,7 +133,7 @@ export default function PlansPage({
         </div>
 
         {/* ========================================================= */}
-        {/* 3. TARJETAS DE PLANES (SILVER, GOLD, BLACK) */}
+        {/* 2. TARJETAS DE PLANES CON ANIMACIÓN DE PROFUNDIDAD */}
         {/* ========================================================= */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-28">
           {MEMBERSHIP_PLANS.map((plan: PlanTier) => {
@@ -134,9 +146,11 @@ export default function PlansPage({
             const savingsYearly = (plan.monthlyPrice - plan.annualPricePerMonth) * 12;
 
             return (
-              <div
+              <motion.div
                 key={plan.id}
-                className={`relative flex flex-col rounded-3xl p-8 transition-all duration-300 ${
+                whileHover={{ y: -6 }}
+                transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                className={`relative flex flex-col rounded-3xl p-8 transition-colors ${
                   isGold
                     ? 'bg-zinc-900/95 border-2 border-amber-400 shadow-2xl shadow-amber-400/10 lg:-translate-y-3 z-20'
                     : 'bg-zinc-900/70 border border-white/10 hover:border-white/20 hover:bg-zinc-900/90 z-10'
@@ -147,7 +161,7 @@ export default function PlansPage({
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                     <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-amber-400 text-black text-xs font-mono font-black uppercase tracking-wider shadow-lg shadow-amber-400/30">
                       <Sparkles className="w-3.5 h-3.5" />
-                      MÁS POPULAR
+                      MÁS ELEGIDO
                     </span>
                   </div>
                 )}
@@ -177,12 +191,18 @@ export default function PlansPage({
                   {plan.tagline}
                 </p>
 
-                {/* Bloque de Precios Reactivo */}
+                {/* Bloque de Precios Reactivo con animación */}
                 <div className="my-6 pt-2 pb-6 border-y border-white/10">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl sm:text-5xl font-black text-white tracking-tight">
+                    <motion.span
+                      key={price}
+                      initial={{ opacity: 0.6, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-4xl sm:text-5xl font-black text-white tracking-tight"
+                    >
                       ${price.toLocaleString('es-MX')}
-                    </span>
+                    </motion.span>
                     <span className="text-zinc-400 text-sm font-semibold">/ mes</span>
                   </div>
 
@@ -202,7 +222,7 @@ export default function PlansPage({
                     </div>
                   ) : (
                     <p className="mt-2 text-[11px] text-zinc-400 font-mono">
-                      Sin plazo forzoso • Facturación mensual automática
+                      Sin plazo forzoso • Facturación mensual recurrente
                     </p>
                   )}
                 </div>
@@ -229,11 +249,12 @@ export default function PlansPage({
                   </ul>
                 </div>
 
-                {/* Botón CTA del Plan */}
-                <button
+                {/* Botón CTA del Plan con responsive active scale */}
+                <motion.button
                   type="button"
+                  whileTap={{ scale: 0.97 }}
                   onClick={() => handleSelectPlan(plan.id)}
-                  className={`w-full py-4 px-6 rounded-xl text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 active:scale-[0.98] transition-all cursor-pointer group ${
+                  className={`w-full py-4 px-6 rounded-xl text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer group ${
                     isGold
                       ? 'bg-amber-400 hover:bg-amber-300 text-black shadow-lg shadow-amber-400/20'
                       : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 hover:border-amber-400/30'
@@ -241,25 +262,22 @@ export default function PlansPage({
                 >
                   <span>{plan.ctaText}</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
+                </motion.button>
+              </motion.div>
             );
           })}
         </div>
 
         {/* ========================================================= */}
-        {/* 4. MATRIZ COMPARATIVA COMPLETA */}
+        {/* 3. MATRIZ COMPARATIVA COMPLETA */}
         {/* ========================================================= */}
         <section id="comparativa" className="mb-28">
-          <div className="text-center max-w-3xl mx-auto mb-12">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/25 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-                TABLA COMPARATIVA DETALLADA
-              </span>
-            </div>
+          <div className="max-w-3xl mb-12">
+            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
+              DESGLOSE COMPLETO DE SERVICIOS
+            </span>
             <h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
-              TODAS LAS CARACTERÍSTICAS <span className="text-amber-400">FRENTE A FRENTE</span>
+              TODAS LAS CARACTERÍSTICAS FRENTE A FRENTE
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
               Compara en profundidad el alcance de cada membresía y elige con total certeza técnica.
@@ -379,82 +397,82 @@ export default function PlansPage({
             {/* Pie de tabla con llamada a acción */}
             <div className="p-6 bg-zinc-950/80 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-xs font-mono text-zinc-400 text-center sm:text-left">
-                ¿Necesitas un paquete corporativo para tu equipo de trabajo?
+                ¿Necesitas un paquete corporativo para tu empresa?
               </p>
-              <button
+              <motion.button
                 type="button"
+                whileTap={{ scale: 0.97 }}
                 onClick={handleOpenCourtesyPass}
                 className="inline-flex items-center gap-2 text-xs font-mono font-bold text-amber-400 hover:text-amber-300 uppercase tracking-wider transition-colors cursor-pointer"
               >
-                <span>CONSULTAR PLANES CORPORATIVOS & CONVENIOS</span>
+                <span>CONSULTAR CONVENIOS CORPORATIVOS</span>
                 <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              </motion.button>
             </div>
           </div>
         </section>
 
         {/* ========================================================= */}
-        {/* 5. PREGUNTAS FRECUENTES (FAQ) EN ACORDEÓN */}
+        {/* 4. PREGUNTAS FRECUENTES EN ACORDEÓN CON FLUID TRANSITION */}
         {/* ========================================================= */}
         <section id="faqs" className="mb-28 max-w-4xl mx-auto">
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/25 mb-4">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-                RESOLVEMOS TUS DUDAS
-              </span>
-            </div>
+          <div className="max-w-2xl mb-12">
+            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
+              RESPUESTAS DIRECTAS
+            </span>
             <h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
-              PREGUNTAS FRECUENTES <span className="text-amber-400">SOBRE MEMBRESÍAS</span>
+              PREGUNTAS FRECUENTES SOBRE MEMBRESÍAS
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
-              Transparencia absoluta. Todo lo que necesitas saber antes de dar el primer paso.
+              Claridad total en contratos, formas de pago, congelamiento de cuenta y políticas de cancelación.
             </p>
           </div>
 
-          <div className="space-y-4">
-            {MEMBERSHIP_FAQS.map((faq, index: number) => {
+          <div className="space-y-3">
+            {MEMBERSHIP_FAQS.map((faq, index) => {
               const isOpen = openFaqIndex === index;
 
               return (
                 <div
                   key={index}
-                  className={`rounded-2xl transition-all duration-200 overflow-hidden border ${
+                  className={`rounded-2xl border transition-colors overflow-hidden ${
                     isOpen
-                      ? 'border-amber-400/40 bg-zinc-900/90 shadow-lg shadow-amber-400/5'
-                      : 'border-white/10 bg-zinc-900/50 hover:border-white/20'
+                      ? 'bg-zinc-900 border-amber-400/40 shadow-lg'
+                      : 'bg-zinc-900/60 border-white/10 hover:border-white/20'
                   }`}
                 >
                   <button
                     type="button"
                     onClick={() => toggleFaq(index)}
+                    className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 cursor-pointer focus:outline-none"
                     aria-expanded={isOpen}
-                    className="w-full p-6 text-left flex items-start sm:items-center justify-between gap-4 cursor-pointer"
                   >
-                    <div className="space-y-1.5">
-                      <span className="inline-block text-[10px] font-mono uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-amber-400/10 border border-amber-400/20 text-amber-400">
-                        {faq.category}
-                      </span>
-                      <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                        {faq.question}
-                      </h3>
-                    </div>
-                    <div
-                      className={`w-8 h-8 rounded-full border border-white/10 flex items-center justify-center shrink-0 transition-transform duration-300 ${
-                        isOpen
-                          ? 'rotate-180 bg-amber-400/15 border-amber-400/40 text-amber-400'
-                          : 'text-zinc-400 hover:text-white'
-                      }`}
+                    <span className="font-bold text-base sm:text-lg text-white">
+                      {faq.question}
+                    </span>
+                    <motion.div
+                      animate={{ rotate: isOpen ? 180 : 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-amber-400 shrink-0"
                     >
-                      <ChevronDown className="w-4 h-4" />
-                    </div>
+                      <ChevronDown className="w-5 h-5" />
+                    </motion.div>
                   </button>
 
-                  {isOpen && (
-                    <div className="px-6 pb-6 pt-1 text-zinc-300 text-sm sm:text-base leading-relaxed border-t border-white/5 font-sans">
-                      <p>{faq.answer}</p>
-                    </div>
-                  )}
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                      >
+                        <div className="px-5 sm:px-6 pb-6 text-zinc-300 text-sm leading-relaxed border-t border-white/5 pt-4 font-sans">
+                          {faq.answer}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               );
             })}
@@ -462,69 +480,31 @@ export default function PlansPage({
         </section>
 
         {/* ========================================================= */}
-        {/* 6. BANNER CTA INFERIOR */}
+        {/* 5. BANNER FINAL DE PASE DE CORTESÍA */}
         {/* ========================================================= */}
-        <section className="relative">
-          <div className="relative rounded-3xl bg-gradient-to-br from-zinc-900 via-zinc-900/95 to-zinc-950 border border-amber-400/30 p-8 sm:p-12 lg:p-16 overflow-hidden shadow-2xl">
-            {/* Resplandor ambiental de fondo */}
-            <div
-              className="absolute -right-20 -bottom-20 w-96 h-96 bg-amber-400/10 blur-[120px] rounded-full pointer-events-none"
-              aria-hidden="true"
-            />
-
-            <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-12">
-              <div className="max-w-2xl text-center lg:text-left">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/25 mb-4">
-                  <Ticket className="w-4 h-4 text-amber-400" />
-                  <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-wider">
-                    PASE DE CORTESÍA VIP
-                  </span>
-                </div>
-
-                <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
-                  ¿AÚN CON DUDAS?{' '}
-                  <span className="text-amber-400">
-                    PRUEBA LAS INSTALACIONES SIN COSTO ANTES DE DECIDIR.
-                  </span>
-                </h2>
-
-                <p className="mt-4 text-zinc-300 text-sm sm:text-base leading-relaxed font-sans">
-                  Ven a entrenar un día completo. Prueba las máquinas Eleiko IPF, conoce a nuestros
-                  coaches certificados y experimenta la atmósfera de Trankilandia sin compromiso de
-                  permanencia.
-                </p>
-
-                {/* Micro-beneficios del pase */}
-                <div className="mt-6 flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs font-mono text-zinc-400">
-                  <span className="inline-flex items-center gap-1.5">
-                    <Check className="w-4 h-4 text-amber-400" />
-                    Acceso 100% Gratuito
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Check className="w-4 h-4 text-amber-400" />
-                    Sin Tarjeta de Crédito
-                  </span>
-                  <span className="inline-flex items-center gap-1.5">
-                    <Check className="w-4 h-4 text-amber-400" />
-                    Cupos Diarios Controlados
-                  </span>
-                </div>
-              </div>
-
-              {/* Botón CTA */}
-              <div className="shrink-0 w-full sm:w-auto">
-                <button
-                  type="button"
-                  onClick={handleOpenCourtesyPass}
-                  className="w-full sm:w-auto inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-black font-black uppercase px-8 py-5 rounded-2xl text-sm sm:text-base tracking-wider active:scale-[0.98] transition-all shadow-xl shadow-amber-400/20 hover:shadow-amber-400/30 cursor-pointer group"
-                >
-                  <span>AGENDAR PASE DE CORTESÍA →</span>
-                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                </button>
-              </div>
-            </div>
+        <div className="rounded-3xl bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border border-white/10 p-8 sm:p-12 flex flex-col md:flex-row items-center justify-between gap-8">
+          <div>
+            <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-2">
+              EXPERIENCIA SIN COSTO
+            </span>
+            <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
+              ¿Aún no decides? Entrena un Día por Nuestra Cuenta.
+            </h3>
+            <p className="text-zinc-400 text-sm mt-2 max-w-xl font-sans">
+              Agenda tu pase VIP gratuito de 1 día. Accede a las instalaciones completas, toma una clase dirigida y conoce a nuestros preparadores físicos.
+            </p>
           </div>
-        </section>
+          <motion.button
+            type="button"
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.97 }}
+            onClick={handleOpenCourtesyPass}
+            className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm whitespace-nowrap shadow-xl shadow-amber-400/20 transition-all cursor-pointer shrink-0"
+          >
+            <Ticket className="w-5 h-5" />
+            <span>SOLICITAR PASE VIP GRATUITO</span>
+          </motion.button>
+        </div>
       </div>
     </div>
   );

@@ -2,16 +2,15 @@ import React from 'react';
 import {
   Check,
   Dumbbell,
-  Calendar,
   Volume2,
   Droplets,
   Lock,
   Waves,
   ShieldCheck,
   ArrowRight,
-  Layers,
   Sparkles,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { FACILITY_ZONES } from '../data/gymData';
 import type { FacilityZone } from '../types';
 
@@ -102,10 +101,6 @@ export default function FacilitiesPage({
         className="absolute top-[1200px] -left-40 w-[600px] h-[600px] bg-amber-400/5 blur-[180px] rounded-full pointer-events-none"
         aria-hidden="true"
       />
-      <div
-        className="absolute bottom-40 -right-40 w-[600px] h-[600px] bg-amber-400/5 blur-[180px] rounded-full pointer-events-none"
-        aria-hidden="true"
-      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
@@ -129,7 +124,7 @@ export default function FacilitiesPage({
             <div className="lg:col-span-4 bg-zinc-900/80 border border-white/10 p-5 rounded-2xl">
               <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-3 font-bold flex items-center justify-between">
                 <span>ESTÁNDAR DEL COMPLEJO</span>
-                <span className="text-zinc-500">REV. 2026</span>
+                <span className="text-zinc-500 font-mono">REV. 2026</span>
               </div>
               <ul className="space-y-2.5 text-xs text-zinc-300 font-sans">
                 <li className="flex items-center justify-between border-b border-white/5 pb-2">
@@ -159,7 +154,7 @@ export default function FacilitiesPage({
         <section className="mb-28" aria-label="Zonas deportivas del club">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12 border-b border-white/10 pb-6">
             <div>
-              <span className="text-amber-400 text-xs font-mono font-bold tracking-widest uppercase block mb-1">
+              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
                 DISTRIBUCIÓN ZONIFICADA
               </span>
               <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
@@ -167,8 +162,7 @@ export default function FacilitiesPage({
               </h2>
             </div>
             <p className="text-zinc-400 text-xs sm:text-sm max-w-md font-sans">
-              Cuatro ecosistemas complementarios diseñados para cubrir desde la sobrecarga pesada
-              hasta la regeneración celular acelerada.
+              Cuatro ecosistemas complementarios diseñados para cubrir desde la sobrecarga pesada hasta la regeneración celular acelerada.
             </p>
           </div>
 
@@ -178,14 +172,13 @@ export default function FacilitiesPage({
               const zoneNumber = String(index + 1).padStart(2, '0');
 
               return (
-                <article
+                <motion.article
                   key={zone.id}
                   id={zone.id}
-                  className="relative bg-zinc-900/30 border border-white/10 rounded-3xl p-6 sm:p-8 lg:p-10 backdrop-blur-sm hover:border-amber-400/30 transition-all duration-500 overflow-hidden group"
+                  whileHover={{ y: -4 }}
+                  transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
+                  className="relative bg-zinc-900/40 border border-white/10 rounded-3xl p-6 sm:p-8 lg:p-10 backdrop-blur-sm hover:border-amber-400/30 transition-colors overflow-hidden group"
                 >
-                  {/* Gradiente sutil reactivo al hover */}
-                  <div className="absolute top-0 right-0 w-80 h-80 bg-amber-400/[0.03] group-hover:bg-amber-400/[0.07] blur-[100px] pointer-events-none transition-all duration-700 rounded-full" />
-
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                     {/* Fotografía de alta fidelidad */}
                     <div
@@ -200,13 +193,11 @@ export default function FacilitiesPage({
                           loading="lazy"
                           className="w-full h-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
                         />
-                        {/* Gradientes oscuros cinematográficos */}
                         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/25 to-transparent" />
 
-                        {/* Badge de categoría en la imagen */}
-                        <div className="absolute top-4 left-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-950/80 backdrop-blur-md border border-white/15 text-amber-400 text-xs font-mono font-bold tracking-wider">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                          {zone.badge}
+                        {/* Etiqueta técnica en la imagen */}
+                        <div className="absolute top-4 left-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950/85 backdrop-blur-md border border-white/15 text-amber-400 text-xs font-mono font-bold tracking-wider">
+                          <span>{zone.badge}</span>
                         </div>
 
                         {/* Numeración en la esquina inferior */}
@@ -223,7 +214,7 @@ export default function FacilitiesPage({
                       }`}
                     >
                       <div>
-                        {/* Eyebrow de la zona */}
+                        {/* Indicador de la zona */}
                         <div className="flex items-center gap-3 mb-3">
                           <span className="text-amber-400 text-xs font-mono font-bold tracking-widest uppercase">
                             ZONA {zoneNumber}
@@ -282,7 +273,7 @@ export default function FacilitiesPage({
                                 key={amenIdx}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-950/80 border border-white/10 hover:border-amber-400/30 text-zinc-300 text-xs font-sans transition-colors"
                               >
-                                <span className="w-1 h-1 rounded-full bg-amber-400/80" />
+                                <span className="w-1 h-1 rounded-full bg-amber-400" />
                                 {amenity}
                               </span>
                             ))}
@@ -292,21 +283,22 @@ export default function FacilitiesPage({
 
                       {/* Botón rápido de acción contextual */}
                       <div className="mt-8 pt-5 border-t border-white/5 flex items-center justify-between">
-                        <button
+                        <motion.button
                           type="button"
+                          whileTap={{ scale: 0.97 }}
                           onClick={handleOpenTour}
-                          className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase text-amber-400 hover:text-amber-300 transition-colors group/btn"
+                          className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase text-amber-400 hover:text-amber-300 transition-colors group/btn cursor-pointer"
                         >
                           <span>Conocer esta zona en tour guiado</span>
                           <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-1 transition-transform" />
-                        </button>
+                        </motion.button>
                         <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest hidden sm:inline">
                           Capacidad optimizada
                         </span>
                       </div>
                     </div>
                   </div>
-                </article>
+                </motion.article>
               );
             })}
           </div>
@@ -316,21 +308,15 @@ export default function FacilitiesPage({
         {/* 3. CUADRÍCULA DE AMENIDADES DEL CLUB */}
         {/* ========================================================= */}
         <section className="mb-28" aria-label="Amenidades premium del club">
-          <div className="text-center max-w-3xl mx-auto mb-14">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/25 mb-4">
-              <Layers className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-                SERVICIOS PREMIUM INCLUIDOS
-              </span>
-            </div>
-
+          <div className="max-w-3xl mb-14">
+            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
+              SERVICIOS PREMIUM INCLUIDOS
+            </span>
             <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white mb-4">
               AMENIDADES INTEGRALES DEL CLUB
             </h2>
-
             <p className="text-zinc-400 text-sm sm:text-base leading-relaxed font-sans">
-              Cada sesión comienza y concluye en un entorno diseñado para maximizar tu confort,
-              seguridad y concentración. La experiencia Trankilandia va más allá de las máquinas.
+              Cada sesión comienza y concluye en un entorno diseñado para maximizar tu confort, seguridad y concentración. La experiencia Trankilandia va más allá de las máquinas.
             </p>
           </div>
 
@@ -338,9 +324,11 @@ export default function FacilitiesPage({
             {CLUB_AMENITIES.map((amenity, idx) => {
               const Icon = amenity.icon;
               return (
-                <div
+                <motion.div
                   key={idx}
-                  className="bg-zinc-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur-sm hover:border-amber-400/40 transition-all duration-300 group flex flex-col justify-between"
+                  whileHover={{ y: -4 }}
+                  transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
+                  className="bg-zinc-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur-sm hover:border-amber-400/40 transition-colors group flex flex-col justify-between"
                 >
                   <div>
                     {/* Header de la tarjeta */}
@@ -349,7 +337,7 @@ export default function FacilitiesPage({
                         <Icon className="w-6 h-6 text-amber-400" />
                       </div>
 
-                      <span className="px-2.5 py-1 rounded-md bg-zinc-950/80 border border-white/10 text-[10px] font-mono font-bold tracking-wider text-amber-400/90 uppercase">
+                      <span className="px-2.5 py-1 rounded-md bg-zinc-950/80 border border-white/10 text-[10px] font-mono font-bold tracking-wider text-amber-400 uppercase">
                         {amenity.badge}
                       </span>
                     </div>
@@ -378,7 +366,7 @@ export default function FacilitiesPage({
                       ))}
                     </ul>
                   </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
@@ -388,59 +376,31 @@ export default function FacilitiesPage({
         {/* 4. BANNER DE CONVERSIÓN INFERIOR */}
         {/* ========================================================= */}
         <section
-          className="relative bg-gradient-to-b from-zinc-900/80 to-zinc-950/90 border border-amber-400/25 rounded-3xl p-8 sm:p-12 lg:p-16 text-center backdrop-blur-md overflow-hidden shadow-2xl"
+          className="relative bg-zinc-900 border border-white/10 rounded-3xl p-8 sm:p-12 lg:p-16 text-center shadow-2xl"
           aria-label="Agendar tour VIP"
         >
-          {/* Acento lumínico superior */}
-          <div
-            className="absolute -top-32 left-1/2 -translate-x-1/2 w-[600px] h-[250px] bg-amber-400/20 blur-[120px] rounded-full pointer-events-none"
-            aria-hidden="true"
-          />
-
           <div className="relative z-10 max-w-3xl mx-auto">
-            {/* Tag superior */}
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-400/10 border border-amber-400/25 mb-6">
-              <Calendar className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-amber-400 text-xs font-mono font-semibold uppercase tracking-widest">
-                ACCESO EXCLUSIVO
-              </span>
-            </div>
-
-            {/* Titular */}
-            <h2 className="text-2xl sm:text-4xl lg:text-5xl font-black uppercase tracking-tight text-white mb-6 leading-tight">
-              ¿Quieres sentir la energía de Trankilandia Gym en persona?
+            <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-3">
+              RECORRIDO BIOMECÁNICO GUIADO
+            </span>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight mb-4">
+              Comprueba el Nivel de Nuestras Instalaciones
             </h2>
-
-            {/* Texto descriptivo */}
             <p className="text-zinc-400 text-sm sm:text-base leading-relaxed mb-8 max-w-2xl mx-auto font-sans">
-              Recorre nuestras 4 zonas deportivas, prueba la biomecánica de nuestras máquinas Hammer
-              Strength y Eleiko, y recibe una asesoría personalizada de objetivos con uno de nuestros
-              Head Coaches. Sin costo ni compromiso.
+              Agenda un recorrido de 20 minutos con uno de nuestros directores atléticos. Prueba el equipo, evalúa el ambiente y recibe una valoración biomecánica inicial.
             </p>
 
-            {/* Botón CTA exacto */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <button
-                type="button"
-                onClick={handleOpenTour}
-                className="bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide inline-flex items-center gap-2 active:scale-[0.98] transition-all cursor-pointer shadow-lg shadow-amber-400/10"
-              >
-                <span>AGENDAR TOUR VIP PRIVADO</span>
-                <ArrowRight className="w-4 h-4 stroke-[2.5]" />
-              </button>
-            </div>
-
-            {/* Microcopia de confianza */}
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-4 text-xs font-mono text-zinc-500">
-              <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                Reserva confirmada por WhatsApp
-              </span>
-              <span>•</span>
-              <span>Duración aprox: 30 minutos</span>
-              <span>•</span>
-              <span>Aforo controlado por horario</span>
-            </div>
+            <motion.button
+              type="button"
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={handleOpenTour}
+              className="inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 cursor-pointer"
+            >
+              <Sparkles className="w-5 h-5" />
+              <span>AGENDAR TOUR VIP PRIVADO</span>
+              <ArrowRight className="w-5 h-5" />
+            </motion.button>
           </div>
         </section>
       </div>

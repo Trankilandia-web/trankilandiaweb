@@ -1,5 +1,6 @@
 import type { ElementType } from 'react';
 import { Dumbbell, Award, ClipboardList, Users } from 'lucide-react';
+import { motion } from 'motion/react';
 import { FEATURE_HIGHLIGHTS } from '../data/gymData';
 import type { IconName } from '../types';
 
@@ -26,9 +27,11 @@ export default function FeatureBar() {
           const IconComponent = ICON_MAP[feature.iconName] || Dumbbell;
 
           return (
-            <div
+            <motion.div
               key={feature.id}
-              className="bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-2xl p-5 hover:border-amber-400/40 transition-all duration-300 flex items-start gap-4 group"
+              whileHover={{ y: -3 }}
+              transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+              className="bg-zinc-900/90 backdrop-blur-md border border-white/10 rounded-2xl p-5 hover:border-amber-400/40 transition-colors flex items-start gap-4 group cursor-default"
             >
               <div className="w-12 h-12 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center shrink-0 text-amber-400 group-hover:scale-105 group-hover:border-amber-400/40 transition-transform duration-300">
                 <IconComponent className="w-6 h-6" strokeWidth={1.75} />
@@ -41,7 +44,7 @@ export default function FeatureBar() {
                   {feature.description}
                 </p>
               </div>
-            </div>
+            </motion.div>
           );
         })}
       </div>
