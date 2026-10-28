@@ -1,7 +1,12 @@
-import { ArrowRight, Play } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowRight, Building2 } from 'lucide-react';
 import FeatureBar from './FeatureBar';
 
-export default function Hero() {
+export interface HeroProps {
+  onOpenTourModal?: () => void;
+}
+
+export default function Hero({ onOpenTourModal }: HeroProps = {}) {
   return (
     <section
       id="inicio"
@@ -44,20 +49,21 @@ export default function Hero() {
 
         {/* 4. Action Buttons */}
         <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-          <a
-            href="#contacto"
-            className="inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide active:scale-[0.98] transition-all duration-200 shadow-xl shadow-amber-400/20 hover:shadow-amber-400/30 group"
+          <button
+            type="button"
+            onClick={onOpenTourModal}
+            className="inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide active:scale-[0.98] transition-all duration-200 shadow-xl shadow-amber-400/20 hover:shadow-amber-400/30 group whitespace-nowrap"
           >
-            <span>ÚNETE AHORA</span>
+            <span>AGENDAR TOUR VIP</span>
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" strokeWidth={2} />
-          </a>
-          <a
-            href="#programas"
-            className="inline-flex items-center justify-center gap-3 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-semibold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide active:scale-[0.98] transition-all duration-200 group"
+          </button>
+          <Link
+            to="/instalaciones"
+            className="inline-flex items-center justify-center gap-3 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-semibold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide active:scale-[0.98] transition-all duration-200 group whitespace-nowrap"
           >
-            <Play className="w-4 h-4 fill-white text-white group-hover:scale-110 transition-transform duration-200" />
-            <span>VER VIDEO</span>
-          </a>
+            <Building2 className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform duration-200" strokeWidth={2} />
+            <span>CONOCER INSTALACIONES</span>
+          </Link>
         </div>
       </div>
 
