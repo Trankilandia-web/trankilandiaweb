@@ -10,7 +10,7 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
   return (
     <section
       id="inicio"
-      className="relative min-h-[85vh] lg:min-h-[88vh] flex items-center overflow-hidden pt-24 pb-16 selection:bg-amber-400 selection:text-black"
+      className="relative min-h-[88vh] lg:min-h-[90vh] flex items-center overflow-hidden pt-20 lg:pt-24 pb-8 lg:pb-10 selection:bg-amber-400 selection:text-black"
     >
       {/* Background athlete photo with dark cinematic overlays */}
       <div className="absolute inset-0 z-0">
@@ -48,7 +48,7 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             hidden: { opacity: 0, y: 10 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-400 mb-5 flex items-center gap-2.5 flex-wrap"
+          className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-400 mb-3.5 sm:mb-4 flex items-center gap-2.5 flex-wrap"
         >
           <span className="w-8 h-px bg-amber-400" />
           <span className="text-amber-400 font-bold">TRANKILANDIA CLUB</span>
@@ -56,13 +56,13 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
           <span className="text-zinc-400">CENTRO DE ENTRENAMIENTO & BOXEO</span>
         </motion.div>
 
-        {/* H1: World-class Gym Power & Energy */}
+        {/* H1: World-class Gym Power & Energy - Clean 2 Lines without awkward orphans */}
         <motion.h1
           variants={{
             hidden: { opacity: 0, y: 14, scale: 0.98 },
             visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.45, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="text-4xl sm:text-6xl md:text-7xl lg:text-8xl font-black uppercase tracking-tight leading-[0.92] text-white max-w-4xl"
+          className="text-4xl sm:text-5xl md:text-6xl lg:text-[4.25rem] xl:text-7xl font-black uppercase tracking-tight leading-[0.95] text-white max-w-5xl"
         >
           ENTRENA DURO.<br />
           <span className="text-amber-400">SUPÉRATE CADA DÍA.</span>
@@ -74,7 +74,7 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             hidden: { opacity: 0, y: 12 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="mt-6 text-base sm:text-lg text-zinc-300 max-w-xl font-normal leading-relaxed font-sans"
+          className="mt-4 sm:mt-5 text-sm sm:text-base lg:text-lg text-zinc-300 max-w-xl font-normal leading-relaxed font-sans"
         >
           Musculación de alto nivel, peso libre y escuela de boxeo. Más que un gimnasio, una familia que te impulsa a romper tus límites.
         </motion.p>
@@ -85,14 +85,14 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             hidden: { opacity: 0, y: 14 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-4"
+          className="mt-6 sm:mt-7 flex flex-col sm:flex-row items-stretch sm:items-center gap-3.5"
         >
           <Link to="/planes">
             <motion.div
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.97 }}
               transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
-              className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 bg-amber-400 hover:bg-amber-300 text-black font-black px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 cursor-pointer"
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 bg-amber-400 hover:bg-amber-300 text-black font-black px-7 py-3.5 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 cursor-pointer"
             >
               <span>VER PLANES Y PRECIOS</span>
               <ArrowRight className="w-4 h-4" />
@@ -105,7 +105,7 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
             onClick={onOpenTourModal}
-            className="inline-flex items-center justify-center gap-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-bold px-7 py-4 rounded-xl text-sm sm:text-base tracking-wide cursor-pointer"
+            className="inline-flex items-center justify-center gap-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-bold px-6 py-3.5 rounded-xl text-sm sm:text-base tracking-wide cursor-pointer"
           >
             <Ticket className="w-4 h-4 text-amber-400" />
             <span>PASE DE CORTESÍA GRATIS</span>
@@ -118,19 +118,19 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             hidden: { opacity: 0, y: 10 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="mt-12 pt-8 border-t border-white/10 grid grid-cols-3 gap-6 max-w-lg"
+          className="mt-8 sm:mt-10 pt-6 sm:pt-7 border-t border-white/10 grid grid-cols-3 gap-6 max-w-lg"
         >
           <div>
             <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">LIBRE</div>
-            <div className="text-xs text-zinc-400 mt-1 font-mono uppercase tracking-wider">Sin turnos ni límites</div>
+            <div className="text-xs text-zinc-400 mt-0.5 font-mono uppercase tracking-wider">Sin turnos ni límites</div>
           </div>
           <div>
             <div className="text-2xl sm:text-3xl font-black text-amber-400 font-mono tracking-tight">BOXEO</div>
-            <div className="text-xs text-zinc-400 mt-1 font-mono uppercase tracking-wider">Escuela & Ring</div>
+            <div className="text-xs text-zinc-400 mt-0.5 font-mono uppercase tracking-wider">Escuela & Ring</div>
           </div>
           <div>
             <div className="text-2xl sm:text-3xl font-black text-white font-mono tracking-tight">+500</div>
-            <div className="text-xs text-zinc-400 mt-1 font-mono uppercase tracking-wider">Atletas en comunidad</div>
+            <div className="text-xs text-zinc-400 mt-0.5 font-mono uppercase tracking-wider">Atletas en comunidad</div>
           </div>
         </motion.div>
       </motion.div>
