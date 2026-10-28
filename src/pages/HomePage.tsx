@@ -6,9 +6,6 @@ import {
   Calendar,
   Check,
   ChevronRight,
-  Clock,
-  ShieldCheck,
-  Phone,
   Zap,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -46,63 +43,13 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
       <Hero onOpenTourModal={onOpenTourModal} />
 
       {/* 2. Feature Bar: Just below Hero */}
-      <section className="bg-zinc-950 py-8 border-b border-white/5 relative z-10">
+      <section className="bg-zinc-950 py-10 border-b border-white/5 relative z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <FeatureBar />
         </div>
       </section>
 
-      {/* 3. Authentic Operational Info Strip (Replaces fake AI widget) */}
-      <section className="bg-zinc-900/60 border-b border-white/10 py-5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-            {/* Location & Schedule */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
-                <Clock className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 block">
-                  HORARIOS EN AYACUCHO
-                </span>
-                <span className="text-xs sm:text-sm font-semibold text-white">
-                  Lun - Sáb: 6:00 AM - 10:00 PM · Dom: 7:00 AM - 1:00 PM
-                </span>
-              </div>
-            </div>
-
-            {/* Free entry principle */}
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-emerald-400 block font-bold">
-                  INGRESO LIBRE GARANTIZADO
-                </span>
-                <span className="text-xs sm:text-sm font-semibold text-zinc-300">
-                  Sin turnos fijos. Tiempo estimado de sesión: 1:30 a 2:00 hrs.
-                </span>
-              </div>
-            </div>
-
-            {/* Direct WhatsApp Callout */}
-            <div className="flex items-center justify-start md:justify-end gap-3">
-              <a
-                href="https://wa.me/51999787489"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-white/10 hover:border-amber-400/30 text-zinc-200 px-4 py-2.5 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer"
-              >
-                <Phone className="w-3.5 h-3.5 text-amber-400" />
-                <span>WHATSAPP: +51 999 787 489</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Programs Section with Callout to Schedules */}
+      {/* 3. Programs Section with Callout to Schedules */}
       <section className="relative">
         <ProgramsSection />
         <div className="bg-zinc-950 pb-20 -mt-8 relative z-10">
