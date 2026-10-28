@@ -96,7 +96,7 @@ export default function AboutSection() {
             {/* CTA */}
             <a
               href={ABOUT_DATA.ctaHref}
-              className="bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold px-7 py-3.5 rounded-xl text-sm uppercase tracking-wider inline-flex items-center gap-2 active:scale-[0.98] transition-all group shadow-lg shadow-amber-400/10 hover:shadow-amber-400/20"
+              className="bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-7 py-3.5 rounded-xl text-sm uppercase tracking-wider inline-flex items-center gap-2 active:scale-[0.98] transition-all group shadow-lg shadow-amber-400/10 hover:shadow-amber-400/20"
             >
               <span>{ABOUT_DATA.ctaText}</span>
               <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />

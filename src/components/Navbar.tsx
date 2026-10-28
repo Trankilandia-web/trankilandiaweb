@@ -73,7 +73,7 @@ export default function Navbar() {
         <div className="hidden md:flex items-center">
           <a
             href="#contacto"
-            className="bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all duration-200"
+            className="bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all duration-200"
           >
             ÚNETE AHORA
           </a>
@@ -128,7 +128,7 @@ export default function Navbar() {
           <a
             href="#contacto"
             onClick={closeMenu}
-            className="w-full text-center block bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold px-5 py-3 rounded-xl text-sm active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all"
+            className="w-full text-center block bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-3 rounded-xl text-sm active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all"
           >
             ÚNETE AHORA
           </a>

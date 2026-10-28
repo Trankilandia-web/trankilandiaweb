@@ -46,7 +46,7 @@ export default function Hero() {
         <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
           <a
             href="#contacto"
-            className="inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide active:scale-[0.98] transition-all duration-200 shadow-xl shadow-amber-400/20 hover:shadow-amber-400/30 group"
+            className="inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide active:scale-[0.98] transition-all duration-200 shadow-xl shadow-amber-400/20 hover:shadow-amber-400/30 group"
           >
             <span>ÚNETE AHORA</span>
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" strokeWidth={2} />
