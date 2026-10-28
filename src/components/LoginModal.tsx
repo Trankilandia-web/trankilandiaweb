@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { User, Lock, Eye, EyeOff, X, ArrowRight, CheckCircle2, MessageCircle, ShieldCheck, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GYM_CONTACT } from '../data/gymData';
 import { useAuth } from '../context/AuthContext';
 import { signInWithGoogle, signInWithEmail } from '../lib/supabase';
+import { ROLES_CONFIG, UserRole } from '../types/roles';
 
 export interface LoginModalProps {
   isOpen: boolean;
@@ -39,7 +41,8 @@ export default function LoginModal({
   onClose,
   onOpenTourModal,
 }: LoginModalProps): React.JSX.Element | null {
-  const { user, isConfigured, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { user, isConfigured, signOut, role, switchRole, getRedirectPath } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -407,31 +410,85 @@ export default function LoginModal({
                   Has iniciado sesión correctamente en el portal de Trankilandia Gym.
                 </p>
 
-                <div className="mt-6 p-4 rounded-2xl bg-zinc-950 border border-white/10 text-left space-y-2">
-                  <div className="flex justify-between text-xs">
+                <div className="mt-6 p-4 rounded-2xl bg-zinc-950 border border-white/10 text-left space-y-2.5">
+                  <div className="flex justify-between items-center text-xs">
                     <span className="text-zinc-400 font-mono">Usuario conectado:</span>
-                    <span className="text-white font-mono font-bold truncate max-w-[200px]">
+                    <span className="text-white font-mono font-bold truncate max-w-[190px]">
                       {activeUserEmail}
                     </span>
                   </div>
-                  <div className="flex justify-between text-xs">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-zinc-400 font-mono">Rol en el sistema:</span>
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded font-mono font-bold text-[11px] uppercase ${ROLES_CONFIG[role].themeColor.badgeBg} ${ROLES_CONFIG[role].themeColor.badgeText} border ${ROLES_CONFIG[role].themeColor.badgeBorder}`}
+                    >
+                      {ROLES_CONFIG[role].name}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
                     <span className="text-zinc-400 font-mono">Estado membresía:</span>
                     <span className="text-emerald-400 font-mono font-bold">ACTIVO · INGRESO LIBRE</span>
                   </div>
-                  <div className="flex justify-between text-xs">
+                  <div className="flex justify-between items-center text-xs">
                     <span className="text-zinc-400 font-mono">Sede:</span>
                     <span className="text-amber-400 font-mono font-bold">Huamanga, Ayacucho</span>
                   </div>
                 </div>
 
+                {/* Tester / Simulator for testing roles */}
+                <div className="mt-4 p-3 bg-zinc-950/70 border border-white/5 rounded-2xl text-left">
+                  <div className="text-[11px] font-mono text-zinc-400 mb-2 font-bold flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                      <span>PROBAR ROL (MODO PRUEBA):</span>
+                    </span>
+                    <span className="text-zinc-500 font-normal">Clic para cambiar</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(['admin', 'caja', 'entrenador', 'cliente'] as UserRole[]).map((r) => {
+                      const cfg = ROLES_CONFIG[r];
+                      const isCurrent = r === role;
+                      return (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => switchRole(r)}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center justify-between cursor-pointer ${
+                            isCurrent
+                              ? `${cfg.themeColor.badgeBg} ${cfg.themeColor.badgeText} border ${cfg.themeColor.badgeBorder} shadow-sm`
+                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
+                          }`}
+                        >
+                          <span>{cfg.name}</span>
+                          {isCurrent && <span className="text-[11px] text-emerald-400">●</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="mt-6 flex flex-col gap-2.5">
+                  {/* Primary CTA: Jump to role dashboard */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate(getRedirectPath());
+                      handleModalClose();
+                    }}
+                    className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black py-3.5 rounded-xl text-sm transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 font-display uppercase tracking-wide"
+                  >
+                    <span>IR A MI PANEL ({ROLES_CONFIG[role].name.toUpperCase()})</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleModalClose}
-                    className="w-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold py-3 rounded-xl text-sm transition-colors cursor-pointer"
+                    className="w-full bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white py-2.5 rounded-xl text-xs font-mono border border-white/10 transition-colors cursor-pointer"
                   >
-                    CONTINUAR NAVEGANDO
+                    CONTINUAR NAVEGANDO EN LA WEB
                   </button>
+
                   <button
                     type="button"
                     onClick={async () => {
@@ -442,6 +499,7 @@ export default function LoginModal({
                   >
                     <span>Cerrar Sesión</span>
                   </button>
+
                   <button
                     type="button"
                     onClick={handleResetPasswordViaWhatsApp}

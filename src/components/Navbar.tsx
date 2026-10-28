@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Dumbbell, Menu, X, MapPin, User, Ticket } from 'lucide-react';
+import { Dumbbell, Menu, X, MapPin, User, Ticket, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
+import { ROLES_CONFIG } from '../types/roles';
 
 export interface NavbarProps {
   onOpenLoginModal?: () => void;
@@ -19,7 +20,7 @@ const NAV_LINKS = [
 export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const { user } = useAuth();
+  const { user, role, getRedirectPath } = useAuth();
 
   // Close mobile drawer on escape key
   useEffect(() => {
@@ -106,31 +107,45 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
         </nav>
 
         {/* Desktop Login / Profile Button */}
-        <div className="hidden md:flex items-center gap-3">
+        <div className="hidden md:flex items-center gap-2.5">
           {user ? (
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => onOpenLoginModal?.()}
-              className="flex items-center gap-2.5 bg-zinc-900 border border-amber-400/40 hover:border-amber-400 px-4 py-2 rounded-xl text-xs font-mono transition-all cursor-pointer shadow-md shadow-amber-400/10"
-            >
-              {user.user_metadata?.avatar_url ? (
-                <img
-                  src={user.user_metadata.avatar_url}
-                  alt={user.user_metadata.full_name || 'Socio'}
-                  className="w-5 h-5 rounded-full object-cover"
-                />
-              ) : (
-                <div className="w-5 h-5 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-[10px]">
-                  {(user.email?.[0] || 'S').toUpperCase()}
-                </div>
-              )}
-              <span className="text-white font-bold max-w-[120px] truncate">
-                {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'Mi Cuenta'}
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-            </motion.button>
+            <>
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => onOpenLoginModal?.()}
+                className="flex items-center gap-2.5 bg-zinc-900 border border-amber-400/40 hover:border-amber-400 px-3.5 py-2 rounded-xl text-xs font-mono transition-all cursor-pointer shadow-md shadow-amber-400/10"
+              >
+                {user.user_metadata?.avatar_url ? (
+                  <img
+                    src={user.user_metadata.avatar_url}
+                    alt={user.user_metadata.full_name || 'Socio'}
+                    className="w-5 h-5 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-[10px]">
+                    {(user.email?.[0] || 'S').toUpperCase()}
+                  </div>
+                )}
+                <span className="text-white font-bold max-w-[100px] truncate">
+                  {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'Mi Cuenta'}
+                </span>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${ROLES_CONFIG[role].themeColor.badgeBg} ${ROLES_CONFIG[role].themeColor.badgeText} border ${ROLES_CONFIG[role].themeColor.badgeBorder}`}
+                >
+                  {ROLES_CONFIG[role].name.split(' ')[0]}
+                </span>
+              </motion.button>
+
+              <Link
+                to={getRedirectPath()}
+                className="inline-flex items-center gap-1.5 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-3.5 py-2 rounded-xl text-xs font-mono shadow-md shadow-amber-400/10 transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <span>MI PANEL</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </>
           ) : (
             <motion.button
               type="button"
@@ -196,35 +211,48 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
                 <span>Huamanga, Ayacucho, Perú</span>
               </div>
               {user ? (
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => {
-                    closeMenu();
-                    onOpenLoginModal?.();
-                  }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-xl bg-zinc-900 border border-amber-400/40 text-white font-bold text-sm cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    {user.user_metadata?.avatar_url ? (
-                      <img
-                        src={user.user_metadata.avatar_url}
-                        alt="Usuario"
-                        className="w-6 h-6 rounded-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-6 h-6 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-xs">
-                        {(user.email?.[0] || 'S').toUpperCase()}
-                      </div>
-                    )}
-                    <span className="truncate max-w-[180px]">
-                      {user.user_metadata?.full_name || user.email}
+                <>
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => {
+                      closeMenu();
+                      onOpenLoginModal?.();
+                    }}
+                    className="w-full flex items-center justify-between p-3.5 rounded-xl bg-zinc-900 border border-amber-400/40 text-white font-bold text-sm cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      {user.user_metadata?.avatar_url ? (
+                        <img
+                          src={user.user_metadata.avatar_url}
+                          alt="Usuario"
+                          className="w-6 h-6 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-6 h-6 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-xs">
+                          {(user.email?.[0] || 'S').toUpperCase()}
+                        </div>
+                      )}
+                      <span className="truncate max-w-[150px]">
+                        {user.user_metadata?.full_name || user.email}
+                      </span>
+                    </div>
+                    <span
+                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase ${ROLES_CONFIG[role].themeColor.badgeBg} ${ROLES_CONFIG[role].themeColor.badgeText} border ${ROLES_CONFIG[role].themeColor.badgeBorder}`}
+                    >
+                      {ROLES_CONFIG[role].name}
                     </span>
-                  </div>
-                  <span className="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded">
-                    CONECTADO
-                  </span>
-                </motion.button>
+                  </motion.button>
+
+                  <Link
+                    to={getRedirectPath()}
+                    onClick={closeMenu}
+                    className="w-full flex items-center justify-center gap-2 bg-amber-400 text-black font-extrabold py-3.5 rounded-xl text-sm shadow-lg shadow-amber-400/10 cursor-pointer font-display uppercase tracking-wide"
+                  >
+                    <span>IR A MI PANEL ({ROLES_CONFIG[role].name.toUpperCase()})</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                </>
               ) : (
                 <motion.button
                   type="button"
