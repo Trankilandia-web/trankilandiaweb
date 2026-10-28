@@ -1,9 +1,21 @@
 import { useState, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Dumbbell, Menu, X } from 'lucide-react';
-import { NAV_ITEMS } from '../data/gymData';
 
-export default function Navbar() {
+export interface NavbarProps {
+  onOpenTourModal?: () => void;
+}
+
+const NAV_LINKS = [
+  { label: 'Inicio', href: '/' },
+  { label: 'Planes & Membresías', href: '/planes' },
+  { label: 'Horarios & Clases', href: '/clases' },
+  { label: 'Instalaciones', href: '/instalaciones' },
+];
+
+export default function Navbar(props: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const location = useLocation();
 
   // Close mobile drawer on escape key
   useEffect(() => {
@@ -35,8 +47,8 @@ export default function Navbar() {
     <header className="fixed top-0 left-0 right-0 z-50 h-20 backdrop-blur-md bg-zinc-950/85 border-b border-white/5 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
         {/* Brand Logo */}
-        <a
-          href="#inicio"
+        <Link
+          to="/"
           className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-xl"
           onClick={closeMenu}
         >
@@ -51,32 +63,41 @@ export default function Navbar() {
               GYM & FITNESS
             </span>
           </div>
-        </a>
+        </Link>
 
         {/* Desktop Navigation */}
         <nav
           aria-label="Navegación principal"
           className="hidden md:flex items-center gap-8"
         >
-          {NAV_ITEMS.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="text-sm font-medium text-zinc-300 hover:text-amber-400 transition-colors duration-200 whitespace-nowrap"
-            >
-              {item.label}
-            </a>
-          ))}
+          {NAV_LINKS.map((link) => {
+            const isActive = location.pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                to={link.href}
+                aria-current={isActive ? 'page' : undefined}
+                className={`text-sm transition-colors duration-200 whitespace-nowrap ${
+                  isActive
+                    ? 'text-amber-400 font-bold border-b-2 border-amber-400 pb-0.5'
+                    : 'text-zinc-300 hover:text-amber-400 font-medium'
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Desktop CTA */}
         <div className="hidden md:flex items-center">
-          <a
-            href="#contacto"
-            className="bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all duration-200"
+          <button
+            type="button"
+            onClick={() => props.onOpenTourModal?.()}
+            className="bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all duration-200 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
           >
-            ÚNETE AHORA
-          </a>
+            PASE DE CORTESÍA
+          </button>
         </div>
 
         {/* Mobile Hamburger Button */}
@@ -86,7 +107,7 @@ export default function Navbar() {
           aria-expanded={isOpen}
           aria-controls="mobile-menu"
           aria-label={isOpen ? 'Cerrar menú' : 'Abrir menú'}
-          className="md:hidden p-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/5 border border-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+          className="md:hidden p-2 rounded-xl text-zinc-300 hover:text-white hover:bg-white/5 border border-white/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
         >
           {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
         </button>
@@ -112,26 +133,40 @@ export default function Navbar() {
         }`}
       >
         <nav aria-label="Navegación móvil" className="flex flex-col gap-1">
-          {NAV_ITEMS.map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              onClick={closeMenu}
-              className="text-base font-medium text-zinc-200 hover:text-amber-400 hover:bg-white/5 px-3 py-2.5 rounded-lg transition-colors"
-            >
-              {item.label}
-            </a>
-          ))}
+          {NAV_LINKS.map((link) => {
+            const isActive = location.pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                to={link.href}
+                onClick={closeMenu}
+                aria-current={isActive ? 'page' : undefined}
+                className={`text-base font-medium px-3 py-2.5 rounded-lg transition-colors flex items-center justify-between ${
+                  isActive
+                    ? 'text-amber-400 font-bold bg-amber-400/10 border-l-2 border-amber-400'
+                    : 'text-zinc-200 hover:text-amber-400 hover:bg-white/5'
+                }`}
+              >
+                <span>{link.label}</span>
+                {isActive && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" aria-hidden="true" />
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="pt-2 border-t border-white/10">
-          <a
-            href="#contacto"
-            onClick={closeMenu}
-            className="w-full text-center block bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-3 rounded-xl text-sm active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all"
+          <button
+            type="button"
+            onClick={() => {
+              closeMenu();
+              props.onOpenTourModal?.();
+            }}
+            className="w-full text-center block bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-3 rounded-xl text-sm active:scale-[0.98] shadow-lg shadow-amber-400/10 transition-all cursor-pointer"
           >
-            ÚNETE AHORA
-          </a>
+            PASE DE CORTESÍA
+          </button>
         </div>
       </div>
     </header>
