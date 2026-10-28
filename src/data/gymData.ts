@@ -105,7 +105,7 @@ export const GYM_CONTACT: GymContactInfo = {
   address: 'Huamanga, Ayacucho, Perú',
   phone: '+51999787489',
   phoneDisplay: '+51 999 787 489',
-  email: 'contacto@trankilandiagym.pe',
+  email: 'trankilandiagymperu@gmail.com',
   hours: {
     weekday: 'Lun - Sáb: 6:00 AM - 10:00 PM',
     sunday: 'Dom: 7:00 AM - 1:00 PM',
