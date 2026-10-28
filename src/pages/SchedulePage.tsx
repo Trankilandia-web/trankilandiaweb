@@ -134,13 +134,13 @@ export default function SchedulePage({
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                PROGRAMACIÓN SEMANAL · TEMPORADA 2026
+                CLASES &amp; BOXEO · HUAMANGA, AYACUCHO
               </span>
               <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter text-white leading-none">
                 HORARIOS DE CLASES.
               </h1>
               <p className="mt-3 text-zinc-400 text-sm sm:text-base leading-relaxed max-w-xl font-sans">
-                Sesiones guiadas por coaches especializados con corrección postural personalizada, sobrecarga progresiva y cupos controlados.
+                Clases dirigidas de Boxeo (actividad adicional), acondicionamiento funcional y asesoría continua en sala de musculación con ingreso libre.
               </p>
             </div>
 

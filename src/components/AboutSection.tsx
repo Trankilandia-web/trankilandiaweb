@@ -36,15 +36,15 @@ export default function AboutSection() {
                   <div className="w-2 h-2 rounded-full bg-amber-400" />
                   <div>
                     <p className="text-xs font-mono font-bold tracking-widest text-amber-400 uppercase">
-                      TRANKILANDIA CLUB
+                      TRANKILANDIA GYM
                     </p>
                     <p className="text-[11px] text-zinc-400 font-sans tracking-wide">
-                      INSTALACIONES DE ÉLITE
+                      HUAMANGA, AYACUCHO
                     </p>
                   </div>
                 </div>
                 <span className="hidden sm:inline-block text-[10px] font-mono uppercase px-2.5 py-1 rounded bg-white/5 border border-white/10 text-zinc-300">
-                  ZONA FITNESS
+                  AYACUCHO · PERÚ
                 </span>
               </div>
             </div>
@@ -60,7 +60,7 @@ export default function AboutSection() {
             {/* H2 Display */}
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tighter text-white uppercase leading-[0.95]">
               MÁS QUE UN GIMNASIO, <br className="hidden sm:inline" />
-              UN CENTRO DE ALTO RENDIMIENTO.
+              <span className="text-amber-400">SOMOS FAMILIA.</span>
             </h2>
 
             {/* Manifiesto */}

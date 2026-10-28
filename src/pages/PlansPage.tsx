@@ -6,14 +6,16 @@ import {
   Sparkles,
   Ticket,
   ArrowRight,
+  Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   MEMBERSHIP_PLANS,
   PLAN_COMPARISON_CATEGORIES,
   MEMBERSHIP_FAQS,
+  BOXING_ADDON,
 } from '../data/gymData';
-import type { PlanTier, ComparisonCategory, ComparisonFeature } from '../types';
+import type { PlanTier, ComparisonCategory, ComparisonFeature, BillingPeriod } from '../types';
 
 export interface PlansPageProps {
   onSelectPlan?: (planId: string) => void;
@@ -24,7 +26,7 @@ export default function PlansPage({
   onSelectPlan,
   onOpenTourModal,
 }: PlansPageProps = {}): React.JSX.Element {
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('mes');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const handleSelectPlan = (planId: string) => {
@@ -46,6 +48,39 @@ export default function PlansPage({
     setOpenFaqIndex((prev) => (prev === index ? null : index));
   };
 
+  const getPlanPricing = (plan: PlanTier) => {
+    switch (billingPeriod) {
+      case 'mes':
+        return {
+          total: plan.monthlyPrice,
+          perMonth: plan.monthlyPrice,
+          savings: 0,
+          label: 'por 1 mes',
+        };
+      case 'trimestral':
+        return {
+          total: plan.quarterlyPrice,
+          perMonth: Math.round(plan.quarterlyPrice / 3),
+          savings: plan.monthlyPrice * 3 - plan.quarterlyPrice,
+          label: 'total x 3 meses',
+        };
+      case 'semestral':
+        return {
+          total: plan.semiannualPrice,
+          perMonth: Math.round(plan.semiannualPrice / 6),
+          savings: plan.monthlyPrice * 6 - plan.semiannualPrice,
+          label: 'total x 6 meses',
+        };
+      case 'anual':
+        return {
+          total: plan.annualPrice,
+          perMonth: Math.round(plan.annualPrice / 12),
+          savings: plan.monthlyPrice * 12 - plan.annualPrice,
+          label: 'total x 1 año',
+        };
+    }
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-display pt-28 pb-24 relative overflow-hidden selection:bg-amber-400 selection:text-black">
       {/* Luces ambientales cinemáticas */}
@@ -60,90 +95,82 @@ export default function PlansPage({
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
-        {/* 1. CABECERA EDITORIAL DE PLANES CON TOGGLE FLUIDO */}
+        {/* 1. CABECERA EDITORIAL DE PLANES CON SELECTOR DE 4 PERIODOS */}
         {/* ========================================================= */}
         <div className="pb-12 mb-16 border-b border-white/10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
             <div className="lg:col-span-7">
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                MEMBRESÍAS & CUOTAS 2026
+                TARIFAS EN SOLES (S/.) · AYACUCHO
               </span>
               <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
-                INVERSIÓN EN RENDIMIENTO.
+                PLANES CON INGRESO LIBRE.
               </h1>
               <p className="mt-4 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-xl font-sans">
-                Sin plazos forzosos en modalidad mensual. Acceso ilimitado a maquinaria oficial Hammer Strength y plataformas olímpicas Eleiko. Cancela o congela cuando lo necesites.
+                Sin plazos forzosos. Todos nuestros planes garantizan <strong>ingreso libre e ilimitado</strong> en sala de musculación. Puedes elegir entre 1 mes, 3 meses, 6 meses o 1 año, y sumar clases de boxeo como actividad adicional.
               </p>
             </div>
 
-            {/* Toggle de Facturación con layoutId de Emil Kowalski */}
+            {/* Selector de los 4 Periodos */}
             <div className="lg:col-span-5 flex flex-col items-start lg:items-end justify-end">
               <span className="text-[11px] font-mono uppercase tracking-wider text-zinc-400 mb-2">
-                MODALIDAD DE PAGO
+                MODALIDAD DE TIEMPO:
               </span>
-              <div className="p-1.5 bg-zinc-900 border border-white/10 rounded-2xl flex items-center shadow-xl relative">
-                <button
-                  type="button"
-                  onClick={() => setBillingCycle('monthly')}
-                  className={`relative px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer z-10 ${
-                    billingCycle === 'monthly' ? 'text-black' : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  {billingCycle === 'monthly' && (
-                    <motion.div
-                      layoutId="billing-active-tab"
-                      transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
-                      className="absolute inset-0 bg-white rounded-xl z-[-1]"
-                    />
-                  )}
-                  <span>Mensual</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setBillingCycle('annual')}
-                  className={`relative px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors flex items-center gap-2 cursor-pointer z-10 ${
-                    billingCycle === 'annual' ? 'text-black' : 'text-zinc-400 hover:text-white'
-                  }`}
-                >
-                  {billingCycle === 'annual' && (
-                    <motion.div
-                      layoutId="billing-active-tab"
-                      transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
-                      className="absolute inset-0 bg-amber-400 rounded-xl z-[-1]"
-                    />
-                  )}
-                  <span>Anual</span>
-                  <span
-                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full uppercase tracking-wider font-extrabold ${
-                      billingCycle === 'annual'
-                        ? 'bg-black text-amber-400'
-                        : 'bg-amber-400/20 text-amber-400'
-                    }`}
-                  >
-                    -20% OFF
-                  </span>
-                </button>
+              <div className="p-1.5 bg-zinc-900 border border-white/10 rounded-2xl flex items-center flex-wrap gap-1 shadow-xl relative">
+                {(
+                  [
+                    { id: 'mes', label: '1 Mes', badge: undefined },
+                    { id: 'trimestral', label: '3 Meses', badge: 'Ahorro' },
+                    { id: 'semestral', label: '6 Meses', badge: '-18%' },
+                    { id: 'anual', label: '1 Año', badge: '-28%' },
+                  ] as const
+                ).map((item) => {
+                  const isSelected = billingPeriod === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setBillingPeriod(item.id)}
+                      className={`relative px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer z-10 flex items-center gap-1.5 ${
+                        isSelected ? 'text-black' : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {isSelected && (
+                        <motion.div
+                          layoutId="plans-period-tab"
+                          transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
+                          className="absolute inset-0 bg-amber-400 rounded-xl z-[-1]"
+                        />
+                      )}
+                      <span>{item.label}</span>
+                      {item.badge && (
+                        <span
+                          className={`text-[9px] font-mono px-1.5 py-0.2 rounded-full font-extrabold uppercase ${
+                            isSelected
+                              ? 'bg-black text-amber-400'
+                              : 'bg-zinc-800 text-zinc-400'
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
               <span className="text-[11px] font-mono text-zinc-500 mt-2">
-                *Modalidad anual incluye matrícula $0 y evaluación InBody
+                *Tarifas oficiales en Soles peruanos (S/.) para Huamanga, Ayacucho.
               </span>
             </div>
           </div>
         </div>
 
         {/* ========================================================= */}
-        {/* 2. TARJETAS DE PLANES CON ANIMACIÓN DE PROFUNDIDAD */}
+        {/* 2. TARJETAS DE PLANES CON PRECIOS EN SOLES */}
         {/* ========================================================= */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-28">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-20">
           {MEMBERSHIP_PLANS.map((plan: PlanTier) => {
-            const isGold = plan.id === 'gold';
-            const isBlack = plan.id === 'black';
-            const price =
-              billingCycle === 'annual'
-                ? plan.annualPricePerMonth
-                : plan.monthlyPrice;
-            const savingsYearly = (plan.monthlyPrice - plan.annualPricePerMonth) * 12;
+            const pricing = getPlanPricing(plan);
 
             return (
               <motion.div
@@ -151,80 +178,74 @@ export default function PlansPage({
                 whileHover={{ y: -6 }}
                 transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
                 className={`relative flex flex-col rounded-3xl p-8 transition-colors ${
-                  isGold
-                    ? 'bg-zinc-900/95 border-2 border-amber-400 shadow-2xl shadow-amber-400/10 lg:-translate-y-3 z-20'
+                  plan.isPopular
+                    ? 'bg-zinc-900 border-2 border-amber-400 shadow-2xl shadow-amber-400/10 lg:-translate-y-3 z-20'
                     : 'bg-zinc-900/70 border border-white/10 hover:border-white/20 hover:bg-zinc-900/90 z-10'
                 }`}
               >
                 {/* Badge Superior */}
-                {isGold && (
+                {plan.badge && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-amber-400 text-black text-xs font-mono font-black uppercase tracking-wider shadow-lg shadow-amber-400/30">
+                    <span className="inline-flex items-center gap-1.5 px-4 py-1 rounded-full bg-amber-400 text-black text-xs font-mono font-black uppercase tracking-wider shadow-lg shadow-amber-400/30 whitespace-nowrap">
                       <Sparkles className="w-3.5 h-3.5" />
-                      MÁS ELEGIDO
-                    </span>
-                  </div>
-                )}
-
-                {isBlack && plan.badge && (
-                  <div className="mb-3">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-amber-400 text-[11px] font-mono font-bold tracking-wider uppercase">
-                      <Sparkles className="w-3 h-3" />
                       {plan.badge}
                     </span>
                   </div>
                 )}
 
-                {!isGold && !isBlack && (
-                  <div className="mb-3">
-                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-zinc-400 text-[11px] font-mono font-bold tracking-wider uppercase">
-                      BASE ATLETA
-                    </span>
-                  </div>
-                )}
-
                 {/* Título & Tagline */}
-                <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
+                <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight mt-1">
                   {plan.name}
                 </h3>
                 <p className="text-zinc-400 text-sm mt-1 min-h-[38px] font-sans">
                   {plan.tagline}
                 </p>
 
-                {/* Bloque de Precios Reactivo con animación */}
+                {/* Bloque de Precios en Soles */}
                 <div className="my-6 pt-2 pb-6 border-y border-white/10">
                   <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-mono font-bold text-amber-400">S/.</span>
                     <motion.span
-                      key={price}
+                      key={pricing.total}
                       initial={{ opacity: 0.6, y: -4 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2 }}
                       className="text-4xl sm:text-5xl font-black text-white tracking-tight"
                     >
-                      ${price.toLocaleString('es-MX')}
+                      {pricing.total}
                     </motion.span>
-                    <span className="text-zinc-400 text-sm font-semibold">/ mes</span>
+                    <span className="text-zinc-400 text-xs font-mono">
+                      {pricing.label}
+                    </span>
                   </div>
 
-                  {billingCycle === 'annual' ? (
+                  {billingPeriod !== 'mes' ? (
                     <div className="mt-2 space-y-1">
                       <div className="flex items-center gap-2 text-xs">
-                        <span className="line-through text-zinc-500 font-mono">
-                          ${plan.monthlyPrice.toLocaleString('es-MX')}/mes regular
-                        </span>
                         <span className="text-amber-400 font-mono font-bold">
-                          Ahorras ${savingsYearly.toLocaleString('es-MX')}/año
+                          Equivale a aprox. S/. {pricing.perMonth} / mes
                         </span>
+                        {pricing.savings > 0 && (
+                          <span className="text-emerald-400 font-mono text-[11px] bg-emerald-500/10 px-2 py-0.5 rounded">
+                            Ahorras S/. {pricing.savings}
+                          </span>
+                        )}
                       </div>
                       <p className="text-[11px] text-zinc-500 font-mono">
-                        Cobro anual de ${(plan.annualPricePerMonth * 12).toLocaleString('es-MX')} MXN • Matrícula $0
+                        Pago único en soles por los {billingPeriod === 'trimestral' ? '3 meses' : billingPeriod === 'semestral' ? '6 meses' : '12 meses'} completos
                       </p>
                     </div>
                   ) : (
                     <p className="mt-2 text-[11px] text-zinc-400 font-mono">
-                      Sin plazo forzoso • Facturación mensual recurrente
+                      Pago mensual regular • Sin contrato forzoso
                     </p>
                   )}
+
+                  {/* Free entry callout tag */}
+                  <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono font-bold">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Ingreso Libre e Ilimitado</span>
+                  </div>
                 </div>
 
                 {/* Descripción General */}
@@ -235,13 +256,13 @@ export default function PlansPage({
                 {/* Lista de Beneficios con Check Ámbar */}
                 <div className="flex-1 mb-8">
                   <p className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-400 mb-4">
-                    BENEFICIOS DESTACADOS:
+                    BENEFICIOS INCLUIDOS:
                   </p>
-                  <ul className="space-y-3.5">
+                  <ul className="space-y-3">
                     {plan.highlights.map((highlight: string, idx: number) => (
                       <li key={idx} className="flex items-start gap-3 text-sm text-zinc-300 font-sans">
-                        <div className="w-5 h-5 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center shrink-0 mt-0.5">
-                          <Check className="w-3.5 h-3.5 text-amber-400" />
+                        <div className="w-5 h-5 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center shrink-0 mt-0.5 text-amber-400">
+                          <Check className="w-3.5 h-3.5" />
                         </div>
                         <span className="leading-snug">{highlight}</span>
                       </li>
@@ -249,13 +270,13 @@ export default function PlansPage({
                   </ul>
                 </div>
 
-                {/* Botón CTA del Plan con responsive active scale */}
+                {/* Botón CTA del Plan */}
                 <motion.button
                   type="button"
                   whileTap={{ scale: 0.97 }}
                   onClick={() => handleSelectPlan(plan.id)}
                   className={`w-full py-4 px-6 rounded-xl text-sm font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer group ${
-                    isGold
+                    plan.isPopular
                       ? 'bg-amber-400 hover:bg-amber-300 text-black shadow-lg shadow-amber-400/20'
                       : 'bg-zinc-800 hover:bg-zinc-700 text-white border border-white/10 hover:border-amber-400/30'
                   }`}
@@ -269,7 +290,60 @@ export default function PlansPage({
         </div>
 
         {/* ========================================================= */}
-        {/* 3. MATRIZ COMPARATIVA COMPLETA */}
+        {/* 3. BLOQUE DESTACADO: ACTIVIDAD ADICIONAL DE BOXEO */}
+        {/* ========================================================= */}
+        <div className="mb-28 rounded-3xl bg-zinc-900/90 border border-amber-400/30 p-8 sm:p-10 relative overflow-hidden">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+            <div className="lg:col-span-8">
+              <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-amber-400 font-bold mb-3">
+                <Zap className="w-4 h-4" />
+                <span>DISCIPLINA COMPLEMENTARIA EN AYACUCHO</span>
+              </div>
+              <h3 className="text-3xl sm:text-4xl font-black uppercase text-white tracking-tight">
+                {BOXING_ADDON.title}
+              </h3>
+              <p className="mt-3 text-zinc-300 text-sm sm:text-base leading-relaxed font-sans max-w-2xl">
+                {BOXING_ADDON.subtitle}. Aprende la técnica de combate, golpeo en sacos, trabajo con manoplas y agilidad cardiovascular con instructores dedicados.
+              </p>
+
+              <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {BOXING_ADDON.details.map((detail, idx) => (
+                  <div key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm text-zinc-300">
+                    <div className="w-4 h-4 rounded-full bg-amber-400/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <Check className="w-2.5 h-2.5" />
+                    </div>
+                    <span>{detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="lg:col-span-4 flex flex-col items-start lg:items-end justify-center bg-zinc-950/80 border border-white/10 p-6 rounded-2xl">
+              <span className="text-xs font-mono text-zinc-400 uppercase tracking-wider">
+                COSTO ADICIONAL
+              </span>
+              <div className="flex items-baseline gap-1.5 my-2">
+                <span className="text-xs font-mono text-amber-400 font-bold">S/.</span>
+                <span className="text-4xl font-black text-white">{BOXING_ADDON.pricePerMonth}</span>
+                <span className="text-xs text-zinc-400 font-mono">/ mes</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 font-sans mb-4 text-left lg:text-right">
+                O puedes elegir el combo directo <strong>Plan Gym + Boxeo (S/. 140/mes)</strong> que ya lo incluye todo.
+              </p>
+              <motion.button
+                type="button"
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleSelectPlan('combo_boxeo')}
+                className="w-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold py-3 px-4 rounded-xl text-xs uppercase tracking-wider transition-colors cursor-pointer text-center"
+              >
+                CONTRATAR COMBO GYM + BOXEO
+              </motion.button>
+            </div>
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* 4. MATRIZ COMPARATIVA COMPLETA */}
         {/* ========================================================= */}
         <section id="comparativa" className="mb-28">
           <div className="max-w-3xl mb-12">
@@ -277,51 +351,48 @@ export default function PlansPage({
               DESGLOSE COMPLETO DE SERVICIOS
             </span>
             <h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
-              TODAS LAS CARACTERÍSTICAS FRENTE A FRENTE
+              COMPARATIVA DETALLADA DE PLANES
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
-              Compara en profundidad el alcance de cada membresía y elige con total certeza técnica.
+              Revisa lo que incluye cada opción y elige la que mejor se adapte a tus metas y presupuesto en Ayacucho.
             </p>
           </div>
 
           <div className="rounded-2xl border border-white/10 bg-zinc-900/60 backdrop-blur-sm overflow-hidden shadow-2xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[720px]">
-                {/* Cabecera de la Tabla */}
                 <thead>
                   <tr className="border-b border-white/10 bg-zinc-950/90">
                     <th className="w-5/12 px-6 py-5 text-xs font-mono font-bold text-zinc-400 uppercase tracking-wider">
-                      CARACTERÍSTICAS & PRIVILEGIOS
+                      CARACTERÍSTICAS & SERVICIOS
                     </th>
                     <th className="w-7/36 px-4 py-5 text-center">
-                      <div className="text-sm font-extrabold text-white uppercase">Plata Esencial</div>
+                      <div className="text-sm font-extrabold text-white uppercase">Plan Estudiante</div>
                       <div className="text-xs font-mono text-zinc-400 mt-0.5">
-                        ${billingCycle === 'annual' ? '710' : '890'}/mes
+                        S/. {billingPeriod === 'mes' ? '75' : billingPeriod === 'trimestral' ? '200' : billingPeriod === 'semestral' ? '370' : '680'}
                       </div>
                     </th>
                     <th className="w-8/36 px-4 py-5 text-center bg-amber-400/10 border-x border-amber-400/25 relative">
                       <span className="inline-block px-2 py-0.5 rounded bg-amber-400 text-black text-[10px] font-mono font-black uppercase mb-1">
-                        RECOMENDADO
+                        MÁS ELEGIDO
                       </span>
-                      <div className="text-sm font-extrabold text-amber-300 uppercase">Oro Performance</div>
+                      <div className="text-sm font-extrabold text-amber-300 uppercase">Plan General</div>
                       <div className="text-xs font-mono text-amber-400 font-bold mt-0.5">
-                        ${billingCycle === 'annual' ? '1,160' : '1,450'}/mes
+                        S/. {billingPeriod === 'mes' ? '95' : billingPeriod === 'trimestral' ? '255' : billingPeriod === 'semestral' ? '470' : '840'}
                       </div>
                     </th>
                     <th className="w-7/36 px-4 py-5 text-center">
-                      <div className="text-sm font-extrabold text-white uppercase">Black VIP</div>
+                      <div className="text-sm font-extrabold text-white uppercase">Gym + Boxeo</div>
                       <div className="text-xs font-mono text-zinc-400 mt-0.5">
-                        ${billingCycle === 'annual' ? '1,760' : '2,200'}/mes
+                        S/. {billingPeriod === 'mes' ? '140' : billingPeriod === 'trimestral' ? '380' : billingPeriod === 'semestral' ? '690' : '1,250'}
                       </div>
                     </th>
                   </tr>
                 </thead>
 
-                {/* Categorías y Filas de Comparación */}
                 <tbody>
                   {PLAN_COMPARISON_CATEGORIES.map((categoryGroup: ComparisonCategory, catIdx: number) => (
                     <React.Fragment key={catIdx}>
-                      {/* Cabecera de Categoría */}
                       <tr className="bg-zinc-950/90 border-y border-white/10">
                         <td
                           colSpan={4}
@@ -331,18 +402,16 @@ export default function PlansPage({
                         </td>
                       </tr>
 
-                      {/* Items de la Categoría */}
                       {categoryGroup.features.map((feature: ComparisonFeature, featureIdx: number) => (
                         <tr
                           key={featureIdx}
                           className="border-b border-white/5 hover:bg-white/[0.02] transition-colors"
                         >
-                          {/* Nombre de Característica */}
                           <td className="px-6 py-4 text-sm font-medium text-zinc-200">
                             {feature.name}
                           </td>
 
-                          {/* Plata */}
+                          {/* Estudiante */}
                           <td className="px-4 py-4 text-center">
                             {typeof feature.silver === 'boolean' ? (
                               feature.silver ? (
@@ -357,7 +426,7 @@ export default function PlansPage({
                             )}
                           </td>
 
-                          {/* Oro (Destacado) */}
+                          {/* General */}
                           <td className="px-4 py-4 text-center bg-amber-400/[0.04] border-x border-amber-400/20">
                             {typeof feature.gold === 'boolean' ? (
                               feature.gold ? (
@@ -372,7 +441,7 @@ export default function PlansPage({
                             )}
                           </td>
 
-                          {/* Black VIP */}
+                          {/* Gym + Boxeo */}
                           <td className="px-4 py-4 text-center">
                             {typeof feature.black === 'boolean' ? (
                               feature.black ? (
@@ -394,26 +463,25 @@ export default function PlansPage({
               </table>
             </div>
 
-            {/* Pie de tabla con llamada a acción */}
             <div className="p-6 bg-zinc-950/80 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
               <p className="text-xs font-mono text-zinc-400 text-center sm:text-left">
-                ¿Necesitas un paquete corporativo para tu empresa?
+                ¿Tienes dudas sobre convenios universitarios o grupos familiares?
               </p>
-              <motion.button
-                type="button"
-                whileTap={{ scale: 0.97 }}
-                onClick={handleOpenCourtesyPass}
+              <a
+                href="https://wa.me/51999787489"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 text-xs font-mono font-bold text-amber-400 hover:text-amber-300 uppercase tracking-wider transition-colors cursor-pointer"
               >
-                <span>CONSULTAR CONVENIOS CORPORATIVOS</span>
+                <span>CONSULTAR POR WHATSAPP (+51 999 787 489)</span>
                 <ArrowRight className="w-3.5 h-3.5" />
-              </motion.button>
+              </a>
             </div>
           </div>
         </section>
 
         {/* ========================================================= */}
-        {/* 4. PREGUNTAS FRECUENTES EN ACORDEÓN CON FLUID TRANSITION */}
+        {/* 5. PREGUNTAS FRECUENTES EN ACORDEÓN */}
         {/* ========================================================= */}
         <section id="faqs" className="mb-28 max-w-4xl mx-auto">
           <div className="max-w-2xl mb-12">
@@ -421,10 +489,10 @@ export default function PlansPage({
               RESPUESTAS DIRECTAS
             </span>
             <h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
-              PREGUNTAS FRECUENTES SOBRE MEMBRESÍAS
+              PREGUNTAS FRECUENTES SOBRE PLANES
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
-              Claridad total en contratos, formas de pago, congelamiento de cuenta y políticas de cancelación.
+              Claridad en pagos en soles, ingreso libre, horarios y clases adicionales de boxeo.
             </p>
           </div>
 
@@ -480,18 +548,18 @@ export default function PlansPage({
         </section>
 
         {/* ========================================================= */}
-        {/* 5. BANNER FINAL DE PASE DE CORTESÍA */}
+        {/* 6. BANNER FINAL DE PASE DE CORTESÍA */}
         {/* ========================================================= */}
-        <div className="rounded-3xl bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-950 border border-white/10 p-8 sm:p-12 flex flex-col md:flex-row items-center justify-between gap-8">
+        <div className="rounded-3xl bg-zinc-900 border border-white/10 p-8 sm:p-12 flex flex-col md:flex-row items-center justify-between gap-8">
           <div>
             <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-2">
               EXPERIENCIA SIN COSTO
             </span>
             <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
-              ¿Aún no decides? Entrena un Día por Nuestra Cuenta.
+              ¿Quieres Conocer el Gimnasio Antes de Decidir?
             </h3>
             <p className="text-zinc-400 text-sm mt-2 max-w-xl font-sans">
-              Agenda tu pase VIP gratuito de 1 día. Accede a las instalaciones completas, toma una clase dirigida y conoce a nuestros preparadores físicos.
+              Solicita tu pase de cortesía sin costo. Conoce nuestra sala de pesas, entrena por 1 día y siente el ambiente de la familia Trankilandia en Ayacucho.
             </p>
           </div>
           <motion.button
@@ -502,7 +570,7 @@ export default function PlansPage({
             className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm whitespace-nowrap shadow-xl shadow-amber-400/20 transition-all cursor-pointer shrink-0"
           >
             <Ticket className="w-5 h-5" />
-            <span>SOLICITAR PASE VIP GRATUITO</span>
+            <span>SOLICITAR PASE DE CORTESÍA</span>
           </motion.button>
         </div>
       </div>

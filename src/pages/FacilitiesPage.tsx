@@ -28,55 +28,55 @@ interface ClubAmenity {
 
 const CLUB_AMENITIES: ClubAmenity[] = [
   {
-    title: 'Vestuarios y Regaderas de Alta Presión',
-    badge: 'CONFORT & PRIVACIDAD',
+    title: 'Vestuarios y Duchas con Agua Caliente',
+    badge: 'CONFORT & HIGIENE',
     icon: Droplets,
     description:
-      'Cabinas individuales de ducha con control termostático digital y presión regulada. Acabados en piedra volcánica, dispensadores de jabón y champú botánico orgánico, y secadores iónicos profesionales.',
+      'Duchas individuales con agua caliente para terminar tu rutina y continuar con tu día laboral o académico fresco y renovado.',
     highlights: [
-      'Presión constante termorregulada a 38°C',
-      'Servicio de toallas limpias ilimitadas',
-      'Amenidades biodegradables libres de sulfatos',
-      'Cabinas de secado rápido y cambiadores privados',
+      'Agua caliente constante',
+      'Cabinas individuales de privacidad',
+      'Lavamanos y espejos amplios',
+      'Limpieza y desinfección permanente',
     ],
   },
   {
-    title: 'Casilleros con Cerradura Digital Inteligente',
+    title: 'Casilleros Diarios de Seguridad',
     badge: 'SEGURIDAD TOTAL',
     icon: Lock,
     description:
-      'Lockers amplios construidos en acero de alto calibre con teclado numérico biométrico de combinación libre. Entrena sin preocuparte por llaves, candados externos ni pérdidas.',
+      'Lockers amplios para guardar mochilas, ropa de cambio y pertenencias personales mientras entrenas con total tranquilidad.',
     highlights: [
-      'Cierre y apertura por PIN numérico personalizable',
-      'Capacidad para maletas deportivas de viaje',
-      'Puertos USB-C interiores para recarga de dispositivos',
-      'Monitoreo perimetral y supervisión de accesos',
+      'Espacio amplio para maletines y mochilas',
+      'Seguridad y supervisión en recepción',
+      'Uso gratuito diario durante tu rutina',
+      'Zona ordenada y señalizada',
     ],
   },
   {
-    title: 'Estación de Hidratación Purificada Alcalina',
-    badge: 'REHIDRATACIÓN CELULAR',
+    title: 'Estación de Hidratación & Suplementos',
+    badge: 'ENERGÍA Y RECUPERACIÓN',
     icon: Waves,
     description:
-      'Fuentes automatizadas "hands-free" con filtración por ósmosis inversa de 5 fases, agua alcalina mineralizada con electrolitos biodisponibles y refrigeración constante a 8°C.',
+      'Puntos de agua fresca para rellenar tu termo y barra de bebidas rehidratantes, proteínas y snacks fitness para antes o después de entrenar.',
     highlights: [
-      'Filtración por ósmosis inversa de 5 etapas',
-      'pH balanceado alcalino optimizado (pH 8.5)',
-      'Agua purificada libre de cloro y microplásticos',
-      'Boquillas higiénicas con sensor sin contacto',
+      'Puntos de agua para rellenar botellas',
+      'Bebidas isotónicas y rehidratantes',
+      'Proteínas y suplementación deportiva',
+      'Pre-entrenos y batidos energéticos',
     ],
   },
   {
-    title: 'Sistema de Audio Envolvente Acústico y WiFi 6',
-    badge: 'ATMÓSFERA INMERSIVA',
+    title: 'Sistema de Audio Motivacional & Iluminación',
+    badge: 'ATMÓSFERA MOTIVADORA',
     icon: Volume2,
     description:
-      'Tratamiento arquitectónico fonoabsorbente que elimina reverberaciones y ecos, combinado con un sistema de sonido focalizado de alta fidelidad y red Wi-Fi 6 de fibra simétrica.',
+      'Música seleccionada para impulsarte en cada serie y repetición, junto a una iluminación clara que resalta tu esfuerzo en cada espejo.',
     highlights: [
-      'Paneles fonoabsorbentes acústicos de alta densidad',
-      'Altavoces de estudio Genelec distribuidos por zonas',
-      'Conectividad Wi-Fi 6 de gigabit sin zonas muertas',
-      'Playlists de ritmo calibrado para concentración y bombeo',
+      'Sonido envolvente en toda la sala de pesas',
+      'Playlists de ritmo continuo para motivación',
+      'Ventilación y flujo de aire constante',
+      'Espacio amplio para no interrumpir tu rutina',
     ],
   },
 ];
@@ -92,13 +92,9 @@ export default function FacilitiesPage({
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-display pt-28 pb-24 relative overflow-hidden selection:bg-amber-400 selection:text-black">
-      {/* Luces ambientales cinemáticas de fondo */}
+      {/* Luces ambientales */}
       <div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-amber-400/10 blur-[160px] rounded-full pointer-events-none"
-        aria-hidden="true"
-      />
-      <div
-        className="absolute top-[1200px] -left-40 w-[600px] h-[600px] bg-amber-400/5 blur-[180px] rounded-full pointer-events-none"
         aria-hidden="true"
       />
 
@@ -110,38 +106,38 @@ export default function FacilitiesPage({
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
             <div className="lg:col-span-8">
               <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                ESPECIFICACIÓN ARQUITECTÓNICA & BIOMECÁNICA
+                INSTALACIONES · HUAMANGA, AYACUCHO
               </span>
               <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
-                1,500 M² DE PRECISIÓN BIOMECÁNICA.
+                ESPACIOS PARA TU MEJOR VERSIÓN.
               </h1>
               <p className="mt-4 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-2xl font-sans">
-                Distribución espacial planificada para erradicar cuellos de botella y maximizar el flujo de entrenamiento continuo. Equipamiento oficial de alta competencia calibrado milimétricamente.
+                Distribución planificada para entrenar con fluidez, sin filas innecesarias ni esperas. Sala de musculación con ingreso libre, máquinas guiadas y área dedicada para clases de boxeo.
               </p>
             </div>
 
-            {/* Ficha técnica resumida estilo blueprint */}
+            {/* Ficha técnica resumida */}
             <div className="lg:col-span-4 bg-zinc-900/80 border border-white/10 p-5 rounded-2xl">
               <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-3 font-bold flex items-center justify-between">
-                <span>ESTÁNDAR DEL COMPLEJO</span>
-                <span className="text-zinc-500 font-mono">REV. 2026</span>
+                <span>SEDE AYACUCHO</span>
+                <span className="text-zinc-500 font-mono">TRANKILANDIA</span>
               </div>
               <ul className="space-y-2.5 text-xs text-zinc-300 font-sans">
                 <li className="flex items-center justify-between border-b border-white/5 pb-2">
-                  <span className="text-zinc-400">Superficie Total:</span>
-                  <span className="font-mono font-bold text-white">1,500 m²</span>
+                  <span className="text-zinc-400">Modalidad:</span>
+                  <span className="font-mono font-bold text-white">Ingreso Libre Ilimitado</span>
                 </li>
                 <li className="flex items-center justify-between border-b border-white/5 pb-2">
-                  <span className="text-zinc-400">Maquinaria Oficial:</span>
-                  <span className="font-mono font-bold text-white">Eleiko & Hammer Strength</span>
+                  <span className="text-zinc-400">Sala de Fuerza:</span>
+                  <span className="font-mono font-bold text-white">Pesas, Barras & Poleas</span>
                 </li>
                 <li className="flex items-center justify-between border-b border-white/5 pb-2">
-                  <span className="text-zinc-400">Zona Húmeda:</span>
-                  <span className="font-mono font-bold text-white">Sauna Finlandés & Spa</span>
+                  <span className="text-zinc-400">Actividad Adicional:</span>
+                  <span className="font-mono font-bold text-amber-400">Área & Clases de Boxeo</span>
                 </li>
                 <li className="flex items-center justify-between">
-                  <span className="text-zinc-400">Climatización:</span>
-                  <span className="font-mono font-bold text-white">Microfiltrado HEPA 22°C</span>
+                  <span className="text-zinc-400">Servicios:</span>
+                  <span className="font-mono font-bold text-white">Duchas Calientes & Lockers</span>
                 </li>
               </ul>
             </div>
@@ -158,11 +154,11 @@ export default function FacilitiesPage({
                 DISTRIBUCIÓN ZONIFICADA
               </span>
               <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
-                ZONAS DEPORTIVAS DE ALTO RENDIMIENTO
+                ZONAS DE ENTRENAMIENTO
               </h2>
             </div>
             <p className="text-zinc-400 text-xs sm:text-sm max-w-md font-sans">
-              Cuatro ecosistemas complementarios diseñados para cubrir desde la sobrecarga pesada hasta la regeneración celular acelerada.
+              Cuatro ambientes complementarios diseñados para cubrir desde la sobrecarga pesada hasta la agilidad y técnica de combate.
             </p>
           </div>
 
@@ -180,7 +176,7 @@ export default function FacilitiesPage({
                   className="relative bg-zinc-900/40 border border-white/10 rounded-3xl p-6 sm:p-8 lg:p-10 backdrop-blur-sm hover:border-amber-400/30 transition-colors overflow-hidden group"
                 >
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
-                    {/* Fotografía de alta fidelidad */}
+                    {/* Fotografía de la zona */}
                     <div
                       className={`lg:col-span-6 ${
                         isEven ? 'lg:order-1' : 'lg:order-2'
@@ -195,12 +191,10 @@ export default function FacilitiesPage({
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/25 to-transparent" />
 
-                        {/* Etiqueta técnica en la imagen */}
                         <div className="absolute top-4 left-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950/85 backdrop-blur-md border border-white/15 text-amber-400 text-xs font-mono font-bold tracking-wider">
                           <span>{zone.badge}</span>
                         </div>
 
-                        {/* Numeración en la esquina inferior */}
                         <div className="absolute bottom-4 right-4 px-3 py-1 rounded-lg bg-zinc-950/85 backdrop-blur-md border border-white/10 text-xs font-mono text-zinc-300">
                           ZONA {zoneNumber} / 04
                         </div>
@@ -214,18 +208,16 @@ export default function FacilitiesPage({
                       }`}
                     >
                       <div>
-                        {/* Indicador de la zona */}
                         <div className="flex items-center gap-3 mb-3">
                           <span className="text-amber-400 text-xs font-mono font-bold tracking-widest uppercase">
                             ZONA {zoneNumber}
                           </span>
                           <span className="w-8 h-px bg-white/20" />
                           <span className="text-zinc-400 text-xs font-mono uppercase tracking-wider">
-                            TRANKILANDIA CLUB
+                            TRANKILANDIA AYACUCHO
                           </span>
                         </div>
 
-                        {/* Título y Descripción */}
                         <h3 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white mb-4">
                           {zone.title}
                         </h3>
@@ -239,7 +231,7 @@ export default function FacilitiesPage({
                           <div className="flex items-center gap-2 mb-3.5">
                             <Dumbbell className="w-4 h-4 text-amber-400" />
                             <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-200">
-                              Especificaciones de Maquinaria & Equipamiento
+                              Equipamiento Destacado
                             </h4>
                           </div>
 
@@ -263,7 +255,7 @@ export default function FacilitiesPage({
                           <div className="flex items-center gap-2 mb-3">
                             <Sparkles className="w-4 h-4 text-amber-400" />
                             <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-200">
-                              Amenidades de la Zona
+                              Ventajas de la Zona
                             </h4>
                           </div>
 
@@ -289,11 +281,11 @@ export default function FacilitiesPage({
                           onClick={handleOpenTour}
                           className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase text-amber-400 hover:text-amber-300 transition-colors group/btn cursor-pointer"
                         >
-                          <span>Conocer esta zona en tour guiado</span>
+                          <span>Visitar esta zona en persona</span>
                           <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-1 transition-transform" />
                         </motion.button>
                         <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest hidden sm:inline">
-                          Capacidad optimizada
+                          Ingreso libre
                         </span>
                       </div>
                     </div>
@@ -307,16 +299,16 @@ export default function FacilitiesPage({
         {/* ========================================================= */}
         {/* 3. CUADRÍCULA DE AMENIDADES DEL CLUB */}
         {/* ========================================================= */}
-        <section className="mb-28" aria-label="Amenidades premium del club">
+        <section className="mb-28" aria-label="Comodidades del club">
           <div className="max-w-3xl mb-14">
             <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
-              SERVICIOS PREMIUM INCLUIDOS
+              SERVICIOS INCLUIDOS
             </span>
             <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white mb-4">
-              AMENIDADES INTEGRALES DEL CLUB
+              COMODIDADES DE NUESTRO GIMNASIO
             </h2>
             <p className="text-zinc-400 text-sm sm:text-base leading-relaxed font-sans">
-              Cada sesión comienza y concluye en un entorno diseñado para maximizar tu confort, seguridad y concentración. La experiencia Trankilandia va más allá de las máquinas.
+              Queremos que cada visita sea cómoda, higiénica y enfocada en tu rendimiento físico.
             </p>
           </div>
 
@@ -331,7 +323,6 @@ export default function FacilitiesPage({
                   className="bg-zinc-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur-sm hover:border-amber-400/40 transition-colors group flex flex-col justify-between"
                 >
                   <div>
-                    {/* Header de la tarjeta */}
                     <div className="flex items-start justify-between gap-4 mb-5">
                       <div className="w-12 h-12 rounded-xl bg-amber-400/10 border border-amber-400/25 flex items-center justify-center shrink-0 group-hover:scale-105 group-hover:bg-amber-400/20 transition-all duration-300">
                         <Icon className="w-6 h-6 text-amber-400" />
@@ -342,7 +333,6 @@ export default function FacilitiesPage({
                       </span>
                     </div>
 
-                    {/* Título y descripción */}
                     <h3 className="text-xl font-bold uppercase text-white tracking-tight mb-2 group-hover:text-amber-300 transition-colors">
                       {amenity.title}
                     </h3>
@@ -352,7 +342,6 @@ export default function FacilitiesPage({
                     </p>
                   </div>
 
-                  {/* Highlights de la amenidad */}
                   <div className="pt-4 border-t border-white/10">
                     <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {amenity.highlights.map((item, hIdx) => (
@@ -381,13 +370,13 @@ export default function FacilitiesPage({
         >
           <div className="relative z-10 max-w-3xl mx-auto">
             <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-3">
-              RECORRIDO BIOMECÁNICO GUIADO
+              VEN A CONOCERNOS EN AYACUCHO
             </span>
             <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight mb-4">
-              Comprueba el Nivel de Nuestras Instalaciones
+              Comprueba el Ambiente de Trankilandia Gym
             </h2>
             <p className="text-zinc-400 text-sm sm:text-base leading-relaxed mb-8 max-w-2xl mx-auto font-sans">
-              Agenda un recorrido de 20 minutos con uno de nuestros directores atléticos. Prueba el equipo, evalúa el ambiente y recibe una valoración biomecánica inicial.
+              Ven a conocer la sala de musculación, prueba las máquinas y consulta por las clases de boxeo. Te esperamos con los brazos abiertos en Huamanga.
             </p>
 
             <motion.button
@@ -398,7 +387,7 @@ export default function FacilitiesPage({
               className="inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 cursor-pointer"
             >
               <Sparkles className="w-5 h-5" />
-              <span>AGENDAR TOUR VIP PRIVADO</span>
+              <span>SOLICITAR PASE DE CORTESÍA</span>
               <ArrowRight className="w-5 h-5" />
             </motion.button>
           </div>

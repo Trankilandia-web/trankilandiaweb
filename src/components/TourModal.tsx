@@ -17,10 +17,10 @@ const SHIFTS = [
 type ShiftType = (typeof SHIFTS)[number]['id'];
 
 const GOALS = [
-  'Fuerza & Musculación',
-  'Pérdida de Grasa & HIIT',
-  'Rendimiento Funcional',
-  'Salud & Movilidad',
+  'Musculación & Peso Libre (Ingreso Libre)',
+  'Clases de Boxeo (Actividad Adicional)',
+  'Acondicionamiento Funcional & HIIT',
+  'Salud, Resistencia & Tonificación',
 ];
 
 const getTomorrowDate = () => {
@@ -263,7 +263,7 @@ export default function TourModal({
                         required
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="Ej. +52 55 1234 5678"
+                        placeholder="Ej. 999 787 489"
                         className="w-full bg-zinc-800/90 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors"
                       />
                     </div>

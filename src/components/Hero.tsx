@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Building2 } from 'lucide-react';
+import { ArrowRight, Ticket, CheckCircle2, MapPin } from 'lucide-react';
 import { motion } from 'motion/react';
-import FeatureBar from './FeatureBar';
 
 export interface HeroProps {
   onOpenTourModal?: () => void;
@@ -11,25 +10,23 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
   return (
     <section
       id="inicio"
-      className="relative min-h-[100dvh] flex flex-col justify-between overflow-hidden pt-28 sm:pt-32 lg:pt-36 pb-8 sm:pb-12"
+      className="relative min-h-[85vh] lg:min-h-[88vh] flex items-center overflow-hidden pt-28 pb-16 selection:bg-amber-400 selection:text-black"
     >
       {/* Background athlete photo with dark cinematic overlays */}
       <div className="absolute inset-0 z-0">
         <img
           src="https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?auto=format&fit=crop&w=1920&q=85"
-          alt="Atleta de élite entrenando con mancuerna en Trankilandia Gym"
-          className="w-full h-full object-cover object-center lg:object-[center_top] brightness-[0.70] select-none"
+          alt="Entrenamiento de fuerza en Trankilandia Gym Ayacucho"
+          className="w-full h-full object-cover object-center lg:object-[center_top] brightness-[0.60] select-none"
           loading="eager"
         />
         {/* Horizontal gradient: deep black on the left for maximum text contrast */}
-        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/85 to-transparent" />
-        {/* Vertical bottom gradient: seamless transition into lower sections */}
-        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/60 to-transparent" />
-        {/* Subtle overall dark vignette */}
-        <div className="absolute inset-0 bg-zinc-950/30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/90 to-zinc-950/40" />
+        {/* Vertical bottom gradient */}
+        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/50 to-transparent" />
       </div>
 
-      {/* Main Hero Content with Motion stagger */}
+      {/* Main Hero Content */}
       <motion.div
         initial="hidden"
         animate="visible"
@@ -43,81 +40,103 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             },
           },
         }}
-        className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full my-auto py-8 lg:py-12"
+        className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full my-auto"
       >
-        {/* Athletic Brand Tag */}
+        {/* Brand Tag with Real Location */}
         <motion.div
           variants={{
             hidden: { opacity: 0, y: 10 },
-            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-400 mb-6 flex items-center gap-3"
+          className="text-xs font-mono uppercase tracking-[0.2em] text-zinc-400 mb-5 flex items-center gap-2.5 flex-wrap"
         >
-          <span className="w-8 h-px bg-amber-400" />
-          <span>TRANKILANDIA CLUB · ALTO RENDIMIENTO BIOMECÁNICO</span>
+          <span className="w-6 h-px bg-amber-400" />
+          <span className="text-amber-400 font-bold">TRANKILANDIA GYM</span>
+          <span className="text-zinc-600">·</span>
+          <span className="flex items-center gap-1 text-zinc-300">
+            <MapPin className="w-3.5 h-3.5 text-amber-400" />
+            HUAMANGA, AYACUCHO
+          </span>
         </motion.div>
 
-        {/* H1: Raw athletic impact */}
+        {/* H1: Authentic motto and impact */}
         <motion.h1
           variants={{
-            hidden: { opacity: 0, y: 16, scale: 0.98 },
-            visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.5, ease: [0.23, 1, 0.32, 1] } },
+            hidden: { opacity: 0, y: 14, scale: 0.98 },
+            visible: { opacity: 1, y: 0, scale: 1, transition: { duration: 0.45, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black uppercase tracking-tighter leading-[0.92] text-white max-w-4xl"
+          className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black uppercase tracking-tight leading-[0.96] text-white max-w-3xl"
         >
-          CONSTRUYE FUERZA.<br />
-          SUPERA TUS LÍMITES.
+          MÁS QUE UN GIMNASIO,<br />
+          <span className="text-amber-400">SOMOS FAMILIA.</span>
         </motion.h1>
 
-        {/* Subtext */}
+        {/* Subtext: Clear, honest, highlighting free entry and boxing */}
         <motion.p
           variants={{
             hidden: { opacity: 0, y: 12 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="mt-6 text-base sm:text-lg md:text-xl text-zinc-300 max-w-xl font-normal leading-relaxed"
+          className="mt-5 text-base sm:text-lg text-zinc-300 max-w-2xl font-normal leading-relaxed font-sans"
         >
-          Equipamiento oficial Eleiko y Hammer Strength, entrenadores certificados y un ecosistema diseñado para maximizar tu disciplina física y mental.
+          Tu centro de musculación y acondicionamiento en Ayacucho. Todos nuestros planes cuentan con <strong>ingreso libre e ilimitado</strong> en sala de pesas, máquinas guiadas y la opción de sumar <strong>clases adicionales de boxeo</strong>.
         </motion.p>
 
-        {/* Action Buttons with Emil Kowalski responsive active scale */}
+        {/* Real Key Pillars */}
+        <motion.div
+          variants={{
+            hidden: { opacity: 0, y: 10 },
+            visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
+          }}
+          className="mt-6 flex flex-wrap gap-4 text-xs font-mono text-zinc-300"
+        >
+          <div className="flex items-center gap-1.5 bg-zinc-900/80 border border-white/10 px-3 py-1.5 rounded-lg">
+            <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>Ingreso Libre sin límite de turno</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-zinc-900/80 border border-white/10 px-3 py-1.5 rounded-lg">
+            <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>Planes en Soles: Mes, Trimestre, Semestre y Año</span>
+          </div>
+          <div className="flex items-center gap-1.5 bg-zinc-900/80 border border-white/10 px-3 py-1.5 rounded-lg">
+            <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" />
+            <span>Clases de Boxeo adicionales</span>
+          </div>
+        </motion.div>
+
+        {/* Action Buttons */}
         <motion.div
           variants={{
             hidden: { opacity: 0, y: 14 },
             visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] } },
           }}
-          className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-stretch sm:items-center gap-4"
+          className="mt-8 flex flex-col sm:flex-row items-stretch sm:items-center gap-4"
         >
+          <Link to="/planes">
+            <motion.div
+              whileHover={{ y: -2 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
+              className="inline-flex w-full sm:w-auto items-center justify-center gap-2.5 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-7 py-4 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 cursor-pointer"
+            >
+              <span>VER PLANES EN SOLES</span>
+              <ArrowRight className="w-4 h-4" />
+            </motion.div>
+          </Link>
+
           <motion.button
             type="button"
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
             onClick={onOpenTourModal}
-            className="inline-flex items-center justify-center gap-3 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide shadow-xl shadow-amber-400/20 hover:shadow-amber-400/30 group whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center justify-center gap-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-semibold px-7 py-4 rounded-xl text-sm sm:text-base tracking-wide cursor-pointer"
           >
-            <span>AGENDAR TOUR VIP GRATIS</span>
-            <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform duration-200" strokeWidth={2} />
+            <Ticket className="w-4 h-4 text-amber-400" />
+            <span>SOLICITAR DÍA DE PRUEBA</span>
           </motion.button>
-
-          <Link to="/instalaciones">
-            <motion.div
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.97 }}
-              transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
-              className="inline-flex w-full items-center justify-center gap-3 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-semibold px-8 py-4 rounded-xl text-sm sm:text-base tracking-wide group whitespace-nowrap cursor-pointer"
-            >
-              <Building2 className="w-5 h-5 text-amber-400 group-hover:scale-110 transition-transform duration-200" strokeWidth={2} />
-              <span>EXPLORAR INSTALACIONES</span>
-            </motion.div>
-          </Link>
         </motion.div>
       </motion.div>
-
-      {/* Floating FeatureBar integrated at the foot of Hero */}
-      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full mt-10 lg:mt-14">
-        <FeatureBar />
-      </div>
     </section>
   );
 }

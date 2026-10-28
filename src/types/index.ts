@@ -64,17 +64,23 @@ export interface GymContactInfo {
   }[];
 }
 
+export type BillingPeriod = 'mes' | 'trimestral' | 'semestral' | 'anual';
+
 export interface PlanTier {
-  id: 'silver' | 'gold' | 'black';
+  id: string;
   name: string;
   tagline: string;
   monthlyPrice: number;
-  annualPricePerMonth: number;
+  quarterlyPrice: number;
+  semiannualPrice: number;
+  annualPrice: number;
   isPopular: boolean;
   badge?: string;
   description: string;
   highlights: string[];
   ctaText: string;
+  includesFreeEntry: boolean;
+  includesBoxing?: boolean;
 }
 
 export interface ComparisonFeature {
@@ -113,15 +119,5 @@ export interface FacilityZone {
 export interface FaqItem {
   question: string;
   answer: string;
-  category: string;
-}
-
-export interface TourBookingData {
-  name: string;
-  phone: string;
-  email: string;
-  goal: string;
-  preferredShift: 'morning' | 'afternoon' | 'evening';
-  selectedDate: string;
-  planInterest?: string;
+  category?: string;
 }

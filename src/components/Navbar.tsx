@@ -66,7 +66,7 @@ export default function Navbar({ onOpenTourModal }: NavbarProps) {
             </span>
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-zinc-400 tracking-widest font-mono leading-none">
-                CLUB & FITNESS
+                GYM · AYACUCHO
               </span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
             </div>
@@ -164,7 +164,7 @@ export default function Navbar({ onOpenTourModal }: NavbarProps) {
             <div className="mt-6 pt-6 border-t border-white/10 flex flex-col gap-4">
               <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono">
                 <MapPin className="w-4 h-4 text-amber-400" />
-                <span>Sede Central: Insurgentes Sur 1420</span>
+                <span>Huamanga, Ayacucho, Perú</span>
               </div>
               <motion.button
                 type="button"

@@ -21,17 +21,19 @@ export default function QuickInfoBar() {
             </div>
           </div>
 
-          {/* 2. Teléfono */}
+          {/* 2. Teléfono / WhatsApp */}
           <div className="flex items-start gap-4 p-4 rounded-xl bg-zinc-900/40 border border-white/5 hover:border-amber-400/20 transition-colors">
             <div className="p-3 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400 shrink-0">
               <Phone className="w-6 h-6 text-amber-400" strokeWidth={1.75} />
             </div>
             <div>
               <span className="text-[11px] font-mono font-bold tracking-widest text-zinc-400 uppercase block mb-1">
-                TELÉFONO
+                WHATSAPP &amp; TELÉFONO
               </span>
               <a
-                href={`tel:${GYM_CONTACT.phone}`}
+                href="https://wa.me/51999787489"
+                target="_blank"
+                rel="noopener noreferrer"
                 className="text-sm font-semibold text-white hover:text-amber-400 transition-colors duration-200 block leading-snug"
               >
                 {GYM_CONTACT.phoneDisplay}

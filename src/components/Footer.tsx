@@ -397,59 +397,59 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
           </div>
         </div>
 
-        {/* 3. Sellos de Certificación de Maquinaria */}
+        {/* 3. Sellos de Compromiso y Servicios */}
         <div className="mt-14 pt-10 border-t border-white/10">
           <div className="text-center md:text-left mb-6">
             <span className="text-[11px] font-mono font-semibold uppercase tracking-widest text-zinc-400">
-              ESTÁNDARES INTERNACIONALES DE BIOMECÁNICA &amp; VALORACIÓN
+              VALORES &amp; COMPROMISO TRANKILANDIA EN AYACUCHO
             </span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Hammer Strength */}
+            {/* Ingreso Libre */}
             <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-zinc-900/60 border border-white/5 hover:border-amber-400/30 transition-all">
               <div className="w-11 h-11 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
                 <ShieldCheck className="w-6 h-6" />
               </div>
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-                  OFFICIAL TRAINING CENTER
+                  INGRESO LIBRE ILIMITADO
                 </div>
                 <div className="text-sm font-black text-white tracking-wide">
-                  Hammer Strength Official
+                  Sin Turnos Ni Restricciones
                 </div>
-                <div className="text-[11px] text-zinc-400">Certificación biomecánica iso-lateral</div>
+                <div className="text-[11px] text-zinc-400">Entrena a la hora que desees de lunes a domingo</div>
               </div>
             </div>
 
-            {/* Eleiko */}
+            {/* Boxeo Adicional */}
             <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-zinc-900/60 border border-white/5 hover:border-amber-400/30 transition-all">
               <div className="w-11 h-11 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
                 <Award className="w-6 h-6" />
               </div>
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-                  IPF &amp; IWF CERTIFIED
+                  ACTIVIDAD ADICIONAL
                 </div>
                 <div className="text-sm font-black text-white tracking-wide">
-                  Eleiko Certified Facility
+                  Clases Dirigidas de Boxeo
                 </div>
-                <div className="text-[11px] text-zinc-400">Barras y discos olímpicos de competencia</div>
+                <div className="text-[11px] text-zinc-400">Técnica de golpeo, sacos pesados y manoplas</div>
               </div>
             </div>
 
-            {/* InBody */}
+            {/* Comunidad */}
             <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-zinc-900/60 border border-white/5 hover:border-amber-400/30 transition-all">
               <div className="w-11 h-11 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
                 <Activity className="w-6 h-6" />
               </div>
               <div>
                 <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-                  PRECISION COMPOSITION
+                  HUAMANGA, AYACUCHO
                 </div>
                 <div className="text-sm font-black text-white tracking-wide">
-                  InBody Partner 770
+                  Más Que Un Gym, Familia
                 </div>
-                <div className="text-[11px] text-zinc-400">Bioimpedancia multifrecuencia grado médico</div>
+                <div className="text-[11px] text-zinc-400">Ambiente motivador para alcanzar tu meta</div>
               </div>
             </div>
           </div>

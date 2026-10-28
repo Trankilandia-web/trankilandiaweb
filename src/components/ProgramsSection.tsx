@@ -97,11 +97,11 @@ export default function ProgramsSection() {
                   {/* Interactive CTA Link */}
                   <div className="pt-6 mt-6 border-t border-white/5">
                     <a
-                      href="#contacto"
-                      aria-label={`Conoce más sobre el programa ${program.title}`}
+                      href="/clases"
+                      aria-label={`Ver horarios para ${program.title}`}
                       className="inline-flex items-center gap-2 text-xs font-mono font-bold tracking-wider uppercase text-amber-400 group-hover:text-amber-300 transition-colors"
                     >
-                      <span>CONOCE MÁS</span>
+                      <span>VER HORARIOS &amp; CLASES</span>
                       <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform duration-200" strokeWidth={2.5} />
                     </a>
                   </div>
