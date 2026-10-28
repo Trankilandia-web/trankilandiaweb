@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Dumbbell, Menu, X, Sparkles, MapPin } from 'lucide-react';
+import { Dumbbell, Menu, X, MapPin, User, Ticket } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export interface NavbarProps {
+  onOpenLoginModal?: () => void;
   onOpenTourModal?: () => void;
 }
 
@@ -14,7 +15,7 @@ const NAV_LINKS = [
   { label: 'Instalaciones', href: '/instalaciones' },
 ];
 
-export default function Navbar({ onOpenTourModal }: NavbarProps) {
+export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
 
@@ -102,18 +103,18 @@ export default function Navbar({ onOpenTourModal }: NavbarProps) {
           })}
         </nav>
 
-        {/* Desktop CTA with responsive micro-interactions */}
+        {/* Desktop Login Button */}
         <div className="hidden md:flex items-center gap-3">
           <motion.button
             type="button"
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.97 }}
             transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
-            onClick={() => onOpenTourModal?.()}
+            onClick={() => onOpenLoginModal?.()}
             className="flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap shadow-lg shadow-amber-400/10 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
           >
-            <Sparkles className="w-4 h-4" />
-            <span>PASE DE CORTESÍA</span>
+            <User className="w-4 h-4" />
+            <span>INICIAR SESIÓN</span>
           </motion.button>
         </div>
 
@@ -171,13 +172,24 @@ export default function Navbar({ onOpenTourModal }: NavbarProps) {
                 whileTap={{ scale: 0.97 }}
                 onClick={() => {
                   closeMenu();
-                  onOpenTourModal?.();
+                  onOpenLoginModal?.();
                 }}
                 className="w-full flex items-center justify-center gap-2 bg-amber-400 text-black font-extrabold py-3.5 rounded-xl text-sm shadow-lg shadow-amber-400/10 cursor-pointer"
               >
-                <Sparkles className="w-4 h-4" />
-                <span>SOLICITAR PASE VIP GRATIS</span>
+                <User className="w-4 h-4" />
+                <span>INICIAR SESIÓN</span>
               </motion.button>
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenu();
+                  onOpenTourModal?.();
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 py-3 rounded-xl text-xs font-mono transition-colors cursor-pointer border border-white/5"
+              >
+                <Ticket className="w-3.5 h-3.5 text-amber-400" />
+                <span>Solicitar Pase de Cortesía Gratis</span>
+              </button>
             </div>
           </motion.div>
         )}

@@ -108,7 +108,7 @@ export default function Hero({ onOpenTourModal }: HeroProps = {}) {
             className="inline-flex items-center justify-center gap-2.5 bg-white/10 hover:bg-white/15 text-white border border-white/15 hover:border-white/30 backdrop-blur-md font-bold px-7 py-4 rounded-xl text-sm sm:text-base tracking-wide cursor-pointer"
           >
             <Ticket className="w-4 h-4 text-amber-400" />
-            <span>SOLICITAR CLASE GRATIS</span>
+            <span>PASE DE CORTESÍA GRATIS</span>
           </motion.button>
         </motion.div>
 

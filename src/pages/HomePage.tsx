@@ -7,6 +7,8 @@ import {
   Check,
   ChevronRight,
   Zap,
+  Ticket,
+  Sparkles,
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import Hero from '../components/Hero';
@@ -229,6 +231,37 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
                 </motion.div>
               );
             })}
+          </div>
+
+          {/* High-Converting Courtesy Pass Interceptor */}
+          <div className="mt-12 rounded-3xl bg-gradient-to-r from-amber-400/15 via-zinc-900 to-zinc-900 border border-amber-400/35 p-6 sm:p-8 flex flex-col lg:flex-row items-center justify-between gap-6 shadow-2xl">
+            <div className="flex items-center gap-5">
+              <div className="w-14 h-14 rounded-2xl bg-amber-400 text-black flex items-center justify-center shrink-0 shadow-lg shadow-amber-400/20">
+                <Ticket className="w-7 h-7" />
+              </div>
+              <div>
+                <div className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-amber-400 mb-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>¿PRIMERA VEZ EN EL CLUB?</span>
+                </div>
+                <h4 className="text-xl sm:text-2xl font-black uppercase text-white tracking-tight">
+                  Entrena 1 Día Gratis con tu Pase de Cortesía
+                </h4>
+                <p className="text-zinc-300 text-xs sm:text-sm mt-1 max-w-xl font-sans">
+                  Prueba nuestras máquinas, entrena en la sala de peso libre y siente la energía de la familia Trankilandia sin costo ni compromiso.
+                </p>
+              </div>
+            </div>
+            <motion.button
+              type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={onOpenTourModal}
+              className="w-full lg:w-auto inline-flex items-center justify-center gap-2.5 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-7 py-3.5 rounded-xl text-sm whitespace-nowrap shadow-xl shadow-amber-400/20 cursor-pointer shrink-0"
+            >
+              <Ticket className="w-4 h-4" />
+              <span>SOLICITAR PASE DE CORTESÍA</span>
+            </motion.button>
           </div>
 
           {/* Boxing Additional Activity Callout */}
