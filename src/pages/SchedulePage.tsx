@@ -360,7 +360,7 @@ export default function SchedulePage({
                       <button
                         type="button"
                         onClick={() => handleBook(cls.id)}
-                        className="w-full py-3 px-4 rounded-xl font-extrabold uppercase tracking-wider text-xs transition-all duration-200 bg-zinc-800 hover:bg-amber-400 text-zinc-200 hover:text-black border border-white/10 hover:border-amber-400/50 flex items-center justify-center gap-2 group/btn cursor-pointer shadow-md hover:shadow-amber-400/20 active:scale-[0.98]"
+                        className="w-full py-3 px-4 rounded-xl font-extrabold uppercase tracking-wider text-xs transition-all duration-200 bg-zinc-800 hover:bg-amber-400 text-white hover:text-black border border-white/10 hover:border-amber-400/50 flex items-center justify-center gap-2 group/btn cursor-pointer shadow-md hover:shadow-amber-400/20 active:scale-[0.98]"
                       >
                         <span>RESERVAR CLASE DE PRUEBA</span>
                         <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform duration-200" />
