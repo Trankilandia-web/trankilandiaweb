@@ -8,11 +8,7 @@ import {
   Clock,
   ArrowRight,
   CheckCircle2,
-  ShieldCheck,
-  Award,
-  Activity,
   Ticket,
-  Smartphone,
   ChevronRight,
   Info,
   X,
@@ -397,130 +393,7 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
           </div>
         </div>
 
-        {/* 3. Sellos de Compromiso y Servicios */}
-        <div className="mt-14 pt-10 border-t border-white/10">
-          <div className="text-center md:text-left mb-6">
-            <span className="text-[11px] font-mono font-semibold uppercase tracking-widest text-zinc-400">
-              VALORES &amp; COMPROMISO TRANKILANDIA EN AYACUCHO
-            </span>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Ingreso Libre */}
-            <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-zinc-900/60 border border-white/5 hover:border-amber-400/30 transition-all">
-              <div className="w-11 h-11 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-                  INGRESO LIBRE ILIMITADO
-                </div>
-                <div className="text-sm font-black text-white tracking-wide">
-                  Sin Turnos Ni Restricciones
-                </div>
-                <div className="text-[11px] text-zinc-400">Entrena a la hora que desees de lunes a domingo</div>
-              </div>
-            </div>
-
-            {/* Boxeo Adicional */}
-            <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-zinc-900/60 border border-white/5 hover:border-amber-400/30 transition-all">
-              <div className="w-11 h-11 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
-                <Award className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-                  ACTIVIDAD ADICIONAL
-                </div>
-                <div className="text-sm font-black text-white tracking-wide">
-                  Clases Dirigidas de Boxeo
-                </div>
-                <div className="text-[11px] text-zinc-400">Técnica de golpeo, sacos pesados y manoplas</div>
-              </div>
-            </div>
-
-            {/* Comunidad */}
-            <div className="flex items-center gap-3.5 p-4 rounded-2xl bg-zinc-900/60 border border-white/5 hover:border-amber-400/30 transition-all">
-              <div className="w-11 h-11 rounded-xl bg-amber-400/10 border border-amber-400/20 flex items-center justify-center text-amber-400 shrink-0">
-                <Activity className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400 font-bold">
-                  HUAMANGA, AYACUCHO
-                </div>
-                <div className="text-sm font-black text-white tracking-wide">
-                  Más Que Un Gym, Familia
-                </div>
-                <div className="text-[11px] text-zinc-400">Ambiente motivador para alcanzar tu meta</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 4. Member App Download Teaser */}
-        <div className="mt-8 p-6 sm:p-8 rounded-3xl bg-zinc-900/40 border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-4 text-center md:text-left">
-            <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-amber-400 shrink-0 hidden sm:flex">
-              <Smartphone className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="inline-flex items-center gap-1.5 text-[11px] font-mono font-semibold text-amber-400 uppercase tracking-widest mb-1">
-                <span>TRANKILANDIA MEMBER APP</span>
-              </div>
-              <h5 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                Control total de tu membresía en la palma de tu mano
-              </h5>
-              <p className="text-xs sm:text-sm text-zinc-400 mt-0.5 max-w-xl">
-                Acceso sin llave mediante NFC, reserva de clases grupales en tiempo real y registro digital de cargas.
-              </p>
-            </div>
-          </div>
-
-          {/* Download Badges */}
-          <div className="flex flex-wrap items-center justify-center gap-3 shrink-0">
-            {/* Apple Store */}
-            <a
-              href="#app-store"
-              onClick={(e) => {
-                e.preventDefault();
-                alert('La aplicación de Trankilandia Gym para iOS estará disponible próximamente en el App Store.');
-              }}
-              className="px-4 py-2.5 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 border border-white/10 hover:border-amber-400/40 text-white transition-all flex items-center gap-3 group shadow-sm"
-              aria-label="Descargar en Apple App Store"
-            >
-              <svg className="w-6 h-6 fill-current text-white group-hover:text-amber-400 transition-colors" viewBox="0 0 24 24">
-                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.38c.62-.75 1.04-1.8 0.93-2.85-.9.04-1.98.6-2.62 1.35-.57.65-1.07 1.71-.93 2.73 1 .08 2-.48 2.62-1.23z" />
-              </svg>
-              <div className="text-left">
-                <div className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 leading-tight">
-                  Descárgalo en el
-                </div>
-                <div className="text-xs font-bold leading-tight">App Store</div>
-              </div>
-            </a>
-
-            {/* Google Play */}
-            <a
-              href="#google-play"
-              onClick={(e) => {
-                e.preventDefault();
-                alert('La aplicación de Trankilandia Gym para Android estará disponible próximamente en Google Play.');
-              }}
-              className="px-4 py-2.5 rounded-xl bg-zinc-950/80 hover:bg-zinc-900 border border-white/10 hover:border-amber-400/40 text-white transition-all flex items-center gap-3 group shadow-sm"
-              aria-label="Descargar en Google Play"
-            >
-              <svg className="w-5 h-5 fill-current text-white group-hover:text-amber-400 transition-colors" viewBox="0 0 24 24">
-                <path d="M3.609 1.814L13.792 12 3.61 22.186c-.378-.31-.61-.785-.61-1.336V3.15c0-.551.232-1.026.609-1.336zM15.207 13.414l2.121-2.121-12.72-7.234 10.599 9.355zm0-2.828L4.608 1.23 17.328 8.465l-2.121 2.121zm1.414 1.414l3.182-1.81c.78-.443.78-1.163 0-1.606l-3.182-1.81-1.768 1.768 1.768 2.458z" />
-              </svg>
-              <div className="text-left">
-                <div className="text-[9px] font-mono uppercase tracking-wider text-zinc-400 leading-tight">
-                  Disponible en
-                </div>
-                <div className="text-xs font-bold leading-tight">Google Play</div>
-              </div>
-            </a>
-          </div>
-        </div>
-
-        {/* 5. Barra Legal Inferior */}
+        {/* Barra Legal Inferior */}
         <div className="border-t border-white/10 pt-8 mt-12 flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-zinc-500 font-mono text-center md:text-left">
           <p>© {new Date().getFullYear()} Trankilandia Gym &amp; Fitness Club. Todos los derechos reservados.</p>
 
@@ -543,7 +416,7 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
               onClick={() =>
                 handleOpenLegal(
                   'Términos del Servicio',
-                  'Las membresías de Trankilandia Gym otorgan derechos de uso sobre las áreas estipuladas según cada categoría (Plata, Oro, Black VIP). Todo usuario se compromete al uso correcto y seguro de las máquinas Hammer Strength y barras Eleiko, así como a portar calzado y toalla deportiva.'
+                  'Las membresías de Trankilandia Gym otorgan acceso libre e ilimitado a la sala de musculación y áreas contratadas. Todo socio se compromete al uso adecuado y seguro del equipamiento, así como a portar calzado y toalla deportiva.'
                 )
               }
               className="text-zinc-400 hover:text-amber-400 transition-colors cursor-pointer"
