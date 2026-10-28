@@ -7,7 +7,6 @@ import {
   MapPin,
   Clock,
   ArrowRight,
-  CheckCircle2,
   Ticket,
   ChevronRight,
   Info,
@@ -56,15 +55,7 @@ function renderSocialIcon(platform: string) {
 }
 
 export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX.Element {
-  const [email, setEmail] = useState('');
-  const [isSubscribed, setIsSubscribed] = useState(false);
   const [legalModalContent, setLegalModalContent] = useState<{ title: string; content: string } | null>(null);
-
-  const handleSubscribe = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email || !email.includes('@')) return;
-    setIsSubscribed(true);
-  };
 
   const handleOpenLegal = (title: string, content: string) => {
     setLegalModalContent({ title, content });
@@ -72,87 +63,7 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
 
   return (
     <footer className="border-t border-white/5 bg-zinc-950 text-white relative z-20">
-      {/* 1. Barra de Suscripción "Trankilandia Insider" */}
-      <div className="border-b border-white/10 bg-gradient-to-b from-zinc-900/40 to-zinc-950/80 py-12 lg:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="rounded-3xl border border-white/10 bg-zinc-900/60 backdrop-blur-md p-6 sm:p-10 lg:p-12 relative overflow-hidden shadow-2xl">
-            {/* Ambient gold glow decoration */}
-            <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-amber-400/10 blur-3xl pointer-events-none" />
-            <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-amber-400/5 blur-3xl pointer-events-none" />
-
-            <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              <div className="lg:col-span-7">
-                <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
-                  BOLETÍN EXCLUSIVO
-                </span>
-                <h3 className="text-2xl sm:text-3xl lg:text-4xl font-black uppercase text-white tracking-tight">
-                  TRANKILANDIA INSIDER
-                </h3>
-                <p className="text-zinc-400 text-sm sm:text-base mt-2 max-w-xl leading-relaxed">
-                  Invitaciones a masterclasses privadas, planes de nutrición deportiva y novedades de membresías directamente en tu bandeja.
-                </p>
-              </div>
-
-              <div className="lg:col-span-5">
-                {isSubscribed ? (
-                  <div className="rounded-2xl bg-amber-400/10 border border-amber-400/30 p-5 flex items-start gap-4">
-                    <div className="p-2 rounded-xl bg-amber-400/20 text-amber-400 shrink-0">
-                      <CheckCircle2 className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <p className="font-bold text-white text-sm sm:text-base">
-                        ¡Bienvenido a Trankilandia Insider!
-                      </p>
-                      <p className="text-xs sm:text-sm text-zinc-300 mt-1">
-                        Hemos registrado con éxito tu suscripción para{' '}
-                        <span className="font-mono text-amber-400">{email}</span>. Te hemos enviado un correo de bienvenida.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsSubscribed(false);
-                          setEmail('');
-                        }}
-                        className="mt-3 text-xs text-amber-400 hover:text-amber-300 font-semibold underline underline-offset-4"
-                      >
-                        Registrar otro correo
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <form onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-3">
-                    <div className="relative flex-1">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-zinc-500">
-                        <Mail className="w-5 h-5" />
-                      </div>
-                      <input
-                        type="email"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="tu.correo@ejemplo.com"
-                        aria-label="Correo electrónico para suscripción"
-                        className="w-full bg-zinc-950/80 border border-white/10 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 rounded-xl pl-11 pr-4 py-3.5 text-sm text-white placeholder-zinc-500 outline-none transition-colors"
-                      />
-                    </div>
-                    <button
-                      type="submit"
-                      className="bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-6 py-3.5 rounded-xl text-sm tracking-wide transition-all duration-200 active:scale-[0.98] shadow-lg shadow-amber-400/10 hover:shadow-amber-400/20 flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
-                    >
-                      <span>SUSCRIBIRME →</span>
-                    </button>
-                  </form>
-                )}
-                <p className="text-[11px] text-zinc-500 font-mono mt-2.5">
-                  Respetamos tu privacidad. Sin spam. Cancela en cualquier momento con 1 clic.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. Main Sitemap en 4 Columnas */}
+      {/* Main Sitemap en 4 Columnas */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-12 lg:gap-8">
           {/* Brand Info & Vision (lg:col-span-4) */}
@@ -169,13 +80,13 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
                   TRANKILANDIA
                 </span>
                 <span className="text-[10px] text-zinc-400 tracking-widest font-mono leading-none">
-                  GYM &amp; FITNESS CLUB
+                  GYM · AYACUCHO
                 </span>
               </div>
             </Link>
 
-            <p className="text-sm text-zinc-400 leading-relaxed max-w-sm">
-              Centro de acondicionamiento de alta gama especializado en biomecánica avanzada, sobrecarga progresiva y bienestar integral. Más que un gimnasio, una hermandad de excelencia atlética.
+            <p className="text-sm text-zinc-400 leading-relaxed max-w-sm font-sans">
+              Centro de entrenamiento de fuerza, musculación completa y escuela de boxeo en Huamanga, Ayacucho. Más que un gimnasio, somos familia.
             </p>
 
             {/* Social Links */}
@@ -342,7 +253,7 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-400 hover:text-amber-300 transition-colors uppercase font-mono tracking-wider cursor-pointer text-left"
                 >
                   <Ticket className="w-3.5 h-3.5 shrink-0" />
-                  <span>Solicitar Pase VIP</span>
+                  <span>Solicitar Pase de Cortesía</span>
                 </button>
               </li>
             </ul>
