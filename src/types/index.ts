@@ -49,6 +49,23 @@ export interface AboutData {
   ctaHref: string;
 }
 
+export interface GymSede {
+  id: string;
+  name: string;
+  address: string;
+  reference: string;
+  zone: string;
+}
+
+export interface GymBenefit {
+  id: string;
+  number: string;
+  title: string;
+  category: string;
+  description: string;
+  iconName: string;
+}
+
 export interface GymContactInfo {
   address: string;
   phone: string;
@@ -62,6 +79,7 @@ export interface GymContactInfo {
     platform: string;
     href: string;
   }[];
+  sedes?: GymSede[];
 }
 
 export type BillingPeriod = 'mes' | 'trimestral' | 'semestral' | 'anual';
@@ -100,7 +118,7 @@ export interface ScheduleClass {
   day: 'Lunes' | 'Martes' | 'Miércoles' | 'Jueves' | 'Viernes' | 'Sábado' | 'Domingo';
   time: string;
   title: string;
-  category: 'Fuerza' | 'HIIT' | 'Funcional' | 'Boxeo' | 'Movilidad';
+  category: 'Fuerza' | 'HIIT' | 'Funcional' | 'Boxeo' | 'Movilidad' | 'Aeróbicos' | 'Baile' | 'Spinning';
   coach: string;
   intensity: 'Media' | 'Alta' | 'Extrema';
   spotsLeft: number;

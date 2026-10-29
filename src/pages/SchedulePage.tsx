@@ -10,6 +10,8 @@ import {
   ArrowRight,
   Ticket,
   CalendarX,
+  Music,
+  Bike,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SCHEDULE_DAYS, SCHEDULE_CLASSES } from '../data/gymData';
@@ -23,9 +25,12 @@ export interface SchedulePageProps {
 const CATEGORIES = [
   'Todas',
   'Fuerza',
-  'HIIT',
+  'Aeróbicos',
+  'Baile',
+  'Spinning',
   'Funcional',
   'Boxeo',
+  'HIIT',
   'Movilidad',
 ] as const;
 
@@ -69,6 +74,21 @@ export default function SchedulePage({
         return {
           icon: Dumbbell,
           badgeClass: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+        };
+      case 'Aeróbicos':
+        return {
+          icon: Flame,
+          badgeClass: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+        };
+      case 'Baile':
+        return {
+          icon: Music,
+          badgeClass: 'bg-pink-500/10 text-pink-400 border-pink-500/30',
+        };
+      case 'Spinning':
+        return {
+          icon: Bike,
+          badgeClass: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
         };
       case 'HIIT':
         return {

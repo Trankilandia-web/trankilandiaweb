@@ -13,6 +13,7 @@ import {
 import { motion } from 'motion/react';
 import Hero from '../components/Hero';
 import FeatureBar from '../components/FeatureBar';
+import OfficialBenefitsSection from '../components/OfficialBenefitsSection';
 import ProgramsSection from '../components/ProgramsSection';
 import AboutSection from '../components/AboutSection';
 import QuickInfoBar from '../components/QuickInfoBar';
@@ -50,6 +51,9 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
           <FeatureBar />
         </div>
       </section>
+
+      {/* 2.5 10 Beneficios Oficiales Trankilandia Gym & Staff de 4 Entrenadores */}
+      <OfficialBenefitsSection />
 
       {/* 3. Programs Section with Callout to Schedules */}
       <section className="relative">

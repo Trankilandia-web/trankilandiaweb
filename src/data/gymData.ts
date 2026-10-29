@@ -9,6 +9,7 @@ import type {
   ScheduleClass,
   FacilityZone,
   FaqItem,
+  GymBenefit,
 } from '../types';
 
 export const NAV_ITEMS: NavItem[] = [
@@ -17,6 +18,99 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Horarios & Clases', href: '/clases' },
   { label: 'Instalaciones', href: '/instalaciones' },
 ];
+
+// 10 BENEFICIOS OFICIALES DE TRANKILANDIA GYM (SEGÚN VOLANTE OFICIAL)
+export const OFFICIAL_BENEFITS: GymBenefit[] = [
+  {
+    id: 'asesoria-nutricional',
+    number: '01',
+    title: 'Asesoría Nutricional Personalizada',
+    category: 'Nutrición',
+    description: 'Orientación alimenticia adaptada a tu metabolismo y objetivos: definición, tonificación o ganancia de masa muscular.',
+    iconName: 'Apple',
+  },
+  {
+    id: 'maquinas-musculacion',
+    number: '02',
+    title: 'Máquinas de Musculación',
+    category: 'Musculación',
+    description: 'Equipamiento de alto nivel con poleas guiadas, prensa de piernas, bancos multiposición y estaciones de aislamiento.',
+    iconName: 'Dumbbell',
+  },
+  {
+    id: 'maquinas-cardiovasculares',
+    number: '03',
+    title: 'Máquinas Cardiovasculares',
+    category: 'Cardio',
+    description: 'Caminadoras eléctricas modernas, elípticas y zonas de acondicionamiento aeróbico para cuidar tu salud cardiovascular.',
+    iconName: 'HeartPulse',
+  },
+  {
+    id: 'rutinas-personalizadas',
+    number: '04',
+    title: 'Rutinas Personalizadas Dirigidas',
+    category: 'Supervisión',
+    description: 'Planes de entrenamiento elaborados a tu medida por nuestros instructores y visibles en tu app o carnet digital.',
+    iconName: 'ClipboardList',
+  },
+  {
+    id: 'aerobicos-grupal',
+    number: '05',
+    title: 'Aeróbicos (Clase Grupal)',
+    category: 'Clases Grupales',
+    description: 'Sesiones colectivas de alta energía y ritmo continuo para quemar calorías, tonificar y aumentar tu vitalidad diaria.',
+    iconName: 'Flame',
+  },
+  {
+    id: 'baile-grupal',
+    number: '06',
+    title: 'Baile (Clase Grupal)',
+    category: 'Clases Grupales',
+    description: 'Coreografías alegres de ritmo latino y fitness bailable para liberar el estrés, mejorar tu coordinación y divertirte.',
+    iconName: 'Sparkles',
+  },
+  {
+    id: 'spinning-grupal',
+    number: '07',
+    title: 'Spinning Grupal',
+    category: 'Cardio',
+    description: 'Ciclismo indoor guiado con música motivante, intervalos de potencia y subidas simuladas para quemar grasa al máximo.',
+    iconName: 'Bike',
+  },
+  {
+    id: 'funcional-grupal',
+    number: '08',
+    title: 'Funcional (Clase Grupal)',
+    category: 'Clases Grupales',
+    description: 'Circuitos atléticos multiarticulares con peso corporal, kettlebells y bandas para fuerza ágil y resistencia real.',
+    iconName: 'Activity',
+  },
+  {
+    id: 'complementos-nutricionales',
+    number: '09',
+    title: 'Complementos Nutricionales',
+    category: 'Nutrición',
+    description: 'Barra y venta de suplementos de calidad (proteínas, creatina, pre-entrenos y bebidas hidratantes) para acelerar resultados.',
+    iconName: 'ShieldCheck',
+  },
+  {
+    id: 'control-continuo',
+    number: '10',
+    title: 'Control Continuo Supervisado',
+    category: 'Supervisión',
+    description: 'Corrección técnica permanente en sala y seguimiento periódico de tus pesos, medidas y marcas personales (PRs).',
+    iconName: 'CheckCircle2',
+  },
+];
+
+export const COACH_TEAM_INFO = {
+  totalCoaches: 4,
+  womenCoaches: 2,
+  menCoaches: 2,
+  badge: 'STAFF PROFESIONAL CERTIFICADO',
+  headline: 'Contamos con 4 Entrenadores: 2 Mujeres y 2 Varones',
+  subheadline: 'Instructores dedicados a tu acompañamiento técnico, motivación y control de progresos en cada entrenamiento.',
+};
 
 export const FEATURE_HIGHLIGHTS: FeatureHighlight[] = [
   {
@@ -85,24 +179,24 @@ export const PROGRAMS_DATA: Program[] = [
 ];
 
 export const ABOUT_DATA: AboutData = {
-  badge: 'TRANKILANDIA CLUB · FILOSOFÍA',
+  badge: 'TRANKILANDIA CLUB · MÁS CERCA DE TI',
   title: 'MÁS QUE UN GIMNASIO, SOMOS FAMILIA.',
   paragraphs: [
     'En Trankilandia Gym entendemos que la constancia y la salud florecen cuando estás en un lugar donde te sientes bienvenido, respetado y respaldado.',
-    'Ponemos a tu disposición una completa sala de pesas y musculación, instructores cercanos que cuidan tu técnica en todo momento y clases dirigidas de boxeo para poner a prueba tu agilidad y resistencia.',
+    'Ponemos a tu disposición máquinas modernas de musculación y cardio, complementos nutricionales y un equipo de 4 entrenadores profesionales (2 mujeres y 2 varones) dedicados a tu control continuo y rutinas guiadas.',
   ],
   imageUrl: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&w=1200&q=80',
   stats: [
-    { value: '100%', label: 'Ambiente Motivador' },
-    { value: '6:00 AM', label: 'Apertura de Lunes a Sábado' },
-    { value: '+500', label: 'Miembros en la Familia' },
+    { value: '4', label: 'Entrenadores (2 mujeres · 2 varones)' },
+    { value: '2', label: 'Sedes en Huamanga' },
+    { value: '10', label: 'Beneficios Completos' },
   ],
   ctaText: 'ESCRÍBENOS POR WHATSAPP',
   ctaHref: 'https://wa.me/51999787489',
 };
 
 export const GYM_CONTACT: GymContactInfo = {
-  address: 'Huamanga, Ayacucho, Perú',
+  address: 'Segunda sede Emadi: José Olaya N° 640 / Sede Pueblo Libre: Vía Libertadores',
   phone: '+51999787489',
   phoneDisplay: '+51 999 787 489',
   email: 'trankilandiagymperu@gmail.com',
@@ -114,6 +208,22 @@ export const GYM_CONTACT: GymContactInfo = {
     { platform: 'Instagram', href: 'https://www.instagram.com/trankilandiagym/' },
     { platform: 'Facebook', href: 'https://www.facebook.com/search/top?q=Trankilandia%20Gym' },
     { platform: 'WhatsApp', href: 'https://wa.me/51999787489' },
+  ],
+  sedes: [
+    {
+      id: 'sede-pueblo-libre',
+      name: 'Sede Vía Libertadores - Pueblo Libre',
+      address: 'Vía Libertadores - Pueblo Libre',
+      reference: 'Ref. Reservorio, bajar en la entrada Ruta 3',
+      zone: 'Huamanga, Ayacucho',
+    },
+    {
+      id: 'sede-emadi',
+      name: 'Segunda Sede Emadi',
+      address: 'José Olaya N° 640',
+      reference: 'Al frente del Hotel Internacional',
+      zone: 'Huamanga, Ayacucho',
+    },
   ],
 };
 

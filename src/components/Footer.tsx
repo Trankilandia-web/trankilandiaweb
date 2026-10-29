@@ -268,13 +268,23 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
             <ul className="space-y-3 text-xs leading-relaxed text-zinc-400">
               <li className="flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <span>{GYM_CONTACT.address}</span>
+                <div>
+                  <strong className="text-white block font-sans">Sede 1: Pueblo Libre</strong>
+                  <span>Vía Libertadores (Ref. Reservorio, Ruta 3)</span>
+                </div>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-white block font-sans">Sede 2: Emadi</strong>
+                  <span>José Olaya N° 640 (Frente al Hotel Internacional)</span>
+                </div>
               </li>
               <li className="flex items-center gap-2.5">
                 <Phone className="w-4 h-4 text-amber-400 shrink-0" />
                 <a
                   href={`tel:${GYM_CONTACT.phone}`}
-                  className="hover:text-white transition-colors font-mono"
+                  className="hover:text-white transition-colors font-mono font-bold text-white"
                 >
                   {GYM_CONTACT.phoneDisplay}
                 </a>

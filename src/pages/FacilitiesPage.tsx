@@ -119,25 +119,25 @@ export default function FacilitiesPage({
             {/* Ficha técnica resumida */}
             <div className="lg:col-span-4 bg-zinc-900/80 border border-white/10 p-5 rounded-2xl">
               <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-3 font-bold flex items-center justify-between">
-                <span>SEDE PRINCIPAL</span>
+                <span>2 SEDES EN AYACUCHO</span>
                 <span className="text-zinc-500 font-mono">TRANKILANDIA</span>
               </div>
               <ul className="space-y-2.5 text-xs text-zinc-300 font-sans">
-                <li className="flex items-center justify-between border-b border-white/5 pb-2">
-                  <span className="text-zinc-400">Modalidad:</span>
-                  <span className="font-mono font-bold text-white">Ingreso Libre Ilimitado</span>
+                <li className="flex flex-col border-b border-white/5 pb-2">
+                  <span className="text-amber-400 font-bold font-mono text-[11px]">SEDE 1: PUEBLO LIBRE</span>
+                  <span className="text-white text-[11px]">Vía Libertadores (Ref. Reservorio, Ruta 3)</span>
+                </li>
+                <li className="flex flex-col border-b border-white/5 pb-2">
+                  <span className="text-amber-400 font-bold font-mono text-[11px]">SEDE 2: EMADI</span>
+                  <span className="text-white text-[11px]">José Olaya N° 640 (Frente al Hotel Internacional)</span>
                 </li>
                 <li className="flex items-center justify-between border-b border-white/5 pb-2">
-                  <span className="text-zinc-400">Sala de Fuerza:</span>
-                  <span className="font-mono font-bold text-white">Pesas, Barras & Poleas</span>
-                </li>
-                <li className="flex items-center justify-between border-b border-white/5 pb-2">
-                  <span className="text-zinc-400">Actividad Adicional:</span>
-                  <span className="font-mono font-bold text-amber-400">Área & Clases de Boxeo</span>
+                  <span className="text-zinc-400">Staff:</span>
+                  <span className="font-mono font-bold text-white">4 Entrenadores (2 mujeres · 2 varones)</span>
                 </li>
                 <li className="flex items-center justify-between">
-                  <span className="text-zinc-400">Servicios:</span>
-                  <span className="font-mono font-bold text-white">Duchas Calientes & Lockers</span>
+                  <span className="text-zinc-400">Atención:</span>
+                  <span className="font-mono font-bold text-emerald-400">Desde 6:00 AM · Tel: 999-787-489</span>
                 </li>
               </ul>
             </div>
