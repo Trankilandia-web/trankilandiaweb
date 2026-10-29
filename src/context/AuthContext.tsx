@@ -9,7 +9,7 @@ interface AuthContextType {
   isLoading: boolean;
   isConfigured: boolean;
   role: UserRole;
-  switchRole: (newRole: UserRole) => void;
+  switchRole: (newRole: UserRole) => Promise<void>;
   getRedirectPath: () => string;
   signOut: () => Promise<void>;
 }
@@ -20,14 +20,14 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isConfigured: false,
   role: 'cliente',
-  switchRole: () => {},
+  switchRole: async () => {},
   getRedirectPath: () => '/cliente',
   signOut: async () => {},
 });
 
 const ROLE_STORAGE_KEY = 'trankilandia_active_role';
 
-// Helper to determine initial role
+// Helper to determine initial role fallback
 function resolveDefaultRole(user: User | null): UserRole {
   // 1. Saved role in local testing storage
   const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
@@ -62,11 +62,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [role, setRoleState] = useState<UserRole>('cliente');
   const isConfigured = isSupabaseConfigured();
 
-  // Load and sync role
-  useEffect(() => {
-    const detectedRole = resolveDefaultRole(user);
-    setRoleState(detectedRole);
-  }, [user]);
+  // Try fetching role from Supabase 'profiles' table with local fallback
+  const syncRole = async (currentUser: User | null) => {
+    if (!currentUser) {
+      setRoleState('cliente');
+      return;
+    }
+
+    if (isConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+
+        if (!error && data?.role && ROLES_CONFIG[data.role as UserRole]) {
+          // If role exists in DB, prioritize it unless local storage is testing a different role
+          const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
+          if (savedRole && ROLES_CONFIG[savedRole]) {
+            setRoleState(savedRole);
+          } else {
+            setRoleState(data.role as UserRole);
+          }
+          return;
+        }
+      } catch {
+        // Table may not be created yet in Supabase
+      }
+    }
+
+    setRoleState(resolveDefaultRole(currentUser));
+  };
 
   useEffect(() => {
     if (!isConfigured) {
@@ -79,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        setRoleState(resolveDefaultRole(session.user));
+        syncRole(session.user);
       }
       setIsLoading(false);
     });
@@ -91,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        setRoleState(resolveDefaultRole(session.user));
+        syncRole(session.user);
       }
       setIsLoading(false);
     });
@@ -101,10 +128,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     };
   }, [isConfigured]);
 
-  const switchRole = (newRole: UserRole) => {
+  const switchRole = async (newRole: UserRole) => {
     if (ROLES_CONFIG[newRole]) {
       setRoleState(newRole);
       localStorage.setItem(ROLE_STORAGE_KEY, newRole);
+
+      // Attempt to persist to Supabase 'profiles' if configured
+      if (user && isConfigured) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({ role: newRole })
+            .eq('id', user.id);
+        } catch {
+          // Soft fail if table not present yet
+        }
+      }
     }
   };
 
