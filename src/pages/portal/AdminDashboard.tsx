@@ -55,6 +55,7 @@ interface MemberRecord {
   coachName: string;
   advancePaid: number;
   balanceDue: number;
+  paymentMethod?: string;
   status: 'active' | 'expiring' | 'inactive';
   expiresIn: string;
   lastVisit: string;
@@ -72,7 +73,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'kpis' | 'inventario' | 'padron'>('kpis');
 
   // Filtro de rango de fecha para arqueo (Hora de Perú)
-  const [dateRange, setDateRange] = useState<'hoy' | '7dias' | 'mes'>('hoy');
+  const [dateRange, setDateRange] = useState<'todo' | 'mes' | '7dias' | 'hoy'>('todo');
   const [resumen, setResumen] = useState<ResumenAdmin | null>(null);
   const [isLoadingResumen, setIsLoadingResumen] = useState(true);
 
@@ -101,6 +102,14 @@ export default function AdminDashboard() {
   // Notificación de éxito
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
+  // Fallbacks calculados en tiempo real de los datos reales cargados
+  const totalCobradoMembers = useMemo(() => members.reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
+  const totalDeudasMembers = useMemo(() => members.reduce((sum, m) => sum + (m.balanceDue || 0), 0), [members]);
+  const efectivoMembers = useMemo(() => members.filter(m => (m.paymentMethod || 'efectivo').toLowerCase() === 'efectivo').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
+  const yapeMembers = useMemo(() => members.filter(m => (m.paymentMethod || '').toLowerCase() === 'yape').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
+  const plinMembers = useMemo(() => members.filter(m => (m.paymentMethod || '').toLowerCase() === 'plin').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
+  const tarjetaMembers = useMemo(() => members.filter(m => (m.paymentMethod || '').toLowerCase() === 'tarjeta').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
+
   // 1. CARGA INICIAL DE DATOS LIGEROS
   const cargarSociosEnMemoria = useCallback(() => {
     const rawMembers = getStoredMembers();
@@ -114,6 +123,7 @@ export default function AdminDashboard() {
       coachName: m.coachName || 'Coach Marcos Rivas',
       advancePaid: m.advancePaid || 0,
       balanceDue: m.balanceDue || 0,
+      paymentMethod: m.paymentMethod || 'efectivo',
       status: m.membershipStatus,
       expiresIn: m.expiresAt,
       lastVisit: 'Reciente',
@@ -129,7 +139,7 @@ export default function AdminDashboard() {
   }, []);
 
   // 2. OBTENER RESUMEN AGREGADO DESDE POSTGRESQL (CERO EGRESS MASIVO)
-  const cargarResumenKPIs = useCallback(async (range: 'hoy' | '7dias' | 'mes') => {
+  const cargarResumenKPIs = useCallback(async (range: 'todo' | 'mes' | '7dias' | 'hoy') => {
     setIsLoadingResumen(true);
 
     const now = new Date();
@@ -141,16 +151,20 @@ export default function AdminDashboard() {
     });
     const todayStr = peruFormatter.format(now);
 
-    let inicio = todayStr;
+    let inicio = '2020-01-01';
     const fin = todayStr;
 
-    if (range === '7dias') {
+    if (range === 'hoy') {
+      inicio = todayStr;
+    } else if (range === '7dias') {
       const d = new Date(now);
       d.setDate(d.getDate() - 7);
       inicio = peruFormatter.format(d);
     } else if (range === 'mes') {
       const parts = todayStr.split('-');
       inicio = `${parts[0]}-${parts[1]}-01`;
+    } else if (range === 'todo') {
+      inicio = '2020-01-01';
     }
 
     try {
@@ -410,11 +424,12 @@ export default function AdminDashboard() {
                 </span>
               </div>
 
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {[
-                  { id: 'hoy', label: 'Hoy' },
-                  { id: '7dias', label: 'Últimos 7 Días' },
+                  { id: 'todo', label: 'Histórico Total' },
                   { id: 'mes', label: 'Mes Actual' },
+                  { id: '7dias', label: 'Últimos 7 Días' },
+                  { id: 'hoy', label: 'Hoy' },
                 ].map((r) => (
                   <button
                     key={r.id}
@@ -453,10 +468,18 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="mt-3 text-3xl font-black font-display text-white">
-                  S/. {resumen ? resumen.recaudacion.total.toLocaleString('es-PE', { minimumFractionDigits: 2 }) : '0.00'}
+                  S/. {resumen && resumen.recaudacion.total > 0
+                    ? resumen.recaudacion.total.toLocaleString('es-PE', { minimumFractionDigits: 2 })
+                    : (dateRange === 'todo'
+                        ? totalCobradoMembers.toLocaleString('es-PE', { minimumFractionDigits: 2 })
+                        : '0.00')}
                 </div>
                 <div className="mt-2 text-[11px] font-mono text-zinc-400 flex items-center justify-between">
-                  <span>Membresías: S/. {resumen ? resumen.recaudacion.membresias.toFixed(0) : '0'}</span>
+                  <span>
+                    Membresías: S/. {resumen && resumen.recaudacion.total > 0
+                      ? resumen.recaudacion.membresias.toFixed(0)
+                      : (dateRange === 'todo' ? totalCobradoMembers.toFixed(0) : '0')}
+                  </span>
                   <span>POS: S/. {resumen ? resumen.recaudacion.pos.toFixed(0) : '0'}</span>
                 </div>
               </div>
@@ -472,7 +495,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="mt-3 text-3xl font-black font-display text-amber-400">
-                  S/. {resumen ? resumen.socios.total_deudas_pendientes.toLocaleString('es-PE', { minimumFractionDigits: 2 }) : members.reduce((acc, m) => acc + m.balanceDue, 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                  S/. {resumen ? resumen.socios.total_deudas_pendientes.toLocaleString('es-PE', { minimumFractionDigits: 2 }) : totalDeudasMembers.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-1 font-mono">
                   {resumen ? resumen.socios.socios_con_deuda : members.filter(m => m.balanceDue > 0).length} socios con adelanto pendiente
@@ -533,7 +556,9 @@ export default function AdminDashboard() {
                       <span>Efectivo:</span>
                     </div>
                     <span className="font-bold text-white text-sm">
-                      S/. {resumen ? resumen.recaudacion.por_metodo.efectivo.toFixed(2) : '0.00'}
+                      S/. {resumen && resumen.recaudacion.total > 0
+                        ? resumen.recaudacion.por_metodo.efectivo.toFixed(2)
+                        : (dateRange === 'todo' ? efectivoMembers.toFixed(2) : '0.00')}
                     </span>
                   </div>
 
@@ -543,7 +568,9 @@ export default function AdminDashboard() {
                       <span>Yape:</span>
                     </div>
                     <span className="font-bold text-purple-300 text-sm">
-                      S/. {resumen ? resumen.recaudacion.por_metodo.yape.toFixed(2) : '0.00'}
+                      S/. {resumen && resumen.recaudacion.total > 0
+                        ? resumen.recaudacion.por_metodo.yape.toFixed(2)
+                        : (dateRange === 'todo' ? yapeMembers.toFixed(2) : '0.00')}
                     </span>
                   </div>
 
@@ -553,7 +580,9 @@ export default function AdminDashboard() {
                       <span>Plin:</span>
                     </div>
                     <span className="font-bold text-cyan-300 text-sm">
-                      S/. {resumen ? resumen.recaudacion.por_metodo.plin.toFixed(2) : '0.00'}
+                      S/. {resumen && resumen.recaudacion.total > 0
+                        ? resumen.recaudacion.por_metodo.plin.toFixed(2)
+                        : (dateRange === 'todo' ? plinMembers.toFixed(2) : '0.00')}
                     </span>
                   </div>
 
@@ -563,7 +592,9 @@ export default function AdminDashboard() {
                       <span>Tarjeta POS:</span>
                     </div>
                     <span className="font-bold text-amber-300 text-sm">
-                      S/. {resumen ? resumen.recaudacion.por_metodo.tarjeta.toFixed(2) : '0.00'}
+                      S/. {resumen && resumen.recaudacion.total > 0
+                        ? resumen.recaudacion.por_metodo.tarjeta.toFixed(2)
+                        : (dateRange === 'todo' ? tarjetaMembers.toFixed(2) : '0.00')}
                     </span>
                   </div>
                 </div>

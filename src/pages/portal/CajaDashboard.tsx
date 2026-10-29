@@ -26,6 +26,11 @@ import {
   Barcode,
   ShieldAlert,
   User,
+  UserPlus,
+  CalendarClock,
+  MessageCircle,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
@@ -131,9 +136,11 @@ function playTone(type: 'success' | 'warning' | 'error' | 'rebote') {
   } catch {}
 }
 
+export type CajaTab = 'acceso' | 'inscripcion' | 'crm' | 'cobros' | 'pos';
+
 export default function CajaDashboard() {
-  // Pestaña activa
-  const [activeTab, setActiveTab] = useState<'acceso' | 'pos' | 'inscripciones'>('acceso');
+  // Pestaña activa ordenada por prioridad
+  const [activeTab, setActiveTab] = useState<CajaTab>('acceso');
 
   // Estado general de socios
   const [members, setMembers] = useState<GymMember[]>(getStoredMembers());
@@ -159,6 +166,16 @@ export default function CajaDashboard() {
     message: '',
     timestamp: 0,
   });
+
+  // CRM State
+  const [crmSearch, setCrmSearch] = useState('');
+  const [crmFilter, setCrmFilter] = useState<'todos' | 'por_vencer' | 'vencidos' | 'vigentes' | 'con_deuda'>('todos');
+  const [crmShiftFilter, setCrmShiftFilter] = useState<'todos' | 'manana' | 'tarde' | 'noche'>('todos');
+  const [crmPage, setCrmPage] = useState(1);
+  const crmPageSize = 25;
+
+  // Cobros & Deudas State
+  const [cobrosSearch, setCobrosSearch] = useState('');
 
   // Contador de refresco local de 60 segundos (Cero polling Supabase)
   const [, setTimerTick] = useState(0);
@@ -536,6 +553,19 @@ export default function CajaDashboard() {
     const paid = isAdvancePayment ? Math.min(advanceAmount, price) : price;
     const balance = isAdvancePayment ? Math.max(0, price - paid) : 0;
 
+    let durationDays = 30;
+    if (selectedPlan.name.includes('2 Mes')) durationDays = 60;
+    else if (selectedPlan.name.includes('3 Mes')) durationDays = 90;
+    else if (selectedPlan.name.includes('4 Mes')) durationDays = 120;
+    else if (selectedPlan.name.includes('6 Mes')) durationDays = 180;
+    else if (selectedPlan.name.includes('8 Mes')) durationDays = 240;
+    else if (selectedPlan.name.includes('1 Año')) durationDays = 365;
+    else if (selectedPlan.name.includes('Diario')) durationDays = 1;
+
+    const expDate = new Date();
+    expDate.setDate(expDate.getDate() + durationDays);
+    const expDateISO = expDate.toISOString().slice(0, 10);
+
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + dueDateDays);
     const dueDateFormatted = dueDate.toLocaleDateString('es-PE', {
@@ -550,6 +580,7 @@ export default function CajaDashboard() {
       name: clientName.trim(),
       dni: clientDni.trim(),
       email: clientEmail.trim() || `${clientDni.trim()}@cliente.trankilandia.pe`,
+      phone: clientEmail.includes('@') ? '' : clientEmail.trim(),
       plan: selectedPlan.name,
       planPrice: price,
       paymentType: isAdvancePayment ? 'advance' : 'full',
@@ -559,10 +590,10 @@ export default function CajaDashboard() {
       paymentMethod,
       receiptNumber: `B001-000${nextNumber}`,
       membershipStatus: 'active',
-      expiresAt: '30 Días (Renovación)',
+      expiresAt: expDateISO,
       coachName: COACHES_BY_SHIFT[clientShift],
       shift: clientShift,
-      registeredAt: 'Hoy, ' + new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+      registeredAt: new Date().toISOString().slice(0, 10),
     };
 
     const updated = [newMember, ...members];
@@ -580,10 +611,10 @@ export default function CajaDashboard() {
       adelanto_pagado: newMember.advancePaid,
       saldo_pendiente: newMember.balanceDue,
       fecha_limite_pago: newMember.paymentDueDate || null,
-      fecha_fin: '2026-11-30',
+      fecha_fin: expDateISO,
       turno: clientShift,
       coach_asignado: newMember.coachName || COACHES_BY_SHIFT[clientShift],
-      dias_restantes: 30,
+      dias_restantes: durationDays,
       estado_calculado: 'activo',
       tiene_deuda_activa: balance > 0,
       numero_boleta: newMember.receiptNumber,
@@ -618,9 +649,54 @@ export default function CajaDashboard() {
     setClientDni('');
     setClientEmail('');
     setIsAdvancePayment(false);
-    setAdvanceAmount(50);
+  };
 
-    setTimeout(() => setSuccessMessage(null), 5000);
+  // Helper para recordatorio de vencimiento por WhatsApp
+  const handleSendWhatsAppReminder = (member: GymMember) => {
+    const phone = (member.phone || '').replace(/\D/g, '');
+    if (!phone || phone.length < 7) {
+      alert(`El socio ${member.name} no cuenta con un número de celular válido registrado.`);
+      return;
+    }
+    const cleanPhone = phone.length === 9 ? `51${phone}` : phone;
+    const nowLima = new Date().toISOString().slice(0, 10);
+    const exp = member.expiresAt || '';
+    const diffDays = Math.ceil((new Date(exp).getTime() - new Date(nowLima).getTime()) / (1000 * 60 * 60 * 24));
+
+    let estadoMsg = `tu membresía de ${member.plan} vencerá el ${member.expiresAt} (en ${diffDays} días)`;
+    if (diffDays < 0) {
+      estadoMsg = `tu membresía de ${member.plan} culminó el ${member.expiresAt} (hace ${Math.abs(diffDays)} días)`;
+    } else if (diffDays === 0) {
+      estadoMsg = `tu membresía de ${member.plan} vence HOY ${member.expiresAt}`;
+    }
+
+    const msg = `¡Hola ${member.name}! 👋 Te saludamos de Trankilandia Gym 💪🏋️\n\nTe recordamos que ${estadoMsg}.\n\nPara que continúes entrenando sin interrupciones con tu coach ${member.coachName || 'oficial'}, acércate a recepción o responde este mensaje para renovar tu suscripción.\n\n¡Te esperamos en el gym! 🔥`;
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  // Helper para recordatorio de deuda por WhatsApp
+  const handleSendWhatsAppDebtReminder = (member: GymMember) => {
+    const phone = (member.phone || '').replace(/\D/g, '');
+    if (!phone || phone.length < 7) {
+      alert(`El socio ${member.name} no cuenta con un número de celular válido registrado.`);
+      return;
+    }
+    const cleanPhone = phone.length === 9 ? `51${phone}` : phone;
+    const msg = `¡Hola ${member.name}! 👋 Te saludamos de Trankilandia Gym 💪\n\nTe recordamos que mantienes un saldo pendiente de S/. ${member.balanceDue}.00 de tu membresía ${member.plan} (Adelantaste: S/. ${member.advancePaid}.00).\n\nPlazo límite acordado: ${member.paymentDueDate || 'Esta semana'}.\n\nPuedes cancelar tu saldo por Yape, Plin o en la recepción del gimnasio. ¡Gracias por entrenar con nosotros! 🔥`;
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
+  };
+
+  // Helper para iniciar renovación
+  const handleStartRenewal = (member: GymMember) => {
+    setClientDni(member.dni || '');
+    setClientName(member.name);
+    if (member.phone) setClientEmail(member.phone);
+    if (member.shift) setClientShift(member.shift);
+    const matchedPlan = PLANS_CATALOG.find((p) => p.name.toLowerCase().includes((member.plan || '').toLowerCase())) || PLANS_CATALOG[1];
+    setSelectedPlan(matchedPlan);
+    setActiveTab('inscripcion');
   };
 
   // 6. COBRAR SALDO PENDIENTE (LIQUIDACIÓN O ABONO PARCIAL)
@@ -807,8 +883,94 @@ export default function CajaDashboard() {
   }, [productos, categoriaSeleccionada, filtroProducto]);
 
   // Socios con deuda
-  const membersWithDebt = members.filter((m) => m.balanceDue > 0);
-  const totalDebts = membersWithDebt.reduce((sum, m) => sum + m.balanceDue, 0);
+  const membersWithDebt = useMemo(() => members.filter((m) => m.balanceDue > 0), [members]);
+  const totalDebts = useMemo(() => membersWithDebt.reduce((sum, m) => sum + m.balanceDue, 0), [membersWithDebt]);
+
+  // Métricas consolidadas del CRM de Vencimientos
+  const crmStats = useMemo(() => {
+    let porVencer = 0;
+    let vencidos = 0;
+    let vigentes = 0;
+    let conDeuda = 0;
+
+    const nowLima = new Date().toISOString().slice(0, 10);
+
+    members.forEach((m) => {
+      const exp = m.expiresAt || '';
+      const diffDays = Math.ceil((new Date(exp).getTime() - new Date(nowLima).getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 0) vencidos++;
+      else if (diffDays <= 7) porVencer++;
+      else vigentes++;
+
+      if (m.balanceDue > 0) conDeuda++;
+    });
+
+    return {
+      total: members.length,
+      porVencer,
+      vencidos,
+      vigentes,
+      conDeuda,
+    };
+  }, [members]);
+
+  // Socios filtrados en el CRM
+  const filteredCrmMembers = useMemo(() => {
+    const query = crmSearch.toLowerCase().trim();
+    const nowLima = new Date().toISOString().slice(0, 10);
+
+    return members.filter((m) => {
+      const matchesSearch =
+        !query ||
+        m.name.toLowerCase().includes(query) ||
+        (m.dni && m.dni.includes(query)) ||
+        (m.phone && m.phone.includes(query)) ||
+        m.plan.toLowerCase().includes(query) ||
+        (m.coachName && m.coachName.toLowerCase().includes(query));
+
+      if (!matchesSearch) return false;
+
+      if (crmShiftFilter !== 'todos' && m.shift !== crmShiftFilter) {
+        return false;
+      }
+
+      const exp = m.expiresAt || '';
+      const diffDays = Math.ceil((new Date(exp).getTime() - new Date(nowLima).getTime()) / (1000 * 60 * 60 * 24));
+
+      if (crmFilter === 'por_vencer') return diffDays >= 0 && diffDays <= 7;
+      if (crmFilter === 'vencidos') return diffDays < 0;
+      if (crmFilter === 'vigentes') return diffDays > 7;
+      if (crmFilter === 'con_deuda') return m.balanceDue > 0;
+
+      return true;
+    });
+  }, [members, crmSearch, crmFilter, crmShiftFilter]);
+
+  const paginatedCrmMembers = useMemo(() => {
+    const start = (crmPage - 1) * crmPageSize;
+    return filteredCrmMembers.slice(start, start + crmPageSize);
+  }, [filteredCrmMembers, crmPage]);
+
+  const totalCrmPages = Math.max(1, Math.ceil(filteredCrmMembers.length / crmPageSize));
+
+  useEffect(() => {
+    setCrmPage(1);
+  }, [crmSearch, crmFilter, crmShiftFilter]);
+
+  // Socios con deuda filtrados para Cobros
+  const filteredDebtors = useMemo(() => {
+    const query = cobrosSearch.toLowerCase().trim();
+    return membersWithDebt.filter((m) => {
+      if (!query) return true;
+      return (
+        m.name.toLowerCase().includes(query) ||
+        (m.dni && m.dni.includes(query)) ||
+        (m.phone && m.phone.includes(query)) ||
+        m.plan.toLowerCase().includes(query)
+      );
+    });
+  }, [membersWithDebt, cobrosSearch]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
@@ -819,10 +981,11 @@ export default function CajaDashboard() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* BARRA SUPERIOR DE ESTADO Y PESTAÑAS */}
+        {/* BARRA SUPERIOR DE ESTADO Y PESTAÑAS (ORDENADA POR PRIORIDAD OFICIAL) */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-zinc-900/80 border border-white/10 rounded-3xl p-4 sm:p-5 backdrop-blur-md">
           {/* Navegación por Pestañas */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
+            {/* 1. Prioridad: Control Acceso 1D */}
             <button
               type="button"
               onClick={() => setActiveTab('acceso')}
@@ -837,6 +1000,59 @@ export default function CajaDashboard() {
               {isLoadingSocios && <RefreshCw className="w-3 h-3 animate-spin text-zinc-400" />}
             </button>
 
+            {/* 2. Prioridad: Nueva Inscripción (Segundo en prioridad) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('inscripcion')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'inscripcion'
+                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+              }`}
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Nueva Inscripción</span>
+            </button>
+
+            {/* 3. CRM Vencimientos */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('crm')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'crm'
+                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+              }`}
+            >
+              <CalendarClock className="w-4 h-4" />
+              <span>CRM Vencimientos</span>
+              {crmStats.porVencer > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black">
+                  {crmStats.porVencer} por vencer
+                </span>
+              )}
+            </button>
+
+            {/* 4. Cobros & Deudas */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('cobros')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'cobros'
+                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Receipt className="w-4 h-4" />
+              <span>Cobros & Deudas</span>
+              {membersWithDebt.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-black">
+                  {membersWithDebt.length} deudas
+                </span>
+              )}
+            </button>
+
+            {/* 5. Punto de Venta (POS) */}
             <button
               type="button"
               onClick={() => setActiveTab('pos')}
@@ -851,24 +1067,6 @@ export default function CajaDashboard() {
               {carrito.length > 0 && (
                 <span className="w-5 h-5 rounded-full bg-black text-emerald-400 text-[10px] font-black flex items-center justify-center">
                   {carrito.reduce((s, i) => s + i.cantidad, 0)}
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('inscripciones')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'inscripciones'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
-              }`}
-            >
-              <Receipt className="w-4 h-4" />
-              <span>Inscripción & Cobros</span>
-              {membersWithDebt.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-black">
-                  {membersWithDebt.length} deudas
                 </span>
               )}
             </button>
@@ -966,37 +1164,10 @@ export default function CajaDashboard() {
                   </div>
                 </div>
 
-                {/* Acceso Rápido con DNIs de Demostración */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] font-mono text-zinc-500 mr-1">Pruebas rápidas:</span>
-                  <button
-                    type="button"
-                    onClick={() => procesarIngresoPorDni('70472299')}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-[11px] font-mono font-bold border border-emerald-500/30 transition-colors cursor-pointer"
-                  >
-                    70472299 (🟢 Al día)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => procesarIngresoPorDni('73921845')}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-[11px] font-mono font-bold border border-amber-400/30 transition-colors cursor-pointer"
-                  >
-                    73921845 (🟡 Debe S/ 70)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => procesarIngresoPorDni('46593520')}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-[11px] font-mono font-bold border border-amber-400/30 transition-colors cursor-pointer"
-                  >
-                    46593520 (🟡 Debe S/ 310)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => procesarIngresoPorDni('99999999')}
-                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-red-400 text-[11px] font-mono font-bold border border-red-500/30 transition-colors cursor-pointer"
-                  >
-                    99999999 (🔴 No registrado)
-                  </button>
+                {/* Estado del Sensor */}
+                <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-950/90 border border-emerald-500/30 text-emerald-400 font-mono text-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="font-bold uppercase tracking-wider">Lector 1D Listo</span>
                 </div>
               </div>
 
@@ -1264,7 +1435,7 @@ export default function CajaDashboard() {
                         <button
                           type="button"
                           onClick={() => {
-                            setActiveTab('inscripciones');
+                            setActiveTab('inscripcion');
                             setClientDni(lastScanResult.dni);
                           }}
                           className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-display uppercase tracking-wider cursor-pointer"
@@ -1603,26 +1774,30 @@ export default function CajaDashboard() {
         )}
 
         {/* =========================================================================
-            PESTAÑA 3: INSCRIPCIONES, ADELANTOS & GESTIÓN DE DEUDAS
+            PESTAÑA 2: NUEVA INSCRIPCIÓN O RENOVACIÓN (SEGUNDA EN PRIORIDAD)
            ========================================================================= */}
-        {activeTab === 'inscripciones' && (
+        {activeTab === 'inscripcion' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Formulario de Registro (6 cols) */}
-            <div className="lg:col-span-6 bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-xl">
-              <div className="flex items-center gap-2.5 pb-4 border-b border-white/10">
-                <Receipt className="w-5 h-5 text-amber-400" />
+            {/* Formulario de Registro (7 cols) */}
+            <div className="lg:col-span-7 bg-zinc-900/60 border border-white/10 rounded-3xl p-6 sm:p-7 shadow-xl">
+              <div className="flex items-center gap-3 pb-4 border-b border-white/10">
+                <div className="p-3 rounded-2xl bg-amber-400 text-black font-black shadow-lg shadow-amber-400/20">
+                  <UserPlus className="w-5 h-5" />
+                </div>
                 <div>
-                  <h3 className="text-base font-bold text-white font-display uppercase tracking-wide">
+                  <h3 className="text-lg font-black text-white font-display uppercase tracking-wide">
                     Nueva Inscripción o Renovación
                   </h3>
-                  <p className="text-xs text-zinc-400">Registro de membresía con turno asignado y adelantos</p>
+                  <p className="text-xs text-zinc-400">
+                    Registro oficial de membresía con turno oficial asignado, coach y adelantos
+                  </p>
                 </div>
               </div>
 
-              <form onSubmit={handleProcessRegistration} className="mt-5 space-y-4 text-xs font-mono">
+              <form onSubmit={handleProcessRegistration} className="mt-6 space-y-4 text-xs font-mono">
                 <div>
                   <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
-                    Plan o Membresía
+                    Plan o Membresía Oficial
                   </label>
                   <select
                     value={selectedPlan.name}
@@ -1630,7 +1805,7 @@ export default function CajaDashboard() {
                       const plan = PLANS_CATALOG.find((p) => p.name === e.target.value);
                       if (plan) setSelectedPlan(plan);
                     }}
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 cursor-pointer"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-3 text-zinc-200 focus:outline-none focus:border-amber-400 cursor-pointer font-bold text-sm"
                   >
                     {PLANS_CATALOG.map((p) => (
                       <option key={p.name} value={p.name}>
@@ -1643,9 +1818,9 @@ export default function CajaDashboard() {
                 {/* Selector de Turno */}
                 <div>
                   <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
-                    Turno Frecuente de Entrenamiento
+                    Turno de Entrenamiento & Coach Asignado
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-3 gap-2.5">
                     {[
                       { id: 'manana', label: 'Mañana (6am-2pm)', icon: Sun },
                       { id: 'tarde', label: 'Tarde (2pm-6pm)', icon: Sunset },
@@ -1658,9 +1833,9 @@ export default function CajaDashboard() {
                           key={t.id}
                           type="button"
                           onClick={() => setClientShift(t.id as any)}
-                          className={`p-2.5 rounded-xl border text-[11px] font-bold text-center flex flex-col items-center gap-1 cursor-pointer transition-all ${
+                          className={`p-3 rounded-xl border text-[11px] font-bold text-center flex flex-col items-center gap-1.5 cursor-pointer transition-all ${
                             isSelected
-                              ? 'bg-amber-400/20 border-amber-400 text-amber-400'
+                              ? 'bg-amber-400/20 border-amber-400 text-amber-400 shadow-md'
                               : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
                           }`}
                         >
@@ -1670,15 +1845,16 @@ export default function CajaDashboard() {
                       );
                     })}
                   </div>
-                  <p className="text-[10px] text-zinc-500 mt-1">
-                    Coach asignado: <strong className="text-zinc-300">{COACHES_BY_SHIFT[clientShift]}</strong>
+                  <p className="text-[11px] text-zinc-400 mt-1.5 flex items-center gap-1.5">
+                    <span>Coach oficial asignado:</span>
+                    <strong className="text-amber-400">{COACHES_BY_SHIFT[clientShift]}</strong>
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
-                      DNI del Socio
+                      Número de DNI (8 Dígitos)
                     </label>
                     <input
                       type="text"
@@ -1686,46 +1862,60 @@ export default function CajaDashboard() {
                       required
                       value={clientDni}
                       onChange={(e) => setClientDni(e.target.value.replace(/\D/g, ''))}
-                      placeholder="73921845"
-                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-zinc-200 focus:outline-none focus:border-amber-400"
+                      placeholder="87654321"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 font-mono tracking-widest text-sm"
                     />
                   </div>
                   <div>
                     <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
-                      Precio Total
+                      Precio Oficial del Plan
                     </label>
-                    <div className="w-full bg-zinc-950 border border-white/10 text-white font-bold text-sm rounded-xl px-3 py-2 flex items-center justify-between">
-                      <span>PEN</span>
+                    <div className="w-full bg-zinc-950 border border-white/10 text-amber-400 font-bold text-base rounded-xl px-3.5 py-2 flex items-center justify-between">
+                      <span className="text-zinc-500 text-xs">PEN</span>
                       <span>S/. {selectedPlan.price}.00</span>
                     </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
-                    Nombre Completo del Atleta
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={clientName}
-                    onChange={(e) => setClientName(e.target.value)}
-                    placeholder="Ej: Daniel Quispe Huamán"
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-zinc-200 focus:outline-none focus:border-amber-400"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
+                      Nombre Completo del Atleta
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      placeholder="Ej: Daniel Quispe Huamán"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
+                      Celular / WhatsApp
+                    </label>
+                    <input
+                      type="text"
+                      value={clientEmail}
+                      onChange={(e) => setClientEmail(e.target.value)}
+                      placeholder="Ej: 966123456"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 text-sm"
+                    />
+                  </div>
                 </div>
 
                 {/* Opción de Adelanto vs Pago Completo */}
-                <div className="p-4 rounded-xl bg-zinc-950 border border-amber-400/20 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-200 font-bold text-xs">¿El socio deja un adelanto?</span>
+                <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/20 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-zinc-200 font-bold text-xs uppercase">Modalidad de Pago</span>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => setIsAdvancePayment(false)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           !isAdvancePayment
-                            ? 'bg-emerald-500 text-black'
+                            ? 'bg-emerald-500 text-black font-black'
                             : 'bg-zinc-800 text-zinc-400 hover:text-white'
                         }`}
                       >
@@ -1734,9 +1924,9 @@ export default function CajaDashboard() {
                       <button
                         type="button"
                         onClick={() => setIsAdvancePayment(true)}
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                           isAdvancePayment
-                            ? 'bg-amber-400 text-black'
+                            ? 'bg-amber-400 text-black font-black'
                             : 'bg-zinc-800 text-zinc-400 hover:text-white'
                         }`}
                       >
@@ -1777,7 +1967,7 @@ export default function CajaDashboard() {
 
                       <div>
                         <label className="block text-zinc-400 font-bold mb-1">
-                          Días de plazo para completar el saldo:
+                          Plazo acordado para completar saldo:
                         </label>
                         <select
                           value={dueDateDays}
@@ -1799,12 +1989,12 @@ export default function CajaDashboard() {
                   <label className="block text-zinc-400 font-bold mb-2 uppercase">
                     Método de Cobro
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
-                      { id: 'yape', label: 'YAPE (QR / Móvil)', icon: Smartphone },
+                      { id: 'yape', label: 'YAPE (QR)', icon: Smartphone },
                       { id: 'plin', label: 'PLIN', icon: QrCode },
                       { id: 'efectivo', label: 'EFECTIVO', icon: Banknote },
-                      { id: 'tarjeta', label: 'TARJETA (POS)', icon: CreditCard },
+                      { id: 'tarjeta', label: 'TARJETA POS', icon: CreditCard },
                     ].map((m) => {
                       const Icon = m.icon;
                       const isSelected = paymentMethod === m.id;
@@ -1813,7 +2003,7 @@ export default function CajaDashboard() {
                           key={m.id}
                           type="button"
                           onClick={() => setPaymentMethod(m.id as any)}
-                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer ${
+                          className={`flex items-center justify-center gap-1.5 p-2.5 rounded-xl border text-[11px] font-bold transition-all cursor-pointer ${
                             isSelected
                               ? 'bg-amber-400/15 border-amber-400 text-amber-400'
                               : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
@@ -1829,85 +2019,508 @@ export default function CajaDashboard() {
 
                 <button
                   type="submit"
-                  className="w-full mt-4 bg-amber-400 hover:bg-amber-300 text-black font-black py-3.5 rounded-xl text-xs font-display uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20"
+                  className="w-full mt-4 bg-amber-400 hover:bg-amber-300 text-black font-black py-4 rounded-xl text-xs font-display uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-5 h-5" />
                   <span>
                     {isAdvancePayment
-                      ? `REGISTRAR ADELANTO (S/. ${advanceAmount}.00)`
-                      : `REGISTRAR PAGO TOTAL (S/. ${selectedPlan.price}.00)`}
+                      ? `REGISTRAR INSCRIPCIÓN CON ADELANTO (S/. ${advanceAmount}.00)`
+                      : `REGISTRAR INSCRIPCIÓN COMPLETA (S/. ${selectedPlan.price}.00)`}
                   </span>
                 </button>
               </form>
             </div>
 
-            {/* Socios con Saldo Pendiente (6 cols) */}
-            <div className="lg:col-span-6 bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-xl flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between pb-4 border-b border-white/10">
-                  <div className="flex items-center gap-2">
-                    <AlertTriangle className="w-5 h-5 text-amber-400" />
-                    <div>
-                      <h3 className="text-base font-bold text-white font-display uppercase tracking-wide">
-                        Socios con Saldo Pendiente
-                      </h3>
-                      <p className="text-xs text-zinc-400">Total por cobrar: S/. {totalDebts.toFixed(2)}</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono text-amber-400 font-bold bg-amber-400/10 border border-amber-400/30 px-3 py-1 rounded-full">
-                    {membersWithDebt.length} atletas
+            {/* Ficha Resumen & Preview de Comprobante (5 cols) */}
+            <div className="lg:col-span-5 space-y-5">
+              <div className="bg-gradient-to-br from-zinc-900 to-black border border-amber-400/30 rounded-3xl p-6 shadow-xl space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <span className="text-xs font-mono font-bold text-amber-400 uppercase tracking-widest">
+                    Pre-Visualización de Ficha
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-black uppercase">
+                    Acreditación Oficial
                   </span>
                 </div>
 
-                <div className="mt-4 space-y-3 overflow-y-auto max-h-[500px] pr-1">
-                  {membersWithDebt.length === 0 ? (
-                    <div className="py-12 text-center text-zinc-500 font-mono text-xs">
-                      No hay socios con saldo pendiente por cobrar.
-                    </div>
-                  ) : (
-                    membersWithDebt.map((m) => (
-                      <div
-                        key={m.id}
-                        className="p-4 rounded-xl bg-zinc-950 border border-amber-500/30 hover:border-amber-400 transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs font-mono"
-                      >
-                        <div>
-                          <div className="font-bold text-white font-sans text-sm">{m.name}</div>
-                          <div className="text-[11px] text-zinc-400 mt-0.5">
-                            DNI: <span className="text-white font-bold">{m.dni}</span> · {m.plan}
-                          </div>
-                          <div className="text-[11px] mt-1 flex items-center gap-2">
-                            <span className="text-emerald-400">Adelantó: S/. {m.advancePaid}</span>
-                            <span className="text-zinc-600">|</span>
-                            <span className="text-red-400 font-bold">Debe: S/. {m.balanceDue}.00</span>
-                          </div>
-                          <div className="text-[10px] text-zinc-500 mt-0.5">
-                            Plazo límite: {m.paymentDueDate || 'Pendiente'}
-                          </div>
-                        </div>
+                <div className="space-y-3 font-mono text-xs">
+                  <div>
+                    <span className="text-zinc-500 block text-[10px] uppercase">Atleta:</span>
+                    <span className="text-white font-display text-base font-black">
+                      {clientName.trim() || 'Nombre del Atleta'}
+                    </span>
+                  </div>
 
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveTab('acceso');
-                              if (m.dni) procesarIngresoPorDni(m.dni);
-                            }}
-                            className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs border border-white/10 transition-colors cursor-pointer"
-                          >
-                            Escanear
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setLiquidatingMember(m)}
-                            className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black transition-colors cursor-pointer shadow-md"
-                          >
-                            Cobrar S/. {m.balanceDue}
-                          </button>
-                        </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <span className="text-zinc-500 block text-[10px] uppercase">DNI:</span>
+                      <span className="text-zinc-200 font-bold">{clientDni.trim() || '87654321'}</span>
+                    </div>
+                    <div>
+                      <span className="text-zinc-500 block text-[10px] uppercase">Turno:</span>
+                      <span className="text-amber-400 font-bold uppercase">{clientShift}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-zinc-500 block text-[10px] uppercase">Membresía Seleccionada:</span>
+                    <span className="text-emerald-400 font-bold">{selectedPlan.name}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-zinc-500 block text-[10px] uppercase">Coach Oficial:</span>
+                    <span className="text-zinc-300">{COACHES_BY_SHIFT[clientShift]}</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-zinc-950 border border-white/10 space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-zinc-400">Costo Membresía:</span>
+                      <span className="text-white font-bold">S/. {selectedPlan.price}.00</span>
+                    </div>
+                    <div className="flex justify-between items-center text-emerald-400">
+                      <span>Monto a Cobrar Hoy:</span>
+                      <span className="font-bold text-sm">
+                        S/. {isAdvancePayment ? Math.min(advanceAmount, selectedPlan.price) : selectedPlan.price}.00
+                      </span>
+                    </div>
+                    {isAdvancePayment && (
+                      <div className="flex justify-between items-center text-red-400 border-t border-white/10 pt-1.5">
+                        <span className="font-bold">Saldo Deudor:</span>
+                        <span className="font-black text-sm">
+                          S/. {Math.max(0, selectedPlan.price - advanceAmount)}.00
+                        </span>
                       </div>
-                    ))
-                  )}
+                    )}
+                  </div>
                 </div>
+
+                <div className="pt-2 text-[10px] font-mono text-zinc-500 space-y-1">
+                  <div className="flex items-center gap-1.5 text-zinc-400">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    <span>Emite comprobante y carnet digital con código 1D</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-zinc-400">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                    <span>Acceso al sistema de aforo y semáforo biométrico</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            PESTAÑA 3: CRM DE CLIENTES & VENCIMIENTOS
+           ========================================================================= */}
+        {activeTab === 'crm' && (
+          <div className="space-y-6">
+            {/* Cabecera & Stat Cards del CRM */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 rounded-2xl bg-zinc-900/70 border border-white/10">
+                <div className="flex items-center justify-between text-zinc-400">
+                  <span className="text-xs font-mono uppercase font-bold text-zinc-300">Padrón de Clientes</span>
+                  <Users className="w-4 h-4 text-purple-400" />
+                </div>
+                <div className="mt-2 text-3xl font-black font-display text-white">{crmStats.total}</div>
+                <span className="text-[11px] font-mono text-zinc-500">Total de socios registrados</span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/70 border border-amber-500/30">
+                <div className="flex items-center justify-between text-zinc-400">
+                  <span className="text-xs font-mono uppercase font-bold text-amber-400">Por Vencer (1-7 Días)</span>
+                  <Clock className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="mt-2 text-3xl font-black font-display text-amber-400">{crmStats.porVencer}</div>
+                <span className="text-[11px] font-mono text-amber-400/80">Listos para gestión de renovación</span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/70 border border-red-500/30">
+                <div className="flex items-center justify-between text-zinc-400">
+                  <span className="text-xs font-mono uppercase font-bold text-red-400">Membresías Vencidas</span>
+                  <ShieldAlert className="w-4 h-4 text-red-400" />
+                </div>
+                <div className="mt-2 text-3xl font-black font-display text-red-400">{crmStats.vencidos}</div>
+                <span className="text-[11px] font-mono text-red-400/80">Requieren renovación para ingresar</span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/70 border border-emerald-500/30">
+                <div className="flex items-center justify-between text-zinc-400">
+                  <span className="text-xs font-mono uppercase font-bold text-emerald-400">Membresías Vigentes</span>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div className="mt-2 text-3xl font-black font-display text-emerald-400">{crmStats.vigentes}</div>
+                <span className="text-[11px] font-mono text-emerald-400/80">&gt; 7 días restantes</span>
+              </div>
+            </div>
+
+            {/* Barra de Filtros & Búsqueda */}
+            <div className="bg-zinc-900/80 border border-white/10 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={crmSearch}
+                  onChange={(e) => setCrmSearch(e.target.value)}
+                  placeholder="Buscar por DNI, Nombre, Coach, Plan..."
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 md:pb-0">
+                {[
+                  { id: 'todos', label: `Todos (${crmStats.total})` },
+                  { id: 'por_vencer', label: `⚠️ Por Vencer (${crmStats.porVencer})` },
+                  { id: 'vencidos', label: `🔴 Vencidos (${crmStats.vencidos})` },
+                  { id: 'vigentes', label: `🟢 Vigentes (${crmStats.vigentes})` },
+                  { id: 'con_deuda', label: `🟡 Con Deuda (${crmStats.conDeuda})` },
+                ].map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setCrmFilter(f.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      crmFilter === f.id
+                        ? 'bg-amber-400 text-black shadow-md'
+                        : 'bg-zinc-950 border border-white/10 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+
+                <select
+                  value={crmShiftFilter}
+                  onChange={(e) => setCrmShiftFilter(e.target.value as any)}
+                  className="bg-zinc-950 border border-white/10 text-zinc-300 text-xs rounded-xl px-2.5 py-1.5 font-mono cursor-pointer"
+                >
+                  <option value="todos">Todos los Turnos</option>
+                  <option value="manana">Mañana</option>
+                  <option value="tarde">Tarde</option>
+                  <option value="noche">Noche</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Tabla del CRM de Vencimientos */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-3xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-zinc-950/80 border-b border-white/10 text-zinc-400 uppercase text-[11px]">
+                    <tr>
+                      <th className="py-3.5 px-4 font-bold">Atleta / Socio</th>
+                      <th className="py-3.5 px-4 font-bold">Plan & Turno</th>
+                      <th className="py-3.5 px-4 font-bold">Coach Oficial</th>
+                      <th className="py-3.5 px-4 font-bold">Vencimiento</th>
+                      <th className="py-3.5 px-4 font-bold">Días Restantes</th>
+                      <th className="py-3.5 px-4 font-bold">Saldo</th>
+                      <th className="py-3.5 px-4 font-bold text-right">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-zinc-300">
+                    {paginatedCrmMembers.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-zinc-500 font-mono">
+                          No se encontraron socios que coincidan con los filtros del CRM.
+                        </td>
+                      </tr>
+                    ) : (
+                      paginatedCrmMembers.map((m) => {
+                        const nowLima = new Date().toISOString().slice(0, 10);
+                        const exp = m.expiresAt || '';
+                        const diffDays = Math.ceil((new Date(exp).getTime() - new Date(nowLima).getTime()) / (1000 * 60 * 60 * 24));
+                        const hasDebt = m.balanceDue > 0;
+
+                        return (
+                          <tr key={m.id} className="hover:bg-zinc-800/40 transition-colors">
+                            <td className="py-3.5 px-4">
+                              <div className="font-bold text-white font-sans text-sm">{m.name}</div>
+                              <div className="text-[11px] text-zinc-400 mt-0.5">
+                                DNI: <span className="font-mono text-zinc-300">{m.dni || 'Sin DNI'}</span>
+                                {m.phone && (
+                                  <span className="ml-2 text-zinc-500">· Tel: {m.phone}</span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              <span className="text-zinc-200 font-semibold">{m.plan}</span>
+                              <div className="text-[10px] text-zinc-400 uppercase flex items-center gap-1 mt-0.5">
+                                {m.shift === 'manana' && <Sun className="w-3 h-3 text-amber-400" />}
+                                {m.shift === 'tarde' && <Sunset className="w-3 h-3 text-orange-400" />}
+                                {m.shift === 'noche' && <Moon className="w-3 h-3 text-blue-400" />}
+                                <span>Turno {m.shift || 'Mañana'}</span>
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-4 text-zinc-300">
+                              {m.coachName || 'Coach Marcos Rivas'}
+                            </td>
+
+                            <td className="py-3.5 px-4 font-mono text-zinc-300">
+                              {m.expiresAt || '2026-11-30'}
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              {diffDays < 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-red-500/20 text-red-300 border border-red-500/40">
+                                  <span>Vencido hace {Math.abs(diffDays)}d</span>
+                                </span>
+                              ) : diffDays === 0 ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse">
+                                  <span>Vence HOY</span>
+                                </span>
+                              ) : diffDays <= 7 ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                  <span>Vence en {diffDays} días</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                  <span>{diffDays} días restantes</span>
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3.5 px-4">
+                              {hasDebt ? (
+                                <span className="text-red-400 font-bold">
+                                  Debe S/. {m.balanceDue}.00
+                                </span>
+                              ) : (
+                                <span className="text-emerald-400 font-bold">Al día</span>
+                              )}
+                            </td>
+
+                            <td className="py-3.5 px-4 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartRenewal(m)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-black text-[11px] font-black transition-colors cursor-pointer"
+                                  title="Renovar membresía"
+                                >
+                                  Renovar
+                                </button>
+
+                                {m.phone && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSendWhatsAppReminder(m)}
+                                    className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-colors cursor-pointer"
+                                    title="Enviar recordatorio WhatsApp"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+
+                                {hasDebt && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setLiquidatingMember(m)}
+                                    className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-[11px] font-black transition-colors cursor-pointer shadow-md"
+                                    title="Cobrar saldo pendiente"
+                                  >
+                                    Cobrar S/. {m.balanceDue}
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => setProfileModalMember(m)}
+                                  className="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
+                                  title="Gestionar perfil"
+                                >
+                                  <User className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Paginación */}
+              {totalCrmPages > 1 && (
+                <div className="p-4 bg-zinc-950/80 border-t border-white/10 flex items-center justify-between text-xs font-mono">
+                  <span className="text-zinc-400">
+                    Mostrando página <strong className="text-white">{crmPage}</strong> de{' '}
+                    <strong className="text-white">{totalCrmPages}</strong> ({filteredCrmMembers.length} socios filtrados)
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={crmPage <= 1}
+                      onClick={() => setCrmPage((p) => Math.max(1, p - 1))}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                      <span>Anterior</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={crmPage >= totalCrmPages}
+                      onClick={() => setCrmPage((p) => Math.min(totalCrmPages, p + 1))}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1"
+                    >
+                      <span>Siguiente</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            PESTAÑA 4: COBROS & GESTIÓN DE DEUDAS
+           ========================================================================= */}
+        {activeTab === 'cobros' && (
+          <div className="space-y-6">
+            {/* Header con resumen de deudas */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-5 rounded-2xl bg-zinc-900/80 border border-amber-500/40 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-mono uppercase font-bold text-amber-400">
+                    Total Saldos por Cobrar
+                  </span>
+                  <div className="mt-1 text-3xl font-black font-display text-amber-400">
+                    S/. {totalDebts.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-400">Cuentas por cobrar en membresías</span>
+                </div>
+                <div className="p-3 rounded-2xl bg-amber-400/10 text-amber-400">
+                  <Receipt className="w-7 h-7" />
+                </div>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-zinc-900/80 border border-red-500/30 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-mono uppercase font-bold text-red-400">
+                    Socios con Deuda Activa
+                  </span>
+                  <div className="mt-1 text-3xl font-black font-display text-red-400">
+                    {membersWithDebt.length}
+                  </div>
+                  <span className="text-[11px] font-mono text-zinc-400">Atletas con adelanto pendiente</span>
+                </div>
+                <div className="p-3 rounded-2xl bg-red-500/10 text-red-400">
+                  <AlertTriangle className="w-7 h-7" />
+                </div>
+              </div>
+            </div>
+
+            {/* Buscador de Deudores */}
+            <div className="bg-zinc-900/80 border border-white/10 rounded-2xl p-4 flex items-center justify-between gap-4">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={cobrosSearch}
+                  onChange={(e) => setCobrosSearch(e.target.value)}
+                  placeholder="Buscar deudor por DNI, Nombre o Plan..."
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Lista / Tabla de Deudores */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-3xl overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-zinc-950/80 border-b border-white/10 text-zinc-400 uppercase text-[11px]">
+                    <tr>
+                      <th className="py-3.5 px-4 font-bold">Atleta / Socio</th>
+                      <th className="py-3.5 px-4 font-bold">Plan Contratado</th>
+                      <th className="py-3.5 px-4 font-bold">Costo Plan</th>
+                      <th className="py-3.5 px-4 font-bold">Abonado</th>
+                      <th className="py-3.5 px-4 font-bold">Saldo Deudor</th>
+                      <th className="py-3.5 px-4 font-bold">Plazo Límite</th>
+                      <th className="py-3.5 px-4 font-bold text-right">Acción de Cobro</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-zinc-300">
+                    {filteredDebtors.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-zinc-500 font-mono">
+                          No hay socios con saldo pendiente que coincidan con la búsqueda.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredDebtors.map((m) => (
+                        <tr key={m.id} className="hover:bg-zinc-800/40 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="font-bold text-white font-sans text-sm">{m.name}</div>
+                            <div className="text-[11px] text-zinc-400 mt-0.5">
+                              DNI: <span className="font-mono text-zinc-300">{m.dni || 'Sin DNI'}</span>
+                              {m.phone && <span className="ml-2 text-zinc-500">· Tel: {m.phone}</span>}
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="text-zinc-200 font-semibold">{m.plan}</span>
+                            <div className="text-[10px] text-zinc-400 uppercase mt-0.5">
+                              Turno {m.shift || 'Mañana'}
+                            </div>
+                          </td>
+
+                          <td className="py-3.5 px-4 font-bold text-zinc-200">
+                            S/. {m.planPrice}.00
+                          </td>
+
+                          <td className="py-3.5 px-4 text-emerald-400 font-bold">
+                            S/. {m.advancePaid}.00
+                          </td>
+
+                          <td className="py-3.5 px-4 font-black text-red-400 text-sm">
+                            S/. {m.balanceDue}.00
+                          </td>
+
+                          <td className="py-3.5 px-4 text-amber-400 font-mono">
+                            {m.paymentDueDate || 'Pendiente'}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {m.phone && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleSendWhatsAppDebtReminder(m)}
+                                  className="p-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-colors cursor-pointer"
+                                  title="Enviar recordatorio de cobro por WhatsApp"
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                </button>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveTab('acceso');
+                                  if (m.dni) procesarIngresoPorDni(m.dni);
+                                }}
+                                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono transition-colors cursor-pointer"
+                              >
+                                Escanear 1D
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setLiquidatingMember(m)}
+                                className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs font-display uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-emerald-500/20 flex items-center gap-1.5"
+                              >
+                                <DollarSign className="w-3.5 h-3.5" />
+                                <span>Cobrar S/. {m.balanceDue}</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
