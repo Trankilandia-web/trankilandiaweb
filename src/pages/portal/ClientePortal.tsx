@@ -841,10 +841,10 @@ export default function ClientePortal() {
           <div className="lg:col-span-7 space-y-6">
             {isNoMembership ? (
               /* ESTADO BLOQUEADO PARA CLIENTES SIN MEMBRESÍA ACTIVA */
-              <div className="bg-zinc-900/70 border border-amber-400/30 rounded-3xl p-6 sm:p-8 text-center space-y-6 shadow-2xl relative overflow-hidden">
+              <div className="bg-zinc-900/70 border border-amber-400/30 rounded-3xl p-8 sm:p-12 text-center space-y-6 shadow-2xl relative overflow-hidden flex flex-col items-center justify-center min-h-[380px]">
                 <div className="absolute top-0 right-0 w-48 h-48 bg-amber-400/5 rounded-full blur-3xl pointer-events-none" />
 
-                <div className="w-16 h-16 mx-auto rounded-3xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shadow-inner">
+                <div className="w-16 h-16 rounded-3xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shadow-inner">
                   <Lock className="w-8 h-8" />
                 </div>
 
@@ -855,26 +855,6 @@ export default function ClientePortal() {
                   <p className="text-xs sm:text-sm text-zinc-400 font-mono leading-relaxed">
                     Tu programa de entrenamiento, series, repeticiones y control de marcas con el staff de coaches oficiales (Marcos, Camila, Valeria y Daniel) se desbloqueará de inmediato cuando actives tu plan.
                   </p>
-                </div>
-
-                {/* Previsualización rápida de 3 opciones populares */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                  <div className="p-4 rounded-2xl bg-zinc-950/80 border border-white/5 text-left">
-                    <div className="text-[10px] font-mono text-amber-400 uppercase font-bold">1 Mes</div>
-                    <div className="text-lg font-black text-white font-display">S/. 80.00</div>
-                    <div className="text-[10px] text-zinc-400 font-mono mt-0.5">Acceso libre todo el mes</div>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-950/80 border border-amber-400/40 text-left relative overflow-hidden">
-                    <div className="absolute top-1 right-2 text-[9px] font-mono font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">POPULAR</div>
-                    <div className="text-[10px] font-mono text-amber-400 uppercase font-bold">3 Meses</div>
-                    <div className="text-lg font-black text-white font-display">S/. 180.00</div>
-                    <div className="text-[10px] text-zinc-400 font-mono mt-0.5">S/. 60 al mes</div>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-zinc-950/80 border border-white/5 text-left">
-                    <div className="text-[10px] font-mono text-amber-400 uppercase font-bold">Boxeo + Gym</div>
-                    <div className="text-lg font-black text-white font-display">S/. 140.00</div>
-                    <div className="text-[10px] text-zinc-400 font-mono mt-0.5">Combo completo</div>
-                  </div>
                 </div>
 
                 <div className="pt-2">
