@@ -137,7 +137,7 @@ export async function fetchSociosParaRecepcion(): Promise<SocioRecepcion[]> {
     const isInactive = m.membershipStatus === 'inactive';
     return {
       id: m.id,
-      dni: m.dni,
+      dni: m.dni || '',
       nombre: m.name,
       plan: m.plan,
       precio_plan: m.planPrice,
@@ -619,26 +619,37 @@ export async function registerGymMember(member: GymMember): Promise<void> {
 }
 
 /**
- * Liquidar saldo pendiente de un socio (Cobrar deuda)
+ * Cobrar saldo pendiente de un socio (Total o Abono Parcial)
  */
 export async function payMemberBalance(
   memberId: string,
-  paymentMethod: string
+  paymentMethod: string,
+  customAmount?: number
 ): Promise<GymMember[]> {
   const current = getStoredMembers();
   let paidAmount = 0;
+  let remainingDebt = 0;
   let memberReceipt = '';
 
   const updated = current.map((m) => {
     if (m.id === memberId) {
-      paidAmount = m.balanceDue;
-      memberReceipt = `B001-000${Date.now().toString().slice(-4)} (Liquidación)`;
+      const debtToPay =
+        customAmount !== undefined && customAmount > 0
+          ? Math.min(m.balanceDue, customAmount)
+          : m.balanceDue;
+
+      paidAmount = debtToPay;
+      remainingDebt = Math.max(0, m.balanceDue - debtToPay);
+      const isFull = remainingDebt === 0;
+
+      memberReceipt = `B001-000${Date.now().toString().slice(-4)} (${isFull ? 'Liquidación Total' : 'Abono Parcial'})`;
+
       return {
         ...m,
-        paymentType: 'full' as const,
-        advancePaid: m.planPrice,
-        balanceDue: 0,
-        paymentDueDate: undefined,
+        paymentType: isFull ? ('full' as const) : ('advance' as const),
+        advancePaid: m.advancePaid + paidAmount,
+        balanceDue: remainingDebt,
+        paymentDueDate: isFull ? undefined : m.paymentDueDate,
         receiptNumber: memberReceipt,
       };
     }
@@ -654,10 +665,10 @@ export async function payMemberBalance(
         await supabase
           .from('socios')
           .update({
-            tipo_pago: 'full',
-            adelanto_pagado: target.planPrice,
-            saldo_pendiente: 0,
-            fecha_limite_pago: null,
+            tipo_pago: target.paymentType,
+            adelanto_pagado: target.advancePaid,
+            saldo_pendiente: target.balanceDue,
+            fecha_limite_pago: target.balanceDue === 0 ? null : target.paymentDueDate,
             numero_boleta: memberReceipt,
             updated_at: new Date().toISOString(),
           })
@@ -667,10 +678,50 @@ export async function payMemberBalance(
           key_socio: memberId,
           monto: paidAmount,
           metodo_pago: paymentMethod,
-          tipo: 'Liquidación de Saldo Pendiente',
-          observacion: `Cancelación total boleta ${memberReceipt}`,
+          tipo: remainingDebt === 0 ? 'Liquidación Total de Saldo' : 'Abono Parcial de Membresía',
+          observacion: `Abono de S/. ${paidAmount} a saldo pendiente. Saldo restante: S/. ${remainingDebt}`,
         });
       }
+    } catch {}
+  }
+
+  return updated;
+}
+
+/**
+ * Actualizar datos completos de un socio desde la gestión de su perfil
+ */
+export async function updateMemberProfile(
+  memberId: string,
+  data: Partial<GymMember>
+): Promise<GymMember[]> {
+  const current = getStoredMembers();
+  const updated = current.map((m) => (m.id === memberId ? { ...m, ...data } : m));
+  saveStoredMembers(updated);
+
+  if (isSupabaseConfigured()) {
+    try {
+      const dbPayload: any = {};
+      if (data.name !== undefined) dbPayload.nombre = data.name;
+      if (data.dni !== undefined) dbPayload.dni = data.dni || null;
+      if (data.phone !== undefined) dbPayload.celular = data.phone || null;
+      if (data.observations !== undefined) dbPayload.observaciones = data.observations || null;
+      if (data.shift !== undefined) dbPayload.turno = data.shift;
+      if (data.coachName !== undefined) dbPayload.coach_asignado = data.coachName;
+      if (data.plan !== undefined) dbPayload.plan = data.plan;
+      if (data.planPrice !== undefined) dbPayload.precio_plan = data.planPrice;
+      if (data.advancePaid !== undefined) dbPayload.adelanto_pagado = data.advancePaid;
+      if (data.balanceDue !== undefined) {
+        dbPayload.saldo_pendiente = data.balanceDue;
+        dbPayload.tipo_pago = data.balanceDue === 0 ? 'full' : 'advance';
+      }
+      if (data.registeredAt !== undefined) dbPayload.fecha_inicio = data.registeredAt;
+      if (data.expiresAt !== undefined) dbPayload.fecha_fin = data.expiresAt;
+      if (data.age !== undefined) dbPayload.edad = data.age;
+      if (data.gender !== undefined) dbPayload.sexo = data.gender;
+      dbPayload.updated_at = new Date().toISOString();
+
+      await supabase.from('socios').update(dbPayload).eq('id', memberId);
     } catch {}
   }
 

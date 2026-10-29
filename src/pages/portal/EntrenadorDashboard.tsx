@@ -252,7 +252,9 @@ export default function EntrenadorDashboard() {
       // Búsqueda por texto
       const query = searchMember.toLowerCase();
       const matchSearch =
-        m.name.toLowerCase().includes(query) || m.dni.includes(query) || m.id.toLowerCase().includes(query);
+        m.name.toLowerCase().includes(query) ||
+        (m.dni && m.dni.includes(query)) ||
+        m.id.toLowerCase().includes(query);
 
       return matchShift && matchCoach && matchSearch;
     });

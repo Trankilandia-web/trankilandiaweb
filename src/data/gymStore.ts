@@ -7,23 +7,23 @@ import realMembersData from './realMembers.json';
 export interface GymMember {
   id: string;
   name: string;
-  dni: string;
-  email: string;
-  phone?: string;
+  dni?: string | null;
+  email?: string | null;
+  phone?: string | null;
   plan: string;
   planPrice: number;
   paymentType: 'full' | 'advance';
   advancePaid: number;
   balanceDue: number; // planPrice - advancePaid
-  paymentDueDate?: string;
+  paymentDueDate?: string | null;
   paymentMethod: 'yape' | 'plin' | 'efectivo' | 'tarjeta';
   receiptNumber: string;
   membershipStatus: 'active' | 'expiring' | 'inactive';
   expiresAt: string;
   coachName: string;
   registeredAt: string;
-  observations?: string;
-  age?: number;
+  observations?: string | null;
+  age?: number | null;
   gender?: string;
   shift?: 'manana' | 'tarde' | 'noche';
 }
@@ -66,8 +66,8 @@ export interface ProgressRecord {
   notes: string;
 }
 
-// Initial Real Members Loaded directly from Gym.xlsm (389 socios)
-export const INITIAL_MEMBERS: GymMember[] = realMembersData as GymMember[];
+// Initial Real Members Loaded directly from Gym.xlsm (393 socios)
+export const INITIAL_MEMBERS: GymMember[] = (realMembersData as unknown) as GymMember[];
 
 // Initial Custom Routines per Member
 export const INITIAL_ROUTINES: Record<string, MemberRoutine> = {
@@ -156,10 +156,16 @@ export const INITIAL_PROGRESS: ProgressRecord[] = [
   },
 ];
 
+const STORAGE_KEY = 'trankilandia_members_v3';
+
 // Helper to get members from LocalStorage or Fallback
 export const getStoredMembers = (): GymMember[] => {
   try {
-    const raw = localStorage.getItem('trankilandia_members');
+    // Si existe la clave obsoleta de versiones anteriores, limpiarla para forzar los 393 socios reales de Gym.xlsm
+    if (localStorage.getItem('trankilandia_members')) {
+      localStorage.removeItem('trankilandia_members');
+    }
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch {}
   return INITIAL_MEMBERS;
@@ -167,7 +173,7 @@ export const getStoredMembers = (): GymMember[] => {
 
 export const saveStoredMembers = (members: GymMember[]) => {
   try {
-    localStorage.setItem('trankilandia_members', JSON.stringify(members));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
   } catch {}
 };
 

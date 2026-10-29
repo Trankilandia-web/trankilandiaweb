@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
+  User,
   Users,
   DollarSign,
   TrendingUp,
@@ -29,7 +30,7 @@ import {
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import { UserRole } from '../../types/roles';
-import { getStoredMembers } from '../../data/gymStore';
+import { GymMember, getStoredMembers, saveStoredMembers } from '../../data/gymStore';
 import {
   ResumenAdmin,
   obtenerResumenAdmin,
@@ -38,8 +39,11 @@ import {
   ajustarStockProducto,
   actualizarRolUsuario,
   updateMemberShift,
+  updateMemberProfile,
+  payMemberBalance,
   ProductoPOS,
 } from '../../lib/supabaseDb';
+import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
 interface MemberRecord {
   id: string;
@@ -88,25 +92,31 @@ export default function AdminDashboard() {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
+  // Modales de Gestión de Perfil y Cobros
+  const [profileModalMember, setProfileModalMember] = useState<GymMember | null>(null);
+  const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
+  const [customAbonoAmount, setCustomAbonoAmount] = useState<number>(0);
+  const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
+
   // Notificación de éxito
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
   // 1. CARGA INICIAL DE DATOS LIGEROS
   const cargarSociosEnMemoria = useCallback(() => {
     const rawMembers = getStoredMembers();
-    const mapped: MemberRecord[] = rawMembers.map((m, idx) => ({
+    const mapped: MemberRecord[] = rawMembers.map((m) => ({
       id: m.id,
       name: m.name,
-      dni: m.dni,
-      role: m.id === 'MEM-001' ? 'admin' : idx === 1 ? 'entrenador' : idx === 2 ? 'caja' : 'cliente',
+      dni: m.dni || '',
+      role: 'cliente',
       plan: m.plan,
       shift: (m.shift as 'manana' | 'tarde' | 'noche') || 'manana',
       coachName: m.coachName || 'Coach Marcos Rivas',
-      advancePaid: m.advancePaid || 80,
+      advancePaid: m.advancePaid || 0,
       balanceDue: m.balanceDue || 0,
       status: m.membershipStatus,
       expiresIn: m.expiresAt,
-      lastVisit: idx < 8 ? 'Hoy en sala' : 'Esta semana',
+      lastVisit: 'Reciente',
     }));
     setMembers(mapped);
   }, []);
@@ -462,10 +472,10 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="mt-3 text-3xl font-black font-display text-amber-400">
-                  S/. {resumen ? resumen.socios.total_deudas_pendientes.toLocaleString('es-PE', { minimumFractionDigits: 2 }) : '0.00'}
+                  S/. {resumen ? resumen.socios.total_deudas_pendientes.toLocaleString('es-PE', { minimumFractionDigits: 2 }) : members.reduce((acc, m) => acc + m.balanceDue, 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-1 font-mono">
-                  {resumen ? resumen.socios.socios_con_deuda : 0} socios con adelanto pendiente
+                  {resumen ? resumen.socios.socios_con_deuda : members.filter(m => m.balanceDue > 0).length} socios con adelanto pendiente
                 </p>
               </div>
 
@@ -910,7 +920,7 @@ export default function AdminDashboard() {
                     <th className="py-3 px-4">Turno Oficial</th>
                     <th className="py-3 px-4">Coach Asignado</th>
                     <th className="py-3 px-4">Plan & Saldo</th>
-                    <th className="py-3 px-4 text-right">Reasignar</th>
+                    <th className="py-3 px-4 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 font-sans">
@@ -924,7 +934,7 @@ export default function AdminDashboard() {
                           <div className="text-[11px] text-zinc-500 font-mono">{m.id}</div>
                         </td>
 
-                        <td className="py-3 px-4 font-mono text-zinc-300">{m.dni}</td>
+                        <td className="py-3 px-4 font-mono text-zinc-300">{m.dni || 'Sin DNI'}</td>
 
                         <td className="py-3 px-4">
                           <select
@@ -985,9 +995,17 @@ export default function AdminDashboard() {
                         </td>
 
                         <td className="py-3 px-4 text-right">
-                          <span className="text-[10px] text-zinc-500 font-mono">
-                            {m.expiresIn}
-                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const fullMember = getStoredMembers().find((sm) => sm.id === m.id);
+                              if (fullMember) setProfileModalMember(fullMember);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono border border-white/10 transition-colors cursor-pointer"
+                          >
+                            <User className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Gestionar</span>
+                          </button>
                         </td>
                       </tr>
                     );
@@ -1190,6 +1208,201 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* MODAL DE GESTIÓN INTEGRAL DE PERFIL DE SOCIO */}
+      {profileModalMember && (
+        <MemberProfileModal
+          isOpen={!!profileModalMember}
+          onClose={() => setProfileModalMember(null)}
+          member={profileModalMember}
+          onSave={async (updated) => {
+            const next = await updateMemberProfile(updated.id, updated);
+            saveStoredMembers(next);
+            cargarSociosEnMemoria();
+            setProfileModalMember(null);
+            setActionSuccess(`¡Perfil de ${updated.name} actualizado con éxito!`);
+            setTimeout(() => setActionSuccess(null), 4000);
+          }}
+          onOpenPaymentModal={(m) => {
+            setProfileModalMember(null);
+            setLiquidatingMember(m);
+            setCustomAbonoAmount(m.balanceDue);
+          }}
+        />
+      )}
+
+      {/* MODAL DE ABONO / COBRO PARCIAL EN ADMINISTRACIÓN */}
+      {liquidatingMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-md bg-zinc-900 border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-4 font-mono text-xs"
+          >
+            <div className="flex items-center gap-3 pb-3 border-b border-white/10">
+              <div className="p-2.5 rounded-xl bg-emerald-500 text-black font-black">
+                <DollarSign className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-lg font-black text-white font-display uppercase tracking-tight">
+                  Cobro / Abono de Membresía
+                </h4>
+                <p className="text-zinc-400">Permite abono parcial o liquidación total</p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-2">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Socio:</span>
+                <span className="text-white font-bold">{liquidatingMember.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">DNI:</span>
+                <span className="text-zinc-200">{liquidatingMember.dni || 'Sin DNI'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Plan:</span>
+                <span className="text-zinc-200">{liquidatingMember.plan}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Costo Total:</span>
+                <span className="text-zinc-200 font-bold">S/. {liquidatingMember.planPrice}.00</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Adelanto ya abonado:</span>
+                <span className="text-emerald-400 font-bold">S/. {liquidatingMember.advancePaid}.00</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Saldo Deudor Actual:</span>
+                <span className="text-amber-400 font-bold">S/. {liquidatingMember.balanceDue}.00</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="block text-zinc-300 font-bold uppercase">
+                Monto a Cobrar / Abonar (S/.):
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-black text-lg">
+                  S/.
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={liquidatingMember.balanceDue}
+                  value={customAbonoAmount || ''}
+                  onChange={(e) =>
+                    setCustomAbonoAmount(
+                      Math.max(0, Math.min(liquidatingMember.balanceDue, Number(e.target.value)))
+                    )
+                  }
+                  className="w-full pl-12 pr-4 py-3 bg-zinc-950 border border-emerald-500/50 rounded-xl text-emerald-300 font-black text-xl focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {[20, 50, 100]
+                  .filter((amt) => amt < liquidatingMember.balanceDue)
+                  .map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setCustomAbonoAmount(amt)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-bold border border-white/5 cursor-pointer"
+                    >
+                      + S/. {amt}
+                    </button>
+                  ))}
+                <button
+                  type="button"
+                  onClick={() => setCustomAbonoAmount(liquidatingMember.balanceDue)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-bold border border-emerald-500/40 cursor-pointer ml-auto"
+                >
+                  Total (S/. {liquidatingMember.balanceDue})
+                </button>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-zinc-950/60 border border-white/5 text-[11px]">
+                {customAbonoAmount >= liquidatingMember.balanceDue ? (
+                  <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                    <span>✅</span> El socio quedará 100% AL DÍA (Saldo restante: S/. 0.00)
+                  </span>
+                ) : (
+                  <span className="text-amber-400 flex items-center gap-1.5">
+                    <span>⚠️</span> Quedará un saldo de:{' '}
+                    <strong className="text-white">
+                      S/. {(liquidatingMember.balanceDue - (customAbonoAmount || 0)).toFixed(2)}
+                    </strong>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-zinc-400 font-bold mb-2 uppercase">
+                Método de Cobro
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'yape', label: 'Yape' },
+                  { id: 'plin', label: 'Plin' },
+                  { id: 'efectivo', label: 'Efectivo' },
+                  { id: 'tarjeta', label: 'Tarjeta' },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setLiquidateMethod(m.id as any)}
+                    className={`py-2 px-3 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                      liquidateMethod === m.id
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500'
+                        : 'bg-zinc-950 border-white/10 text-zinc-400'
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setLiquidatingMember(null)}
+                className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-3 rounded-xl font-bold cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!customAbonoAmount || customAbonoAmount <= 0}
+                onClick={async () => {
+                  const amountToCharge =
+                    customAbonoAmount > 0
+                      ? Math.min(liquidatingMember.balanceDue, customAbonoAmount)
+                      : liquidatingMember.balanceDue;
+
+                  const next = await payMemberBalance(
+                    liquidatingMember.id,
+                    liquidateMethod,
+                    amountToCharge
+                  );
+                  saveStoredMembers(next);
+                  cargarSociosEnMemoria();
+                  setActionSuccess(
+                    `¡Abono de S/. ${amountToCharge.toFixed(2)} registrado con éxito a ${liquidatingMember.name}!`
+                  );
+                  setLiquidatingMember(null);
+                  setTimeout(() => setActionSuccess(null), 4000);
+                }}
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-3 rounded-xl font-black cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-40"
+              >
+                CONFIRMAR COBRO
+              </button>
+            </div>
           </motion.div>
         </div>
       )}

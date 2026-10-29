@@ -25,6 +25,7 @@ import {
   WifiOff,
   Barcode,
   ShieldAlert,
+  User,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
@@ -47,7 +48,9 @@ import {
   registrarVentaPOS,
   registerGymMember,
   payMemberBalance,
+  updateMemberProfile,
 } from '../../lib/supabaseDb';
+import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
 const PLANS_CATALOG = [
   { name: '1 Mes · Musculación Libre', price: 80 },
@@ -173,6 +176,8 @@ export default function CajaDashboard() {
 
   // Modales
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
+  const [customAbonoAmount, setCustomAbonoAmount] = useState<number>(0);
+  const [profileModalMember, setProfileModalMember] = useState<GymMember | null>(null);
   const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -560,7 +565,7 @@ export default function CajaDashboard() {
     // Actualizar índice en memoria de recepción
     const nuevoSocioRecepcion: SocioRecepcion = {
       id: newMember.id,
-      dni: newMember.dni,
+      dni: newMember.dni || '',
       nombre: newMember.name,
       plan: newMember.plan,
       precio_plan: newMember.planPrice,
@@ -611,22 +616,30 @@ export default function CajaDashboard() {
     setTimeout(() => setSuccessMessage(null), 5000);
   };
 
-  // 6. LIQUIDAR SALDO PENDIENTE (COBRAR DEUDA)
+  // 6. COBRAR SALDO PENDIENTE (LIQUIDACIÓN O ABONO PARCIAL)
   const handleConfirmLiquidate = async () => {
     if (!liquidatingMember) return;
 
-    const amountPaid = liquidatingMember.balanceDue;
-    await payMemberBalance(liquidatingMember.id, liquidateMethod);
+    const amountToCharge =
+      customAbonoAmount > 0
+        ? Math.min(liquidatingMember.balanceDue, customAbonoAmount)
+        : liquidatingMember.balanceDue;
+
+    await payMemberBalance(liquidatingMember.id, liquidateMethod, amountToCharge);
+
+    const newBalance = Math.max(0, liquidatingMember.balanceDue - amountToCharge);
+    const newAdvance = liquidatingMember.advancePaid + amountToCharge;
+    const isFull = newBalance === 0;
 
     const updated = members.map((m) => {
       if (m.id === liquidatingMember.id) {
         return {
           ...m,
-          paymentType: 'full' as const,
-          advancePaid: m.planPrice,
-          balanceDue: 0,
-          paymentDueDate: undefined,
-          receiptNumber: `B001-000${members.length + 512} (Cancelación)`,
+          paymentType: isFull ? ('full' as const) : ('advance' as const),
+          advancePaid: newAdvance,
+          balanceDue: newBalance,
+          paymentDueDate: isFull ? undefined : m.paymentDueDate,
+          receiptNumber: `B001-000${members.length + 512} (${isFull ? 'Liquidación Total' : 'Abono Parcial'})`,
         };
       }
       return m;
@@ -636,15 +649,15 @@ export default function CajaDashboard() {
     saveStoredMembers(updated);
 
     // Actualizar socio en el mapa local
-    const socioEnMapa = sociosMap.get(liquidatingMember.dni);
+    const socioEnMapa = sociosMap.get(liquidatingMember.dni || '');
     if (socioEnMapa) {
       const socioActualizado: SocioRecepcion = {
         ...socioEnMapa,
-        tipo_pago: 'full',
-        adelanto_pagado: socioEnMapa.precio_plan,
-        saldo_pendiente: 0,
-        fecha_limite_pago: null,
-        tiene_deuda_activa: false,
+        tipo_pago: isFull ? 'full' : 'advance',
+        adelanto_pagado: newAdvance,
+        saldo_pendiente: newBalance,
+        fecha_limite_pago: isFull ? null : socioEnMapa.fecha_limite_pago,
+        tiene_deuda_activa: !isFull,
       };
       setSociosMap((prev) => {
         const next = new Map(prev);
@@ -655,10 +668,12 @@ export default function CajaDashboard() {
       // Refrescar resultado del semáforo si coincide
       if (lastScanResult.dni === liquidatingMember.dni) {
         setLastScanResult({
-          status: 'al_dia',
+          status: isFull ? 'al_dia' : 'con_deuda',
           socio: socioActualizado,
           dni: socioActualizado.dni,
-          message: `SALDO CANCELADO · MEMBRESÍA AL DÍA 100%`,
+          message: isFull
+            ? `SALDO CANCELADO · MEMBRESÍA AL DÍA 100%`
+            : `ABONO REGISTRADO · SALDO RESTANTE: S/. ${newBalance.toFixed(2)}`,
           timestamp: Date.now(),
         });
       }
@@ -669,13 +684,15 @@ export default function CajaDashboard() {
       setReceiptModal({
         isOpen: true,
         member: updatedMember,
-        amount: amountPaid,
-        type: 'Cancelación de Saldo Pendiente',
+        amount: amountToCharge,
+        type: isFull ? 'Cancelación Total de Saldo' : 'Abono Parcial de Membresía',
         method: liquidateMethod,
       });
     }
 
-    setSuccessMessage(`¡Saldo de S/. ${amountPaid}.00 cobrado con éxito a ${liquidatingMember.name}!`);
+    setSuccessMessage(
+      `¡Abono de S/. ${amountToCharge.toFixed(2)} registrado con éxito a ${liquidatingMember.name}! Saldo restante: S/. ${newBalance.toFixed(2)}`
+    );
     setLiquidatingMember(null);
     setTimeout(() => setSuccessMessage(null), 5000);
   };
@@ -1093,6 +1110,17 @@ export default function CajaDashboard() {
                               <Printer className="w-3.5 h-3.5 text-amber-400" />
                               <span>Boleta {lastScanResult.socio.numero_boleta}</span>
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const found = members.find((m) => m.dni === lastScanResult.socio?.dni);
+                                if (found) setProfileModalMember(found);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 border border-white/10 text-xs font-mono text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                            >
+                              <User className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Gestionar Perfil</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1145,16 +1173,27 @@ export default function CajaDashboard() {
                               type="button"
                               onClick={() => {
                                 const found = members.find((m) => m.dni === lastScanResult.socio?.dni);
-                                if (found) setLiquidatingMember(found);
+                                if (found) {
+                                  setLiquidatingMember(found);
+                                  setCustomAbonoAmount(found.balanceDue);
+                                }
                               }}
-                              className="w-full lg:w-auto inline-flex items-center justify-center gap-2 px-6 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm font-display uppercase tracking-wider transition-all shadow-xl shadow-emerald-500/20 cursor-pointer"
+                              className="w-full lg:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-sm font-display uppercase tracking-wider transition-all shadow-xl shadow-emerald-500/20 cursor-pointer"
                             >
                               <DollarSign className="w-5 h-5" />
-                              <span>COBRAR SALDO S/. {lastScanResult.socio.saldo_pendiente.toFixed(2)}</span>
+                              <span>COBRAR / ABONAR SALDO</span>
                             </button>
-                            <span className="text-[11px] font-mono text-zinc-400 text-center">
-                              Liquidar saldo en 1 clic y cancelar membresía
-                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const found = members.find((m) => m.dni === lastScanResult.socio?.dni);
+                                if (found) setProfileModalMember(found);
+                              }}
+                              className="w-full lg:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono border border-white/5 transition-colors cursor-pointer"
+                            >
+                              <User className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Gestionar Perfil</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1837,7 +1876,7 @@ export default function CajaDashboard() {
                             type="button"
                             onClick={() => {
                               setActiveTab('acceso');
-                              procesarIngresoPorDni(m.dni);
+                              if (m.dni) procesarIngresoPorDni(m.dni);
                             }}
                             className="px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-300 text-xs border border-white/10 transition-colors cursor-pointer"
                           >
@@ -1861,7 +1900,7 @@ export default function CajaDashboard() {
         )}
       </main>
 
-      {/* MODAL PARA COBRAR SALDO PENDIENTE */}
+      {/* MODAL PARA COBRAR SALDO PENDIENTE (LIQUIDACIÓN O ABONO PARCIAL) */}
       {liquidatingMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <motion.div
@@ -1875,9 +1914,9 @@ export default function CajaDashboard() {
               </div>
               <div>
                 <h4 className="text-lg font-black text-white font-display uppercase tracking-tight">
-                  Liquidar Saldo Pendiente
+                  Cobro / Abono de Membresía
                 </h4>
-                <p className="text-zinc-400">Completar pago de membresía</p>
+                <p className="text-zinc-400">Permite abono parcial o liquidación total</p>
               </div>
             </div>
 
@@ -1888,22 +1927,90 @@ export default function CajaDashboard() {
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-400">DNI:</span>
-                <span className="text-zinc-200">{liquidatingMember.dni}</span>
+                <span className="text-zinc-200">{liquidatingMember.dni || 'Sin DNI'}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-400">Plan:</span>
                 <span className="text-zinc-200">{liquidatingMember.plan}</span>
               </div>
               <div className="flex justify-between">
+                <span className="text-zinc-400">Costo Total Plan:</span>
+                <span className="text-zinc-200 font-bold">S/. {liquidatingMember.planPrice}.00</span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-zinc-400">Adelanto ya abonado:</span>
                 <span className="text-emerald-400 font-bold">S/. {liquidatingMember.advancePaid}.00</span>
               </div>
-              <div className="pt-2 border-t border-white/10 flex justify-between text-sm">
-                <span className="text-amber-400 font-bold">MONTO A CANCELAR:</span>
-                <span className="text-emerald-400 font-black text-lg">S/. {liquidatingMember.balanceDue}.00</span>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Saldo Deudor Actual:</span>
+                <span className="text-amber-400 font-bold">S/. {liquidatingMember.balanceDue}.00</span>
               </div>
             </div>
 
+            {/* INPUT EDITABLE DE ABONO PARCIAL O TOTAL */}
+            <div className="space-y-2">
+              <label className="block text-zinc-300 font-bold uppercase">
+                Monto a Cobrar / Abonar (S/.):
+              </label>
+              <div className="relative">
+                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-black text-lg">
+                  S/.
+                </span>
+                <input
+                  type="number"
+                  min={1}
+                  max={liquidatingMember.balanceDue}
+                  value={customAbonoAmount || ''}
+                  onChange={(e) =>
+                    setCustomAbonoAmount(
+                      Math.max(0, Math.min(liquidatingMember.balanceDue, Number(e.target.value)))
+                    )
+                  }
+                  className="w-full pl-12 pr-4 py-3 bg-zinc-950 border border-emerald-500/50 rounded-xl text-emerald-300 font-black text-xl focus:outline-none focus:border-emerald-400"
+                />
+              </div>
+
+              {/* Botones de sugerencia rápida */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                {[20, 50, 100]
+                  .filter((amt) => amt < liquidatingMember.balanceDue)
+                  .map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setCustomAbonoAmount(amt)}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-bold border border-white/5 cursor-pointer"
+                    >
+                      + S/. {amt}
+                    </button>
+                  ))}
+                <button
+                  type="button"
+                  onClick={() => setCustomAbonoAmount(liquidatingMember.balanceDue)}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[11px] font-bold border border-emerald-500/40 cursor-pointer ml-auto"
+                >
+                  Total (S/. {liquidatingMember.balanceDue})
+                </button>
+              </div>
+
+              {/* Resumen del impacto del cobro */}
+              <div className="p-2.5 rounded-xl bg-zinc-950/60 border border-white/5 text-[11px]">
+                {customAbonoAmount >= liquidatingMember.balanceDue ? (
+                  <span className="text-emerald-400 font-bold flex items-center gap-1.5">
+                    <span>✅</span> El socio quedará 100% AL DÍA (Saldo restante: S/. 0.00)
+                  </span>
+                ) : (
+                  <span className="text-amber-400 flex items-center gap-1.5">
+                    <span>⚠️</span> Quedará un saldo pendiente de:{' '}
+                    <strong className="text-white">
+                      S/. {(liquidatingMember.balanceDue - (customAbonoAmount || 0)).toFixed(2)}
+                    </strong>
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* METODO DE COBRO */}
             <div>
               <label className="block text-zinc-400 font-bold mb-2 uppercase">
                 Método de Cobro
@@ -1941,14 +2048,56 @@ export default function CajaDashboard() {
               </button>
               <button
                 type="button"
+                disabled={!customAbonoAmount || customAbonoAmount <= 0}
                 onClick={handleConfirmLiquidate}
-                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-3 rounded-xl font-black cursor-pointer transition-colors shadow-lg shadow-emerald-500/20"
+                className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-3 rounded-xl font-black cursor-pointer transition-colors shadow-lg shadow-emerald-500/20 disabled:opacity-40"
               >
-                CONFIRMAR PAGO
+                CONFIRMAR COBRO
               </button>
             </div>
           </motion.div>
         </div>
+      )}
+
+      {/* MODAL DE GESTIÓN INTEGRAL DE PERFIL DE SOCIO */}
+      {profileModalMember && (
+        <MemberProfileModal
+          isOpen={!!profileModalMember}
+          onClose={() => setProfileModalMember(null)}
+          member={profileModalMember}
+          onSave={async (updated) => {
+            const next = await updateMemberProfile(updated.id, updated);
+            setMembers(next);
+            // Actualizar mapa en memoria de recepción
+            const exist = sociosMap.get(updated.dni || '');
+            if (exist) {
+              const actual: SocioRecepcion = {
+                ...exist,
+                nombre: updated.name,
+                dni: updated.dni || exist.dni,
+                precio_plan: updated.planPrice,
+                adelanto_pagado: updated.advancePaid,
+                saldo_pendiente: updated.balanceDue,
+                tiene_deuda_activa: updated.balanceDue > 0,
+                turno: updated.shift || 'manana',
+                coach_asignado: updated.coachName || 'Coach Marcos Rivas',
+              };
+              setSociosMap((prev) => {
+                const m = new Map(prev);
+                m.set(actual.dni, actual);
+                return m;
+              });
+            }
+            setProfileModalMember(null);
+            setSuccessMessage(`¡Perfil de ${updated.name} actualizado con éxito!`);
+            setTimeout(() => setSuccessMessage(null), 4000);
+          }}
+          onOpenPaymentModal={(m) => {
+            setProfileModalMember(null);
+            setLiquidatingMember(m);
+            setCustomAbonoAmount(m.balanceDue);
+          }}
+        />
       )}
 
       {/* MODAL DE COMPROBANTE TICKET DIGITAL POS */}
