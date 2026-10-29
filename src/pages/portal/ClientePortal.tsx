@@ -16,6 +16,7 @@ import {
   Clock,
   UserCheck,
   CheckCircle2,
+  CreditCard,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
@@ -31,6 +32,7 @@ import {
 import {
   getMemberRoutine,
   updateMemberShift,
+  vincularDniCliente,
 } from '../../lib/supabaseDb';
 import {
   renderBarcodeToCanvas,
@@ -106,16 +108,43 @@ export default function ClientePortal() {
   // Canvas ref para el código de barras 1D
   const barcodeCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Socio activo determinado por autenticación o simulación
-  const defaultMember =
-    members.find(
-      (m) =>
-        m.email.toLowerCase() === (user?.email || '').toLowerCase() ||
-        m.dni === (user?.user_metadata?.dni || '')
-    ) || members[0];
+  // Estados para vinculación manual de DNI por parte del cliente
+  const [inputDni, setInputDni] = useState('');
+  const [isLinkingDni, setIsLinkingDni] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+
+  // Socio activo determinado por correo personal o DNI vinculado
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const userDni = (user?.user_metadata?.dni || '').trim();
+
+  const linkedMember = members.find(
+    (m) =>
+      (m.email && userEmail && m.email.toLowerCase().trim() === userEmail) ||
+      (userDni && m.dni && m.dni.trim() === userDni)
+  ) || null;
 
   const currentMember =
-    (selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null) || defaultMember;
+    (selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null) || linkedMember;
+
+  const handleVincularDni = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIsLinkingDni(true);
+    setLinkError(null);
+
+    const res = await vincularDniCliente(user.id, user.email || '', inputDni);
+    setIsLinkingDni(false);
+
+    if (res.success && res.member) {
+      const updated = members.some((m) => m.id === res.member!.id)
+        ? members.map((m) => (m.id === res.member!.id ? res.member! : m))
+        : [res.member!, ...members];
+      setMembers(updated);
+      setSelectedMemberId(res.member.id);
+    } else {
+      setLinkError(res.message);
+    }
+  };
 
   // Sincronizar estados locales de turno y coach con el socio seleccionado
   useEffect(() => {
@@ -196,7 +225,7 @@ export default function ClientePortal() {
 
   // RENDERIZAR CÓDIGO DE BARRAS 1D (CODE 128) CON QUIET ZONE >= 16PX Y FONDO BLANCO PURO
   useEffect(() => {
-    if (barcodeCanvasRef.current && currentMember.dni) {
+    if (barcodeCanvasRef.current && currentMember?.dni) {
       renderBarcodeToCanvas(barcodeCanvasRef.current, currentMember.dni, {
         moduleWidth: 2,
         height: 60,
@@ -205,10 +234,11 @@ export default function ClientePortal() {
         scale: 1.5,
       });
     }
-  }, [currentMember.dni]);
+  }, [currentMember?.dni]);
 
   // DESCARGA DEL CARNET DIGITAL EN ALTA RESOLUCIÓN (SCALE 2.5)
   const handleDownloadCarnetPNG = () => {
+    if (!currentMember || !currentMember.dni) return;
     exportCarnetDigitalPNG(
       {
         nombre: currentMember.name,
@@ -228,6 +258,7 @@ export default function ClientePortal() {
 
   // ACTUALIZAR TURNO Y ENTRENADOR
   const handleSaveShift = async () => {
+    if (!currentMember) return;
     setIsSavingShift(true);
     try {
       await updateMemberShift(currentMember.id, selectedShift, selectedCoachName);
@@ -250,7 +281,9 @@ export default function ClientePortal() {
     setIsSavingShift(false);
   };
 
-  const progressList = getStoredProgress().filter((p) => p.memberId === currentMember.id);
+  const progressList = currentMember
+    ? getStoredProgress().filter((p) => p.memberId === currentMember.id)
+    : [];
   const latestProgress = progressList[0];
 
   const activeRoutine = memberRoutine || INITIAL_ROUTINES['MEM-001'];
@@ -267,7 +300,7 @@ export default function ClientePortal() {
     .filter(
       (m) =>
         m.name.toLowerCase().includes(testSearch.toLowerCase()) ||
-        m.dni.includes(testSearch)
+        (m.dni && m.dni.includes(testSearch))
     )
     .slice(0, 8);
 
@@ -296,14 +329,22 @@ export default function ClientePortal() {
                   Simulador de Socio (Modo Pruebas / Demostración):
                 </span>
                 <span className="text-[11px] text-zinc-400 font-mono">
-                  Socio en pantalla: <strong className="text-amber-400">{currentMember.name}</strong> (DNI: {currentMember.dni} · Turno:{' '}
-                  <span className="uppercase text-white font-bold">{currentMember.shift || 'manana'}</span> ·{' '}
-                  {currentMember.balanceDue > 0 ? (
-                    <span className="text-red-400 font-bold">Debe S/. {currentMember.balanceDue}</span>
+                  {currentMember ? (
+                    <>
+                      Socio en pantalla: <strong className="text-amber-400">{currentMember.name}</strong> (DNI: {currentMember.dni || 'Sin DNI'} · Turno:{' '}
+                      <span className="uppercase text-white font-bold">{currentMember.shift || 'manana'}</span> ·{' '}
+                      {currentMember.balanceDue > 0 ? (
+                        <span className="text-red-400 font-bold">Debe S/. {currentMember.balanceDue}</span>
+                      ) : (
+                        <span className="text-emerald-400 font-bold">Al Día</span>
+                      )}
+                      )
+                    </>
                   ) : (
-                    <span className="text-emerald-400 font-bold">Al Día</span>
+                    <span>
+                      Usuario conectado: <strong className="text-white">{user?.email || 'Sin sesión'}</strong> · <span className="text-amber-400 font-bold">Completa tu DNI para vincular tu carnet</span>
+                    </span>
                   )}
-                  )
                 </span>
               </div>
             </div>
@@ -341,7 +382,7 @@ export default function ClientePortal() {
                       setShowMemberPicker(false);
                     }}
                     className={`p-2 rounded-xl text-left font-mono text-xs border transition-all cursor-pointer ${
-                      currentMember.id === m.id
+                      currentMember?.id === m.id
                         ? 'bg-amber-400/15 border-amber-400 text-amber-300 shadow-sm'
                         : 'bg-zinc-950/80 border-white/5 text-zinc-300 hover:bg-zinc-800'
                     }`}
@@ -360,8 +401,81 @@ export default function ClientePortal() {
           )}
         </div>
 
-        {/* ALERTA DE COBRANZA EN CASO DE SALDO PENDIENTE */}
-        {currentMember.balanceDue > 0 && (
+        {!currentMember ? (
+          /* FORMULARIO DE VINCULACIÓN DE DNI PARA CORREOS PERSONALES */
+          <div className="max-w-xl mx-auto py-10">
+            <div className="bg-zinc-900 border border-amber-400/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-amber-400/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="w-14 h-14 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400 mb-5">
+                <CreditCard className="w-7 h-7" />
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-white font-mono uppercase tracking-tight">
+                Genera tu Tarjeta de Ingreso
+              </h2>
+              <p className="text-xs sm:text-sm text-zinc-400 mt-2 font-mono leading-relaxed">
+                Has iniciado sesión con tu correo personal <strong className="text-amber-400">{user?.email || 'de usuario'}</strong>. Para vincular tu ficha de socio de Trankilandia Gym y generar tu carnet oficial con código de barras 1D, completa tu número de DNI:
+              </p>
+
+              <form onSubmit={handleVincularDni} className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-mono uppercase text-zinc-400 mb-2 font-bold">
+                    Número de DNI del Socio (8 dígitos)
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={inputDni}
+                    onChange={(e) => setInputDni(e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ej: 73921845"
+                    className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-2xl px-5 py-3.5 text-xl font-mono text-white tracking-widest outline-none transition-colors"
+                    required
+                  />
+                </div>
+
+                {linkError && (
+                  <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono space-y-2">
+                    <p className="font-bold flex items-center gap-1.5">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>DNI no encontrado en el padrón</span>
+                    </p>
+                    <p>{linkError}</p>
+                    <a
+                      href={`https://wa.me/51999787489?text=Hola%20Trankilandia%20Gym,%20me%20registré%20con%20el%20correo%20${encodeURIComponent(user?.email || '')}%20y%20mi%20DNI%20es%20${inputDni},%20por%20favor%20ayúdenme%20a%20vincular%20mi%20membresía.`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-amber-400 hover:text-amber-300 font-bold underline pt-1"
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      <span>Contactar a Recepción por WhatsApp (+51 999 787 489)</span>
+                    </a>
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isLinkingDni || inputDni.length < 8}
+                  className="w-full py-4 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black font-mono uppercase tracking-wider text-xs sm:text-sm transition-all shadow-lg hover:shadow-amber-400/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isLinkingDni ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Verificando en Padrón Oficial...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Generar mi Tarjeta de Ingreso</span>
+                    </>
+                  )}
+                </button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* ALERTA DE COBRANZA EN CASO DE SALDO PENDIENTE */}
+            {currentMember.balanceDue > 0 && (
           <div className="p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-xl">
             <div className="flex items-center gap-3.5">
               <div className="p-3 rounded-xl bg-amber-500 text-black font-black flex-shrink-0">
@@ -820,17 +934,21 @@ export default function ClientePortal() {
             </div>
           </div>
         </div>
+        </>
+        )}
       </main>
 
       {/* MODAL DE BOLETA / COMPROBANTE OFICIAL */}
-      <ReceiptModal
-        isOpen={isReceiptOpen}
-        onClose={() => setIsReceiptOpen(false)}
-        member={currentMember}
-        paymentAmount={currentMember.advancePaid}
-        paymentTypeTitle={currentMember.paymentType === 'advance' ? 'Adelanto de Membresía' : 'Membresía Completa'}
-        paymentMethod={currentMember.paymentMethod}
-      />
+      {currentMember && (
+        <ReceiptModal
+          isOpen={isReceiptOpen}
+          onClose={() => setIsReceiptOpen(false)}
+          member={currentMember}
+          paymentAmount={currentMember.advancePaid}
+          paymentTypeTitle={currentMember.paymentType === 'advance' ? 'Adelanto de Membresía' : 'Membresía Completa'}
+          paymentMethod={currentMember.paymentMethod}
+        />
+      )}
     </div>
   );
 }

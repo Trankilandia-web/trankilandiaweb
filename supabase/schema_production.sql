@@ -106,7 +106,7 @@ create table if not exists public.socios (
   id text primary key, -- Código legible: MEM-001, MEM-002, etc.
   user_id uuid references public.profiles(id) on delete set null,
   nombre text not null,
-  dni text unique not null,
+  dni text unique,
   email text,
   celular text,
   plan text not null,
@@ -129,6 +129,7 @@ create table if not exists public.socios (
 );
 
 -- Asegurar columnas si socios ya existía previamente
+alter table public.socios alter column dni drop not null;
 alter table public.socios add column if not exists turno text not null default 'manana';
 alter table public.socios add column if not exists coach_asignado text not null default 'Coach Marcos Rivas';
 alter table public.socios add column if not exists numero_boleta text not null default 'B001-000000';
