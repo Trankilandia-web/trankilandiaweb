@@ -325,7 +325,7 @@ export default function PlansPage({
                 <span className="text-xs text-zinc-400 font-mono">/ mes</span>
               </div>
               <p className="text-[11px] text-zinc-400 font-sans mb-4 text-left lg:text-right">
-                O puedes elegir el combo directo <strong>Plan Gym + Boxeo (S/. 140/mes)</strong> que ya lo incluye todo.
+                O puedes elegir el combo directo <strong>Plan Gym + Boxeo (S/. 130/mes)</strong> que ya lo incluye todo.
               </p>
               <motion.button
                 type="button"
@@ -366,7 +366,7 @@ export default function PlansPage({
                     <th className="w-7/36 px-4 py-5 text-center">
                       <div className="text-sm font-extrabold text-white uppercase">Plan Estudiante</div>
                       <div className="text-xs font-mono text-zinc-400 mt-0.5">
-                        S/. {billingPeriod === 'mes' ? '75' : billingPeriod === 'trimestral' ? '200' : billingPeriod === 'semestral' ? '370' : '680'}
+                        S/. {billingPeriod === 'mes' ? '70' : billingPeriod === 'trimestral' ? '180' : billingPeriod === 'semestral' ? '310' : '400'}
                       </div>
                     </th>
                     <th className="w-8/36 px-4 py-5 text-center bg-amber-400/10 border-x border-amber-400/25 relative">
@@ -375,13 +375,13 @@ export default function PlansPage({
                       </span>
                       <div className="text-sm font-extrabold text-amber-300 uppercase">Plan General</div>
                       <div className="text-xs font-mono text-amber-400 font-bold mt-0.5">
-                        S/. {billingPeriod === 'mes' ? '95' : billingPeriod === 'trimestral' ? '255' : billingPeriod === 'semestral' ? '470' : '840'}
+                        S/. {billingPeriod === 'mes' ? '80' : billingPeriod === 'trimestral' ? '190' : billingPeriod === 'semestral' ? '330' : '430'}
                       </div>
                     </th>
                     <th className="w-7/36 px-4 py-5 text-center">
                       <div className="text-sm font-extrabold text-white uppercase">Gym + Boxeo</div>
                       <div className="text-xs font-mono text-zinc-400 mt-0.5">
-                        S/. {billingPeriod === 'mes' ? '140' : billingPeriod === 'trimestral' ? '380' : billingPeriod === 'semestral' ? '690' : '1,250'}
+                        S/. {billingPeriod === 'mes' ? '130' : billingPeriod === 'trimestral' ? '320' : billingPeriod === 'semestral' ? '580' : '950'}
                       </div>
                     </th>
                   </tr>

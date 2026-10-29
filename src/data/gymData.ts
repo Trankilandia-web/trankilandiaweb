@@ -122,10 +122,10 @@ export const MEMBERSHIP_PLANS: PlanTier[] = [
     id: 'estudiante',
     name: 'Plan Estudiante',
     tagline: 'Tarifa preferencial para universitarios y escolares con carné vigente',
-    monthlyPrice: 75,
-    quarterlyPrice: 200,    // S/. 66.6 / mes · Ahorras S/. 25
-    semiannualPrice: 370,   // S/. 61.6 / mes · Ahorras S/. 80
-    annualPrice: 680,       // S/. 56.6 / mes · Ahorras S/. 220
+    monthlyPrice: 70,
+    quarterlyPrice: 180,    // S/. 60.0 / mes · Ahorras S/. 30
+    semiannualPrice: 310,   // S/. 51.6 / mes · Ahorras S/. 110
+    annualPrice: 400,       // S/. 33.3 / mes · Ahorras S/. 440
     isPopular: false,
     badge: 'TARIFA ESTUDIANTE',
     includesFreeEntry: true,
@@ -133,31 +133,31 @@ export const MEMBERSHIP_PLANS: PlanTier[] = [
     highlights: [
       'Acceso completo a sala de pesas, mancuernas y máquinas',
       'Horario libre de lunes a domingo para adaptarse a tus clases',
-      'Rutina inicial y orientación de los profesores de sala',
-      'Vestidores limpios, casilleros diarios y agua caliente',
+      'Rutina personalizada y orientación constante de los profesores',
+      'Vestidores limpios, casilleros diarios y duchas con agua caliente',
       'Área de cardio para calentamiento y salud aeróbica',
     ],
     ctaText: 'ELEGIR PLAN ESTUDIANTE',
   },
   {
     id: 'general',
-    name: 'Plan General',
-    tagline: 'La membresía más elegida para transformar tu rutina',
-    monthlyPrice: 95,
-    quarterlyPrice: 255,    // S/. 85.0 / mes · Ahorras S/. 30
-    semiannualPrice: 470,   // S/. 78.3 / mes · Ahorras S/. 100
-    annualPrice: 840,       // S/. 70.0 / mes · Ahorras S/. 300
+    name: 'Plan General Libre',
+    tagline: 'La membresía más elegida para transformar tu físico en Huamanga',
+    monthlyPrice: 80,
+    quarterlyPrice: 190,    // S/. 63.3 / mes · Ahorras S/. 50 (Tarifa real Gym.xlsm)
+    semiannualPrice: 330,   // S/. 55.0 / mes · Ahorras S/. 150 (Tarifa real Gym.xlsm)
+    annualPrice: 430,       // S/. 35.8 / mes · Ahorras S/. 530 (Tarifa real Gym.xlsm)
     isPopular: true,
     badge: 'MÁS ELEGIDO',
     includesFreeEntry: true,
-    description: 'Entrena a tu ritmo en el momento que tú elijas. Cuentas con la guía constante de instructores en sala para cuidar tu técnica y ayudarte a alcanzar tus metas.',
+    description: 'Entrena a tu ritmo sin límite de horario. Cuentas con la guía constante de instructores en sala para cuidar tu técnica y ayudarte a alcanzar tus metas.',
     highlights: [
-      'Acceso libre a toda hora dentro de nuestro horario diario',
-      'Mancuernas en todos los pesos, barras y circuito de máquinas',
-      'Asesoría y corrección técnica permanente de los instructores',
-      'Acompañamiento periódico para medir tus avances y fuerza',
+      'Acceso 100% libre a toda hora dentro de nuestro horario diario',
+      'Mancuernas en todos los pesos, barras olímpicas y circuito de máquinas',
+      'Asesoría técnica y corrección biomecánica de los instructores',
+      'Acompañamiento periódico para medir tus marcas y progresos (PRs)',
       'Casilleros seguros, vestidores y duchas con agua caliente',
-      'Tarifa con descuento si deseas sumarte a las clases de boxeo',
+      'Opción de inscripción con pago inicial (adelanto) y saldo diferido',
     ],
     ctaText: 'ELEGIR PLAN GENERAL',
   },
@@ -165,10 +165,10 @@ export const MEMBERSHIP_PLANS: PlanTier[] = [
     id: 'combo_boxeo',
     name: 'Plan Gym + Boxeo',
     tagline: 'Fuerza muscular completa + Escuela de Boxeo dirigida',
-    monthlyPrice: 140,
-    quarterlyPrice: 380,    // S/. 126.6 / mes · Ahorras S/. 40
-    semiannualPrice: 690,   // S/. 115.0 / mes · Ahorras S/. 150
-    annualPrice: 1250,      // S/. 104.1 / mes · Ahorras S/. 430
+    monthlyPrice: 130,
+    quarterlyPrice: 320,    // S/. 106.6 / mes · Ahorras S/. 70
+    semiannualPrice: 580,   // S/. 96.6 / mes · Ahorras S/. 200
+    annualPrice: 950,       // S/. 79.1 / mes · Ahorras S/. 610
     isPopular: false,
     badge: 'COMBO COMPLETO',
     includesFreeEntry: true,
@@ -176,9 +176,9 @@ export const MEMBERSHIP_PLANS: PlanTier[] = [
     description: 'La experiencia deportiva más completa: entrena en el gimnasio a tu ritmo y perfecciona tu golpeo, reflejos y cardio en las clases dirigidas de boxeo.',
     highlights: [
       'Acceso completo a toda la sala de musculación y pesas',
-      'Clases dirigidas de Boxeo con instructores dedicados',
+      'Clases dirigidas de Boxeo con instructores dedicados en ring y sacos',
       'Entrenamiento técnico en sacos pesados, manoplas y cuerda',
-      'Combinación ideal para quemar grasa, ganar agilidad y desestresarte',
+      'Combinación ideal para quemar grasa, ganar agilidad y potencia',
       'Pases de invitación para venir a entrenar con tus amigos',
     ],
     ctaText: 'ELEGIR GYM + BOXEO',

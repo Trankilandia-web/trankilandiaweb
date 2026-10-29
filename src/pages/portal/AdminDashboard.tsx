@@ -33,6 +33,8 @@ export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 25;
 
   const rawMembers = useMemo(() => getStoredMembers(), []);
 
@@ -63,11 +65,43 @@ export default function AdminDashboard() {
     return matchesSearch && matchesRole;
   });
 
+  const totalPages = Math.ceil(filteredMembers.length / pageSize) || 1;
+  const paginatedMembers = filteredMembers.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const handleUpdateRole = (id: string, newRole: UserRole) => {
     setMembers((prev) =>
       prev.map((m) => (m.id === id ? { ...m, role: newRole } : m))
     );
     setActionSuccess(`Rol de usuario actualizado a "${newRole.toUpperCase()}" con éxito.`);
+    setTimeout(() => setActionSuccess(null), 3500);
+  };
+
+  const handleExportCsv = () => {
+    const headers = ['ID', 'Nombre', 'DNI', 'Rol', 'Plan', 'Monto Cobrado (S/.)', 'Saldo Pendiente (S/.)', 'Estado', 'Vence'];
+    const rows = rawMembers.map((m) => [
+      m.id,
+      `"${m.name.replace(/"/g, '""')}"`,
+      m.dni,
+      m.id === 'MEM-001' ? 'admin' : 'cliente',
+      `"${m.plan}"`,
+      m.advancePaid,
+      m.balanceDue,
+      m.membershipStatus,
+      m.expiresAt,
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `trankilandia_padron_socios_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setActionSuccess('Padrón consolidado de 389 socios exportado exitosamente a CSV.');
     setTimeout(() => setActionSuccess(null), 3500);
   };
 
@@ -176,14 +210,11 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                setActionSuccess('Descargando reporte financiero consolidado de Huamanga...');
-                setTimeout(() => setActionSuccess(null), 3000);
-              }}
+              onClick={handleExportCsv}
               className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono border border-white/10 transition-colors cursor-pointer"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Exportar Reporte</span>
+              <span>Exportar Reporte (CSV)</span>
             </button>
             <button
               type="button"
@@ -208,7 +239,10 @@ export default function AdminDashboard() {
               <input
                 type="text"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setCurrentPage(1);
+                }}
                 placeholder="Buscar por nombre, DNI o código..."
                 className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 transition-colors"
               />
@@ -220,7 +254,10 @@ export default function AdminDashboard() {
                 <button
                   key={r}
                   type="button"
-                  onClick={() => setRoleFilter(r)}
+                  onClick={() => {
+                    setRoleFilter(r);
+                    setCurrentPage(1);
+                  }}
                   className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-colors cursor-pointer ${
                     roleFilter === r
                       ? 'bg-purple-500 text-white'
@@ -248,7 +285,7 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 font-sans">
-                {filteredMembers.map((member) => (
+                {paginatedMembers.map((member) => (
                   <tr key={member.id} className="hover:bg-white/[0.02] transition-colors">
                     <td className="py-3.5 px-4">
                       <div className="font-bold text-white">{member.name}</div>
@@ -304,6 +341,36 @@ export default function AdminDashboard() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="p-4 bg-zinc-950/80 border-t border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs font-mono">
+            <span className="text-zinc-400">
+              Mostrando {Math.min((currentPage - 1) * pageSize + 1, filteredMembers.length)} a{' '}
+              {Math.min(currentPage * pageSize, filteredMembers.length)} de {filteredMembers.length} socios registrados
+            </span>
+
+            <div className="flex items-center gap-1.5 self-center sm:self-auto">
+              <button
+                type="button"
+                disabled={currentPage <= 1}
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Anterior
+              </button>
+              <span className="px-3 py-1.5 text-zinc-400">
+                Pág. {currentPage} de {totalPages}
+              </span>
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                className="px-3 py-1.5 rounded-lg bg-zinc-900 border border-white/10 text-zinc-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         </div>
       </main>

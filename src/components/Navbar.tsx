@@ -4,6 +4,7 @@ import { Dumbbell, Menu, X, MapPin, User, Ticket, ArrowRight } from 'lucide-reac
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES_CONFIG } from '../types/roles';
+import UserProfileDropdown from './UserProfileDropdown';
 
 export interface NavbarProps {
   onOpenLoginModal?: () => void;
@@ -110,37 +111,11 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
         <div className="hidden md:flex items-center gap-2.5">
           {user ? (
             <>
-              <motion.button
-                type="button"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={() => onOpenLoginModal?.()}
-                className="flex items-center gap-2.5 bg-zinc-900 border border-amber-400/40 hover:border-amber-400 px-3.5 py-2 rounded-xl text-xs font-mono transition-all cursor-pointer shadow-md shadow-amber-400/10"
-              >
-                {user.user_metadata?.avatar_url ? (
-                  <img
-                    src={user.user_metadata.avatar_url}
-                    alt={user.user_metadata.full_name || 'Socio'}
-                    className="w-5 h-5 rounded-full object-cover"
-                  />
-                ) : (
-                  <div className="w-5 h-5 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-[10px]">
-                    {(user.email?.[0] || 'S').toUpperCase()}
-                  </div>
-                )}
-                <span className="text-white font-bold max-w-[100px] truncate">
-                  {user.user_metadata?.full_name?.split(' ')[0] || user.email?.split('@')[0] || 'Mi Cuenta'}
-                </span>
-                <span
-                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${ROLES_CONFIG[role].themeColor.badgeBg} ${ROLES_CONFIG[role].themeColor.badgeText} border ${ROLES_CONFIG[role].themeColor.badgeBorder}`}
-                >
-                  {ROLES_CONFIG[role].name.split(' ')[0]}
-                </span>
-              </motion.button>
+              <UserProfileDropdown />
 
               <Link
                 to={getRedirectPath()}
-                className="inline-flex items-center gap-1.5 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-3.5 py-2 rounded-xl text-xs font-mono shadow-md shadow-amber-400/10 transition-colors whitespace-nowrap cursor-pointer"
+                className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-3.5 py-2 rounded-xl text-xs font-mono shadow-md shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap cursor-pointer uppercase tracking-wider font-display"
               >
                 <span>MI PANEL</span>
                 <ArrowRight className="w-3.5 h-3.5" />

@@ -5,8 +5,13 @@ import {
   MessageCircle,
   Flame,
   AlertTriangle,
+  Check,
+  Printer,
+  Search,
+  Sparkles,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
+import ReceiptModal from '../../components/portal/ReceiptModal';
 import { useAuth } from '../../context/AuthContext';
 import {
   getStoredMembers,
@@ -19,13 +24,23 @@ export default function ClientePortal() {
   const { user } = useAuth();
   const members = getStoredMembers();
 
+  // Test simulation: allow picking another member from the 389 socios for testing
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [testSearch, setTestSearch] = useState('');
+  const [showMemberPicker, setShowMemberPicker] = useState(false);
+  const [completedExercises, setCompletedExercises] = useState<Record<string, boolean>>({});
+  const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+
   // Match current member or default to Luis (MEM-001)
-  const currentMember =
+  const defaultMember =
     members.find(
       (m) =>
         m.email.toLowerCase() === (user?.email || '').toLowerCase() ||
         m.dni === (user?.user_metadata?.dni || '')
     ) || members[0];
+
+  const currentMember =
+    (selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null) || defaultMember;
 
   const routines = getStoredRoutines();
   const currentRoutine = routines[currentMember.id] || INITIAL_ROUTINES['MEM-001'] || {
@@ -49,6 +64,19 @@ export default function ClientePortal() {
 
   const activeDay = currentRoutine.days[selectedDayIndex] || currentRoutine.days[0];
 
+  const toggleExercise = (exerciseId: string) => {
+    setCompletedExercises((prev) => ({
+      ...prev,
+      [exerciseId]: !prev[exerciseId],
+    }));
+  };
+
+  const filteredTestMembers = members.filter(
+    (m) =>
+      m.name.toLowerCase().includes(testSearch.toLowerCase()) ||
+      m.dni.includes(testSearch)
+  ).slice(0, 8);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16">
       <PortalHeader
@@ -58,6 +86,75 @@ export default function ClientePortal() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        {/* SIMULADOR DE PERFIL DE SOCIO PARA PRUEBAS */}
+        <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-400/10 text-amber-400">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-mono font-bold text-white block">
+                  Simulador de Socio (Modo Pruebas):
+                </span>
+                <span className="text-[11px] text-zinc-400">
+                  Viendo cuenta de: <strong className="text-amber-400">{currentMember.name}</strong> (DNI: {currentMember.dni} · {currentMember.balanceDue > 0 ? `Debe S/. ${currentMember.balanceDue}` : 'Al Día'})
+                </span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowMemberPicker(!showMemberPicker)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-white/5 transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <Search className="w-3.5 h-3.5 text-amber-400" />
+              <span>{showMemberPicker ? 'Ocultar Selector' : 'Probar con otro Socio (389 en BD)'}</span>
+            </button>
+          </div>
+
+          {showMemberPicker && (
+            <div className="mt-4 pt-3 border-t border-white/10 space-y-3">
+              <div className="relative max-w-sm">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={testSearch}
+                  onChange={(e) => setTestSearch(e.target.value)}
+                  placeholder="Buscar socio por nombre o DNI..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                {filteredTestMembers.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedMemberId(m.id);
+                      setShowMemberPicker(false);
+                    }}
+                    className={`p-2 rounded-xl text-left font-mono text-xs border transition-all cursor-pointer ${
+                      currentMember.id === m.id
+                        ? 'bg-amber-400/15 border-amber-400 text-amber-300 shadow-sm'
+                        : 'bg-zinc-950/80 border-white/5 text-zinc-300 hover:bg-zinc-800'
+                    }`}
+                  >
+                    <div className="font-bold truncate text-[11px]">{m.name}</div>
+                    <div className="text-[10px] text-zinc-400 flex items-center justify-between mt-0.5">
+                      <span>DNI: {m.dni}</span>
+                      <span className={m.balanceDue > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400'}>
+                        {m.balanceDue > 0 ? `Debe S/. ${m.balanceDue}` : 'Al Día'}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* ALERTA DE COBRANZA EN CASO DE TENER SALDO PENDIENTE */}
         {currentMember.balanceDue > 0 && (
           <div className="p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-xl">
@@ -328,6 +425,7 @@ export default function ClientePortal() {
                     <table className="w-full text-left text-xs font-mono">
                       <thead className="bg-zinc-950/80 text-zinc-400 uppercase tracking-wider border-b border-white/10">
                         <tr>
+                          <th className="py-2.5 px-3 w-8">Listo</th>
                           <th className="py-2.5 px-3">Ejercicio</th>
                           <th className="py-2.5 px-3">Series</th>
                           <th className="py-2.5 px-3">Repes</th>
@@ -336,19 +434,43 @@ export default function ClientePortal() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {activeDay.exercises.map((ex, i) => (
-                          <tr key={ex.id || i} className="hover:bg-white/[0.02]">
-                            <td className="py-2.5 px-3 font-sans font-bold text-white">
-                              {ex.name}
-                            </td>
-                            <td className="py-2.5 px-3 text-amber-400 font-bold">{ex.sets}</td>
-                            <td className="py-2.5 px-3 text-zinc-200">{ex.reps}</td>
-                            <td className="py-2.5 px-3 text-zinc-400">{ex.rest}</td>
-                            <td className="py-2.5 px-3 font-sans text-zinc-300 text-[11px]">
-                              {ex.notes || '-'}
-                            </td>
-                          </tr>
-                        ))}
+                        {activeDay.exercises.map((ex, i) => {
+                          const isDone = completedExercises[ex.id || `${selectedDayIndex}-${i}`];
+                          return (
+                            <tr
+                              key={ex.id || i}
+                              className={`transition-colors ${
+                                isDone ? 'bg-emerald-500/10' : 'hover:bg-white/[0.02]'
+                              }`}
+                            >
+                              <td className="py-2.5 px-3">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleExercise(ex.id || `${selectedDayIndex}-${i}`)}
+                                  className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
+                                    isDone
+                                      ? 'bg-emerald-500 text-black shadow-sm'
+                                      : 'bg-zinc-800 text-zinc-500 hover:text-white border border-white/10'
+                                  }`}
+                                  title={isDone ? 'Completado' : 'Marcar como completado'}
+                                >
+                                  {isDone ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : null}
+                                </button>
+                              </td>
+                              <td className="py-2.5 px-3 font-sans font-bold">
+                                <span className={isDone ? 'line-through text-zinc-400' : 'text-white'}>
+                                  {ex.name}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-3 text-amber-400 font-bold">{ex.sets}</td>
+                              <td className="py-2.5 px-3 text-zinc-200">{ex.reps}</td>
+                              <td className="py-2.5 px-3 text-zinc-400">{ex.rest}</td>
+                              <td className="py-2.5 px-3 font-sans text-zinc-300 text-[11px]">
+                                {ex.notes || '-'}
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -373,24 +495,35 @@ export default function ClientePortal() {
               </div>
 
               <div className="mt-4 space-y-3">
-                <div className="p-3.5 rounded-xl bg-zinc-950 border border-white/5 flex items-center justify-between text-xs">
+                <div className="p-4 rounded-xl bg-zinc-950 border border-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
                   <div>
-                    <div className="font-bold text-white">{currentMember.plan}</div>
+                    <div className="font-bold text-white text-sm">{currentMember.plan}</div>
                     <div className="text-[11px] text-zinc-400 font-mono mt-0.5">
-                      {currentMember.receiptNumber} · Pagado vía {currentMember.paymentMethod.toUpperCase()}
+                      Recibo: <strong className="text-zinc-200">{currentMember.receiptNumber}</strong> · Pagado vía {currentMember.paymentMethod.toUpperCase()}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-emerald-400 font-mono font-bold text-sm">
-                      S/. {currentMember.advancePaid}.00
-                    </span>
-                    <div className="text-[10px] font-mono mt-0.5">
-                      {currentMember.balanceDue > 0 ? (
-                        <span className="text-amber-400 font-bold">ADELANTO ABONADO</span>
-                      ) : (
-                        <span className="text-emerald-400 font-bold">PAGO COMPLETO</span>
-                      )}
+                  <div className="flex items-center gap-4 justify-between sm:justify-end">
+                    <div className="text-left sm:text-right">
+                      <span className="text-emerald-400 font-mono font-bold text-sm block">
+                        S/. {currentMember.advancePaid}.00
+                      </span>
+                      <div className="text-[10px] font-mono">
+                        {currentMember.balanceDue > 0 ? (
+                          <span className="text-amber-400 font-bold">ADELANTO ABONADO</span>
+                        ) : (
+                          <span className="text-emerald-400 font-bold">PAGO COMPLETO</span>
+                        )}
+                      </div>
                     </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsReceiptOpen(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono border border-white/10 transition-colors cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Ver Recibo B001</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -398,6 +531,16 @@ export default function ClientePortal() {
           </div>
         </div>
       </main>
+
+      {/* Recibo Oficial Modal */}
+      <ReceiptModal
+        isOpen={isReceiptOpen}
+        onClose={() => setIsReceiptOpen(false)}
+        member={currentMember}
+        paymentAmount={currentMember.advancePaid}
+        paymentTypeTitle={currentMember.balanceDue > 0 ? 'Adelanto de Membresía' : 'Membresía Completa'}
+        paymentMethod={currentMember.paymentMethod}
+      />
     </div>
   );
 }

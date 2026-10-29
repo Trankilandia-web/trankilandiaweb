@@ -97,6 +97,8 @@ export default function LoginModal({
       setTimeout(() => {
         setIsGoogleLoading(false);
         setDemoLoggedInUser('socio.google@gmail.com');
+        handleModalClose();
+        navigate(getRedirectPath());
       }, 700);
       return;
     }
@@ -129,6 +131,8 @@ export default function LoginModal({
       setTimeout(() => {
         setIsLoading(false);
         setDemoLoggedInUser(identifier.trim());
+        handleModalClose();
+        navigate(getRedirectPath());
       }, 700);
       return;
     }
@@ -140,6 +144,7 @@ export default function LoginModal({
         setErrorMessage(error.message);
       } else {
         handleModalClose();
+        navigate(getRedirectPath());
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error al iniciar sesión';
