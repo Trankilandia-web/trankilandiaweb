@@ -465,18 +465,27 @@ export async function updateMemberShift(
 
 /**
  * Vincular el DNI ingresado por el cliente con su cuenta de Auth personal.
- * Permite que cualquier socio ingrese con su correo personal (Gmail, Hotmail, etc.)
- * y reclame su membresía oficial para generar su carnet digital 1D.
+ * Si el DNI ya existe en el padrón, vincula su membresía histórica y activa su carnet.
+ * Si el DNI es nuevo (cliente sin membresía previa), crea su cuenta con carnet digital
+ * en estado "Sin Membresía Activa" con opción para suscribirse online o en recepción.
  */
 export async function vincularDniCliente(
   userId: string,
   userEmail: string,
-  dniIngresado: string
+  dniIngresado: string,
+  nombreIngresado?: string
 ): Promise<{ success: boolean; message: string; member?: GymMember }> {
   const cleanDni = dniIngresado.trim().replace(/\D/g, '');
   if (cleanDni.length < 8) {
     return { success: false, message: 'El DNI debe tener 8 dígitos numéricos válidos.' };
   }
+
+  const cleanName =
+    nombreIngresado?.trim() ||
+    userEmail
+      .split('@')[0]
+      .replace(/[._]/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
 
   // 1. Si Supabase está configurado, consultar base de datos
   if (isSupabaseConfigured()) {
@@ -487,91 +496,186 @@ export async function vincularDniCliente(
         .eq('dni', cleanDni)
         .maybeSingle();
 
-      if (error || !socio) {
+      if (socio && !error) {
+        // Socio existente en el padrón: Vincular con su cuenta de Google/correo
+        await supabase
+          .from('profiles')
+          .update({
+            dni: cleanDni,
+            full_name: socio.nombre,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', userId);
+
+        await supabase
+          .from('socios')
+          .update({
+            user_id: userId,
+            email: userEmail,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', socio.id);
+
+        const isExpired = socio.fecha_fin
+          ? socio.fecha_fin < new Date().toISOString().split('T')[0]
+          : false;
+
+        const mapped: GymMember = {
+          id: socio.id,
+          name: socio.nombre,
+          dni: socio.dni,
+          email: userEmail,
+          phone: socio.celular || '',
+          plan: socio.plan,
+          planPrice: Number(socio.precio_plan) || 80,
+          paymentType: socio.tipo_pago || 'full',
+          advancePaid: Number(socio.adelanto_pagado) || 0,
+          balanceDue: Number(socio.saldo_pendiente) || 0,
+          paymentDueDate: socio.fecha_limite_pago || undefined,
+          paymentMethod: socio.metodo_pago || 'efectivo',
+          receiptNumber: socio.numero_boleta || 'B001-000000',
+          membershipStatus: isExpired ? 'inactive' : 'active',
+          expiresAt: socio.fecha_fin ? `${socio.fecha_fin}` : '30 Nov 2026',
+          coachName: socio.coach_asignado || 'Coach Marcos Rivas',
+          registeredAt: socio.created_at
+            ? new Date(socio.created_at).toLocaleDateString('es-PE')
+            : 'Oct 2026',
+          observations: socio.observaciones || undefined,
+          age: socio.edad || undefined,
+          gender: socio.sexo || undefined,
+          shift: (socio.turno as 'manana' | 'tarde' | 'noche') || 'manana',
+        };
+
+        const current = getStoredMembers();
+        const updated = current.map((m) => (m.dni === cleanDni ? mapped : m));
+        saveStoredMembers(updated);
+
         return {
-          success: false,
-          message: `No se encontró ninguna membresía registrada con el DNI ${cleanDni}. Si eres socio activo, acércate a recepción o contáctanos por WhatsApp para registrar tu DNI.`,
+          success: true,
+          message: `¡Membresía vinculada con éxito a nombre de ${socio.nombre}!`,
+          member: mapped,
         };
       }
 
-      // Actualizar perfil del usuario con su DNI
+      // Si no existe en el padrón: CREAR CUENTA NUEVA CON CARNET (MEMBRESÍA POR ACTIVAR)
+      const newId = 'MEM-' + Date.now().toString().slice(-4);
+      const boletaNum = `REG-${cleanDni.slice(-4)}`;
+      const todayISO = new Date().toISOString().split('T')[0];
+
       await supabase
         .from('profiles')
-        .update({ dni: cleanDni, updated_at: new Date().toISOString() })
-        .eq('id', userId);
-
-      // Vincular socio con el user_id y su correo personal
-      await supabase
-        .from('socios')
         .update({
-          user_id: userId,
-          email: userEmail,
+          dni: cleanDni,
+          full_name: cleanName,
+          membership_status: 'inactive',
+          plan: 'Sin Membresía Activa',
           updated_at: new Date().toISOString(),
         })
-        .eq('id', socio.id);
+        .eq('id', userId);
 
-      const mapped: GymMember = {
-        id: socio.id,
-        name: socio.nombre,
-        dni: socio.dni,
+      await supabase.from('socios').insert({
+        id: newId,
+        nombre: cleanName,
+        dni: cleanDni,
         email: userEmail,
-        phone: socio.celular || '',
-        plan: socio.plan,
-        planPrice: Number(socio.precio_plan) || 80,
-        paymentType: socio.tipo_pago || 'full',
-        advancePaid: Number(socio.adelanto_pagado) || 0,
-        balanceDue: Number(socio.saldo_pendiente) || 0,
-        paymentDueDate: socio.fecha_limite_pago || undefined,
-        paymentMethod: socio.metodo_pago || 'efectivo',
-        receiptNumber: socio.numero_boleta || 'B001-000000',
-        membershipStatus: 'active',
-        expiresAt: socio.fecha_fin ? `${socio.fecha_fin}` : '30 Nov 2026',
-        coachName: socio.coach_asignado || 'Coach Marcos Rivas',
-        registeredAt: socio.created_at ? new Date(socio.created_at).toLocaleDateString('es-PE') : 'Oct 2026',
-        observations: socio.observaciones || undefined,
-        age: socio.edad || undefined,
-        gender: socio.sexo || undefined,
-        shift: (socio.turno as 'manana' | 'tarde' | 'noche') || 'manana',
+        user_id: userId,
+        plan: 'Sin Membresía Activa',
+        precio_plan: 0,
+        tipo_pago: 'full',
+        adelanto_pagado: 0,
+        saldo_pendiente: 0,
+        fecha_inicio: todayISO,
+        fecha_fin: todayISO,
+        metodo_pago: 'efectivo',
+        numero_boleta: boletaNum,
+        turno: 'manana',
+        coach_asignado: 'Coach Marcos Rivas',
+        observaciones: 'Cuenta digital creada. Pendiente de suscripción a un plan.',
+      });
+
+      const newMember: GymMember = {
+        id: newId,
+        name: cleanName,
+        dni: cleanDni,
+        email: userEmail,
+        phone: '',
+        plan: 'Sin Membresía Activa',
+        planPrice: 0,
+        paymentType: 'full',
+        advancePaid: 0,
+        balanceDue: 0,
+        paymentDueDate: null,
+        paymentMethod: 'efectivo',
+        receiptNumber: boletaNum,
+        membershipStatus: 'inactive',
+        expiresAt: 'Por Activar',
+        coachName: 'Coach Marcos Rivas',
+        registeredAt: todayISO,
+        observations: 'Cuenta digital creada. Pendiente de suscripción a un plan.',
+        shift: 'manana',
       };
 
       const current = getStoredMembers();
-      const updated = current.map((m) => (m.dni === cleanDni ? mapped : m));
-      saveStoredMembers(updated);
+      saveStoredMembers([newMember, ...current]);
 
       return {
         success: true,
-        message: `¡Membresía vinculada con éxito a nombre de ${socio.nombre}!`,
-        member: mapped,
+        message: `¡Cuenta creada exitosamente! Tu tarjeta de socio está lista.`,
+        member: newMember,
       };
     } catch (err: any) {
-      return {
-        success: false,
-        message: 'Error de conexión: ' + (err.message || 'Intente nuevamente'),
-      };
+      console.warn('Supabase link failed, fallback to local creation:', err);
     }
   }
 
   // 2. Modo Offline / Fallback Local
   const localMembers = getStoredMembers();
   const match = localMembers.find((m) => m.dni === cleanDni);
-  if (!match) {
+  if (match) {
+    const updatedMember: GymMember = {
+      ...match,
+      email: userEmail,
+    };
+    const updatedList = localMembers.map((m) => (m.dni === cleanDni ? updatedMember : m));
+    saveStoredMembers(updatedList);
     return {
-      success: false,
-      message: `No se encontró ninguna membresía con el DNI ${cleanDni} en el padrón local.`,
+      success: true,
+      message: `¡Membresía vinculada con éxito a nombre de ${match.name}!`,
+      member: updatedMember,
     };
   }
 
-  const updatedMember: GymMember = {
-    ...match,
+  // Crear nuevo en local
+  const newId = 'MEM-' + Date.now().toString().slice(-4);
+  const todayISO = new Date().toISOString().split('T')[0];
+  const newMember: GymMember = {
+    id: newId,
+    name: cleanName,
+    dni: cleanDni,
     email: userEmail,
+    phone: '',
+    plan: 'Sin Membresía Activa',
+    planPrice: 0,
+    paymentType: 'full',
+    advancePaid: 0,
+    balanceDue: 0,
+    paymentDueDate: null,
+    paymentMethod: 'efectivo',
+    receiptNumber: `REG-${cleanDni.slice(-4)}`,
+    membershipStatus: 'inactive',
+    expiresAt: 'Por Activar',
+    coachName: 'Coach Marcos Rivas',
+    registeredAt: todayISO,
+    observations: 'Cuenta digital creada. Pendiente de suscripción a un plan.',
+    shift: 'manana',
   };
-  const updatedList = localMembers.map((m) => (m.dni === cleanDni ? updatedMember : m));
-  saveStoredMembers(updatedList);
+
+  saveStoredMembers([newMember, ...localMembers]);
 
   return {
     success: true,
-    message: `¡Membresía vinculada con éxito a nombre de ${match.name}!`,
-    member: updatedMember,
+    message: `¡Cuenta creada con éxito! Tu tarjeta de socio está lista.`,
+    member: newMember,
   };
 }
 

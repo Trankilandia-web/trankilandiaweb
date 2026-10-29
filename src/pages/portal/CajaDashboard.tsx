@@ -355,14 +355,21 @@ export default function CajaDashboard() {
       setClienteNombrePOS(socio.nombre);
       setClienteDniPOS(socio.dni);
 
-      // C) Membresía Vencida
-      if (socio.estado_calculado === 'vencido') {
+      // C) Membresía Vencida o Sin Membresía Activa
+      if (
+        socio.estado_calculado === 'vencido' ||
+        socio.plan === 'Sin Membresía Activa' ||
+        socio.precio_plan === 0
+      ) {
         playTone('error');
+        const isSinPlan = socio.plan === 'Sin Membresía Activa' || socio.precio_plan === 0;
         setLastScanResult({
           status: 'vencido',
           socio,
           dni: targetDni,
-          message: `MEMBRESÍA VENCIDA HACE ${Math.abs(socio.dias_restantes)} DÍAS`,
+          message: isSinPlan
+            ? `ACCESO DENEGADO · SOCIO SIN MEMBRESÍA ACTIVA`
+            : `MEMBRESÍA VENCIDA HACE ${Math.abs(socio.dias_restantes)} DÍAS`,
           timestamp: now,
         });
         return;
@@ -1199,7 +1206,7 @@ export default function CajaDashboard() {
                       </div>
                     )}
 
-                    {/* CASO 4: SOCIO CON MEMBRESÍA VENCIDA */}
+                    {/* CASO 4: SOCIO CON MEMBRESÍA VENCIDA O SIN MEMBRESÍA ACTIVA */}
                     {lastScanResult.status === 'vencido' && lastScanResult.socio && (
                       <div className="p-6 rounded-2xl bg-red-500/10 border-2 border-red-500/50 relative overflow-hidden">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1209,28 +1216,35 @@ export default function CajaDashboard() {
                             </div>
                             <div>
                               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-black uppercase bg-red-500/20 text-red-300 border border-red-500/30">
-                                <span>🔴 MEMBRESÍA VENCIDA</span>
+                                <span>
+                                  {lastScanResult.socio.plan === 'Sin Membresía Activa' || lastScanResult.socio.precio_plan === 0
+                                    ? '🔴 ACCESO DENEGADO · SIN MEMBRESÍA'
+                                    : '🔴 MEMBRESÍA VENCIDA'}
+                                </span>
                               </div>
                               <h3 className="text-2xl font-black text-white font-display uppercase tracking-tight mt-1.5">
                                 {lastScanResult.socio.nombre}
                               </h3>
                               <p className="text-xs text-red-200 font-mono mt-0.5">
-                                Su plan venció hace {Math.abs(lastScanResult.socio.dias_restantes)} días. Requiere renovación para ingresar a entrenar.
+                                {lastScanResult.socio.plan === 'Sin Membresía Activa' || lastScanResult.socio.precio_plan === 0
+                                  ? 'Socio registrado con carnet pero sin plan activo. Requiere inscripción para ingresar.'
+                                  : `Su plan venció hace ${Math.abs(lastScanResult.socio.dias_restantes)} días. Requiere renovación para ingresar a entrenar.`}
                               </p>
                             </div>
                           </div>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActiveTab('inscripciones');
-                              setClientName(lastScanResult.socio?.nombre || '');
-                              setClientDni(lastScanResult.socio?.dni || '');
-                            }}
-                            className="px-6 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-display uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-400/20"
-                          >
-                            RENOVAR MEMBRESÍA
-                          </button>
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const found = members.find((m) => m.dni === lastScanResult.socio?.dni);
+                                if (found) setProfileModalMember(found);
+                              }}
+                              className="px-5 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-display uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-400/20"
+                            >
+                              ⚡ Inscribir / Renovar Membresía
+                            </button>
+                          </div>
                         </div>
                       </div>
                     )}

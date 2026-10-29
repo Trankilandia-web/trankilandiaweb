@@ -72,12 +72,17 @@ export default function MemberProfileModal({
       setFormData((prev) => {
         const newPrice = found.price;
         const balance = Math.max(0, newPrice - prev.advancePaid);
+        const expDate = new Date();
+        expDate.setMonth(expDate.getMonth() + (found.months || 1));
+        const newExpiresAt = expDate.toISOString().split('T')[0];
         return {
           ...prev,
           plan: found.name,
           planPrice: newPrice,
           balanceDue: balance,
           paymentType: balance === 0 ? 'full' : 'advance',
+          membershipStatus: 'active',
+          expiresAt: prev.expiresAt && prev.membershipStatus === 'active' ? prev.expiresAt : newExpiresAt,
         };
       });
     }
@@ -308,6 +313,11 @@ export default function MemberProfileModal({
                   onChange={(e) => handlePlanSelect(e.target.value)}
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-sans"
                 >
+                  {(formData.plan === 'Sin Membresía Activa' || !GYM_PLANS.some((p) => p.name === formData.plan)) && (
+                    <option value={formData.plan}>
+                      {formData.plan === 'Sin Membresía Activa' ? '⚪ Sin Membresía Activa (Seleccionar Plan)' : formData.plan}
+                    </option>
+                  )}
                   {GYM_PLANS.map((p) => (
                     <option key={p.name} value={p.name}>
                       {p.name} — S/. {p.price}.00 ({p.months} {p.months === 1 ? 'mes' : 'meses'})
