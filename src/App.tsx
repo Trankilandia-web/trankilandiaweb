@@ -16,6 +16,7 @@ import AdminDashboard from './pages/portal/AdminDashboard';
 import CajaDashboard from './pages/portal/CajaDashboard';
 import EntrenadorDashboard from './pages/portal/EntrenadorDashboard';
 import ClientePortal from './pages/portal/ClientePortal';
+import ProtectedRoute from './components/portal/ProtectedRoute';
 
 function AppContent() {
   const [isTourModalOpen, setIsTourModalOpen] = useState(false);
@@ -76,12 +77,40 @@ function AppContent() {
             element={<FacilitiesPage onOpenTourModal={() => handleOpenTour()} />}
           />
 
-          {/* Role Index & Management Portal Routes */}
+          {/* Role Index & Management Portal Routes con Protección de Roles Estricta */}
           <Route path="/portal" element={<PortalRedirect />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/caja" element={<CajaDashboard />} />
-          <Route path="/entrenador" element={<EntrenadorDashboard />} />
-          <Route path="/cliente" element={<ClientePortal />} />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute allowedRoles={['admin']}>
+                <AdminDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/caja"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'caja']}>
+                <CajaDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/entrenador"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'entrenador']}>
+                <EntrenadorDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/cliente"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'caja', 'entrenador', 'cliente']}>
+                <ClientePortal />
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback to Home */}
           <Route path="*" element={<Navigate to="/" replace />} />

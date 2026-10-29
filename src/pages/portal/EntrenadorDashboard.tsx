@@ -28,10 +28,12 @@ import {
   getStoredMembers,
   getStoredProgress,
 } from '../../data/gymStore';
+import { isSupabaseConfigured } from '../../lib/supabase';
 import {
   getMemberRoutine,
   saveMemberRoutine,
   saveProgressRecord,
+  getGymMembers,
 } from '../../lib/supabaseDb';
 
 // Staff Oficial de Entrenadores (2 mujeres, 2 varones en los 3 turnos oficiales)
@@ -151,7 +153,18 @@ const ROUTINE_TEMPLATES = [
 ];
 
 export default function EntrenadorDashboard() {
-  const [members] = useState<GymMember[]>(getStoredMembers());
+  const [members, setMembers] = useState<GymMember[]>(getStoredMembers());
+
+  // Sincronizar socios con base de datos en tiempo real
+  useEffect(() => {
+    if (isSupabaseConfigured()) {
+      getGymMembers().then((dbMembers: GymMember[]) => {
+        if (dbMembers && dbMembers.length > 0) {
+          setMembers(dbMembers);
+        }
+      });
+    }
+  }, []);
 
   // Filtros de Turno y Coach
   const [filterShift, setFilterShift] = useState<'all' | 'manana' | 'tarde' | 'noche'>('all');
@@ -162,6 +175,13 @@ export default function EntrenadorDashboard() {
 
   // Socio seleccionado
   const [selectedMember, setSelectedMember] = useState<GymMember>(members[0]);
+
+  // Si members cambia y no hay seleccionado, auto-seleccionar el primero
+  useEffect(() => {
+    if (!selectedMember && members.length > 0) {
+      setSelectedMember(members[0]);
+    }
+  }, [members, selectedMember]);
 
   // Caché de Rutinas bajo demanda (Lazy Fetching)
   const [loadedRoutines, setLoadedRoutines] = useState<Record<string, MemberRoutine>>({});

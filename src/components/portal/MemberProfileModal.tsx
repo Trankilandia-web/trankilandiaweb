@@ -62,6 +62,14 @@ export default function MemberProfileModal({
         next.paymentType = next.balanceDue === 0 ? 'full' : 'advance';
       }
 
+      // Si cambia el turno, auto-asignar el primer coach de ese turno oficial
+      if (field === 'shift') {
+        const coachOfShift = OFFICIAL_COACHES.find((c) => c.shift === value);
+        if (coachOfShift) {
+          next.coachName = coachOfShift.name;
+        }
+      }
+
       return next;
     });
   };
@@ -463,11 +471,20 @@ export default function MemberProfileModal({
                   onChange={(e) => handleInputChange('coachName', e.target.value)}
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-sans"
                 >
-                  {OFFICIAL_COACHES.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name} — {c.specialty} ({c.shiftLabel})
-                    </option>
-                  ))}
+                  <optgroup label="Entrenadores del Turno Seleccionado">
+                    {OFFICIAL_COACHES.filter((c) => c.shift === formData.shift).map((c) => (
+                      <option key={c.id} value={c.name}>
+                        ★ {c.name} — {c.specialty} ({c.gender === 'mujer' ? 'Coach Mujer' : 'Coach Varón'})
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Entrenadores de Otros Turnos">
+                    {OFFICIAL_COACHES.filter((c) => c.shift !== formData.shift).map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name} — {c.specialty} ({c.shiftLabel})
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
             </div>

@@ -15,7 +15,6 @@ import {
   Moon,
   Clock,
   UserCheck,
-  CheckCircle2,
   CreditCard,
   Lock,
   X,
@@ -33,7 +32,6 @@ import {
 } from '../../data/gymStore';
 import {
   getMemberRoutine,
-  updateMemberShift,
   vincularDniCliente,
 } from '../../lib/supabaseDb';
 import {
@@ -148,12 +146,6 @@ export default function ClientePortal() {
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
 
-  // Estados de turno y entrenador
-  const [selectedShift, setSelectedShift] = useState<'manana' | 'tarde' | 'noche'>('manana');
-  const [selectedCoachName, setSelectedCoachName] = useState<string>('Coach Marcos Rivas');
-  const [isSavingShift, setIsSavingShift] = useState(false);
-  const [shiftSuccessMsg, setShiftSuccessMsg] = useState<string | null>(null);
-
   // Rutina cargada con caché de 10 min
   const [memberRoutine, setMemberRoutine] = useState<MemberRoutine | null>(null);
   const [isLoadingRoutine, setIsLoadingRoutine] = useState(false);
@@ -211,14 +203,6 @@ export default function ClientePortal() {
       setLinkError(res.message);
     }
   };
-
-  // Sincronizar estados locales de turno y coach con el socio seleccionado
-  useEffect(() => {
-    if (currentMember) {
-      setSelectedShift(currentMember.shift || 'manana');
-      setSelectedCoachName(currentMember.coachName || 'Coach Marcos Rivas');
-    }
-  }, [currentMember]);
 
   // CARGAR RUTINA CON CACHÉ DE CLIENTE (TTL: 10 MINUTOS EN SESSIONSTORAGE)
   const loadRoutineWithCache = useCallback(
@@ -322,31 +306,6 @@ export default function ClientePortal() {
     );
   };
 
-  // ACTUALIZAR TURNO Y ENTRENADOR
-  const handleSaveShift = async () => {
-    if (!currentMember) return;
-    setIsSavingShift(true);
-    try {
-      await updateMemberShift(currentMember.id, selectedShift, selectedCoachName);
-
-      // Actualizar estado en memoria
-      const updated = members.map((m) =>
-        m.id === currentMember.id
-          ? { ...m, shift: selectedShift, coachName: selectedCoachName }
-          : m
-      );
-      setMembers(updated);
-
-      setShiftSuccessMsg(
-        `¡Turno actualizado a ${selectedShift.toUpperCase()} con ${selectedCoachName}!`
-      );
-      setTimeout(() => setShiftSuccessMsg(null), 4000);
-    } catch {
-      alert('Error al guardar el nuevo turno. Comprueba tu conexión.');
-    }
-    setIsSavingShift(false);
-  };
-
   const progressList = currentMember
     ? getStoredProgress().filter((p) => p.memberId === currentMember.id)
     : [];
@@ -369,10 +328,6 @@ export default function ClientePortal() {
         (m.dni && m.dni.includes(testSearch))
     )
     .slice(0, 8);
-
-  const coachesForSelectedShift = OFFICIAL_COACHES.filter(
-    (c) => c.shift === selectedShift
-  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
@@ -794,7 +749,7 @@ export default function ClientePortal() {
                   </div>
                 </div>
 
-                {/* CARD: SELECTOR DE TURNO & ENTRENADOR ENCARGADO */}
+                {/* CARD INFORMATIVO: TURNO OFICIAL & ENTRENADOR ASIGNADO (SOLO LECTURA PARA EL SOCIO) */}
                 <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-5 shadow-xl space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/10">
                     <div className="flex items-center gap-2">
@@ -803,115 +758,84 @@ export default function ClientePortal() {
                         Mi Turno & Entrenador
                       </h3>
                     </div>
-                    <span className="text-[11px] font-mono text-zinc-400">Atención 6am - 10pm</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-amber-400 border border-amber-400/20 font-bold uppercase">
+                      Oficial · Asignado
+                    </span>
                   </div>
 
-                  {shiftSuccessMsg && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-                  <span>{shiftSuccessMsg}</span>
-                </div>
-              )}
-
-              {/* Selector de los 3 Turnos Oficiales */}
-              <div className="space-y-2">
-                <label className="block text-[11px] font-mono uppercase text-zinc-400 font-bold">
-                  Selecciona tu Turno de Entrenamiento:
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'manana', label: 'Mañana', time: '6am - 2pm', icon: Sun },
-                    { id: 'tarde', label: 'Tarde', time: '2pm - 6pm', icon: Sunset },
-                    { id: 'noche', label: 'Noche', time: '6pm - 10pm', icon: Moon },
-                  ].map((t) => {
-                    const Icon = t.icon;
-                    const isSelected = selectedShift === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedShift(t.id as any);
-                          // Autoasignar el primer coach de ese turno
-                          const coachOfShift = OFFICIAL_COACHES.find((c) => c.shift === t.id);
-                          if (coachOfShift) setSelectedCoachName(coachOfShift.name);
-                        }}
-                        className={`p-2.5 rounded-xl border text-center flex flex-col items-center gap-1 cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-amber-400/20 border-amber-400 text-amber-400 shadow-md'
-                            : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
-                        }`}
-                      >
-                        <Icon className="w-4 h-4" />
-                        <span className="text-xs font-bold font-mono">{t.label}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">{t.time}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Selector de Entrenador Asignado */}
-              <div className="space-y-2">
-                <label className="block text-[11px] font-mono uppercase text-zinc-400 font-bold">
-                  Entrenador Encargado de tu Asesoría:
-                </label>
-                <div className="space-y-2">
-                  {coachesForSelectedShift.map((coach) => {
-                    const isSelected = selectedCoachName === coach.name;
-                    return (
-                      <button
-                        key={coach.id}
-                        type="button"
-                        onClick={() => setSelectedCoachName(coach.name)}
-                        className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between gap-2 cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-emerald-500/15 border-emerald-500 text-white'
-                            : 'bg-zinc-950 border-white/10 text-zinc-300 hover:bg-zinc-800'
-                        }`}
-                      >
-                        <div>
-                          <div className="text-xs font-bold font-sans flex items-center gap-1.5">
-                            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>{coach.name}</span>
-                            <span className="text-[10px] font-mono text-zinc-400">
-                              ({coach.gender === 'mujer' ? 'Coach Femenina' : 'Coach Masculino'})
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
-                            {coach.specialty}
-                          </div>
+                  {/* Visualización del Turno Asignado */}
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-white/10 space-y-1.5">
+                    <div className="text-[10px] font-mono text-zinc-400 uppercase font-bold flex items-center justify-between">
+                      <span>Turno Oficial:</span>
+                      <span className="text-zinc-500 font-mono">Aforo Controlado</span>
+                    </div>
+                    <div className="flex items-center gap-3 pt-0.5">
+                      <div className="p-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400">
+                        {currentMember.shift === 'manana' && <Sun className="w-5 h-5" />}
+                        {currentMember.shift === 'tarde' && <Sunset className="w-5 h-5" />}
+                        {currentMember.shift === 'noche' && <Moon className="w-5 h-5" />}
+                        {!currentMember.shift && <Sun className="w-5 h-5" />}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold font-display uppercase text-white tracking-wide">
+                          {currentMember.shift === 'manana'
+                            ? 'Turno Mañana'
+                            : currentMember.shift === 'tarde'
+                            ? 'Turno Tarde'
+                            : 'Turno Noche'}
                         </div>
+                        <div className="text-xs font-mono text-amber-300 font-semibold mt-0.5">
+                          {currentMember.shift === 'manana'
+                            ? '6:00 AM – 2:00 PM'
+                            : currentMember.shift === 'tarde'
+                            ? '2:00 PM – 6:00 PM'
+                            : '6:00 PM – 10:00 PM'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-                        {isSelected && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
-                        )}
-                      </button>
-                    );
-                  })}
+                  {/* Visualización del Entrenador Asignado */}
+                  <div className="p-3.5 rounded-xl bg-zinc-950 border border-white/10 space-y-1.5">
+                    <div className="text-[10px] font-mono text-zinc-400 uppercase font-bold flex items-center justify-between">
+                      <span>Coach a Cargo:</span>
+                      <span className="text-emerald-400 font-bold">Staff Oficial</span>
+                    </div>
+                    <div className="flex items-center gap-3 pt-0.5">
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                        <UserCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold font-display text-white">
+                          {currentMember.coachName || 'Coach Marcos Rivas'}
+                        </div>
+                        <div className="text-[11px] font-mono text-zinc-400 mt-0.5">
+                          {OFFICIAL_COACHES.find((c) => c.name === currentMember.coachName)?.specialty ||
+                            'Fuerza, Hipertrofia & Musculación'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Aviso Administrativo & Botón de Coordinación con Recepción */}
+                  <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/5 space-y-2">
+                    <p className="text-[11px] font-mono text-zinc-400 leading-relaxed">
+                      ℹ️ El turno y entrenador son asignados por gerencia para garantizar el aforo y la calidad de tu rutina. Si deseas solicitar un cambio de horario, solicítalo con Recepción.
+                    </p>
+                    <a
+                      href={`https://wa.me/51999787489?text=Hola%20Trankilandia%20Gym,%20soy%20${encodeURIComponent(
+                        currentMember.name
+                      )}%20(DNI%20${currentMember.dni}).%20Quisiera%20solicitar%20un%20cambio%20en%20mi%20turno%20de%20entrenamiento%20o%20coach%20asignado.`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2.5 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-mono text-xs font-bold border border-amber-400/20 transition-all flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>Solicitar Cambio en Recepción</span>
+                    </a>
+                  </div>
                 </div>
               </div>
-
-              <button
-                type="button"
-                disabled={isSavingShift}
-                onClick={handleSaveShift}
-                className="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-mono text-xs font-bold border border-amber-400/30 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {isSavingShift ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Guardando...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Guardar Turno & Entrenador</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
 
           {/* COLUMNA DERECHA: RUTINA DEL COACH & SEGUIMIENTO (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
