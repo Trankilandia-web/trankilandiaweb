@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   Users,
@@ -11,9 +11,11 @@ import {
   FileSpreadsheet,
   CheckCircle2,
   Filter,
+  AlertTriangle,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import { UserRole } from '../../types/roles';
+import { getStoredMembers } from '../../data/gymStore';
 
 interface MemberRecord {
   id: string;
@@ -24,76 +26,33 @@ interface MemberRecord {
   status: 'active' | 'expiring' | 'inactive';
   expiresIn: string;
   lastVisit: string;
+  balanceDue: number;
 }
-
-const INITIAL_MEMBERS: MemberRecord[] = [
-  {
-    id: 'MEM-001',
-    name: 'Luis Gerardo Llocclla',
-    dni: '73921845',
-    role: 'admin',
-    plan: 'Pase Anual + Boxeo Pro',
-    status: 'active',
-    expiresIn: '315 días',
-    lastVisit: 'Hoy, 06:15 PM',
-  },
-  {
-    id: 'MEM-002',
-    name: 'Carlos Mendoza Ramos',
-    dni: '48201934',
-    role: 'entrenador',
-    plan: 'Staff Deportivo · Boxeo',
-    status: 'active',
-    expiresIn: 'Indefinido',
-    lastVisit: 'Hoy, 04:00 PM',
-  },
-  {
-    id: 'MEM-003',
-    name: 'Valeria Quispe Huamán',
-    dni: '74129088',
-    role: 'caja',
-    plan: 'Staff Recepción & Ventas',
-    status: 'active',
-    expiresIn: 'Indefinido',
-    lastVisit: 'Hoy, 02:30 PM',
-  },
-  {
-    id: 'MEM-004',
-    name: 'Javier Rojas Palomino',
-    dni: '72983411',
-    role: 'cliente',
-    plan: '3 Meses · Musculación Libre',
-    status: 'active',
-    expiresIn: '48 días',
-    lastVisit: 'Hoy, 05:40 PM',
-  },
-  {
-    id: 'MEM-005',
-    name: 'Maricielo Sulca Cárdenas',
-    dni: '76541230',
-    role: 'cliente',
-    plan: '1 Mes · Combo Boxeo + Pesas',
-    status: 'expiring',
-    expiresIn: '3 días',
-    lastVisit: 'Ayer, 07:10 PM',
-  },
-  {
-    id: 'MEM-006',
-    name: 'Renato Flores Bendezú',
-    dni: '70192834',
-    role: 'cliente',
-    plan: '6 Meses · Musculación Libre',
-    status: 'active',
-    expiresIn: '112 días',
-    lastVisit: 'Hoy, 06:30 PM',
-  },
-];
 
 export default function AdminDashboard() {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
-  const [members, setMembers] = useState<MemberRecord[]>(INITIAL_MEMBERS);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+
+  const rawMembers = useMemo(() => getStoredMembers(), []);
+
+  const [members, setMembers] = useState<MemberRecord[]>(() => {
+    return rawMembers.map((m, idx) => ({
+      id: m.id,
+      name: m.name,
+      dni: m.dni,
+      role: m.id === 'MEM-001' ? 'admin' : idx === 1 ? 'entrenador' : idx === 2 ? 'caja' : 'cliente',
+      plan: m.balanceDue > 0 ? `${m.plan} (Debe S/. ${m.balanceDue})` : m.plan,
+      status: m.membershipStatus,
+      expiresIn: m.expiresAt,
+      lastVisit: idx < 6 ? 'Hoy en sala' : 'Esta semana',
+      balanceDue: m.balanceDue,
+    }));
+  });
+
+  const totalMembers = rawMembers.length;
+  const totalDebts = rawMembers.reduce((sum, m) => sum + m.balanceDue, 0);
+  const totalRevenue = rawMembers.reduce((sum, m) => sum + m.advancePaid, 0);
 
   const filteredMembers = members.filter((m) => {
     const matchesSearch =
@@ -136,44 +95,51 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-purple-500/40 transition-colors">
             <div className="flex items-center justify-between text-zinc-400">
-              <span className="text-xs font-mono uppercase tracking-wider">Socios Activos</span>
+              <span className="text-xs font-mono uppercase tracking-wider">Padrón de Socios</span>
               <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
                 <Users className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-black font-display text-white">524</span>
-              <span className="text-xs font-mono text-emerald-400 font-bold">+12% este mes</span>
+              <span className="text-3xl font-black font-display text-white">{totalMembers}</span>
+              <span className="text-xs font-mono text-emerald-400 font-bold">Activos</span>
             </div>
-            <p className="text-[11px] text-zinc-500 mt-1">480 Musculación · 144 Boxeo</p>
+            <p className="text-[11px] text-zinc-500 mt-1">Sede Central Huamanga, Ayacucho</p>
           </div>
 
           <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-emerald-500/40 transition-colors">
             <div className="flex items-center justify-between text-zinc-400">
-              <span className="text-xs font-mono uppercase tracking-wider">Ingresos de Hoy</span>
+              <span className="text-xs font-mono uppercase tracking-wider">Recaudación Cobrada</span>
               <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
                 <DollarSign className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-black font-display text-white">S/. 1,850</span>
-              <span className="text-xs font-mono text-zinc-400">14 pagos</span>
+              <span className="text-3xl font-black font-display text-white">
+                S/. {totalRevenue.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+              </span>
             </div>
-            <p className="text-[11px] text-zinc-500 mt-1">Efectivo: S/. 620 · Yape/Plin: S/. 1,230</p>
+            <p className="text-[11px] text-zinc-500 mt-1">Efectivo + Pagos con QR (Yape / Plin)</p>
           </div>
 
-          <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-amber-500/40 transition-colors">
+          <div className="bg-zinc-900/70 border border-amber-500/30 rounded-2xl p-5 relative overflow-hidden group hover:border-amber-500/50 transition-colors">
             <div className="flex items-center justify-between text-zinc-400">
-              <span className="text-xs font-mono uppercase tracking-wider">Facturación Mensual</span>
+              <span className="text-xs font-mono uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Saldos por Cobrar</span>
+              </span>
               <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
                 <TrendingUp className="w-5 h-5" />
               </div>
             </div>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-black font-display text-white">S/. 28,400</span>
-              <span className="text-xs font-mono text-emerald-400 font-bold">88.7%</span>
+              <span className="text-3xl font-black font-display text-amber-400">
+                S/. {totalDebts.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+              </span>
             </div>
-            <p className="text-[11px] text-zinc-500 mt-1">Meta mensual S/. 32,000 en Huamanga</p>
+            <p className="text-[11px] text-zinc-400 mt-1 font-mono">
+              Adelantos pendientes de completar en Caja
+            </p>
           </div>
 
           <div className="bg-zinc-900/70 border border-white/10 rounded-2xl p-5 relative overflow-hidden group hover:border-cyan-500/40 transition-colors">
@@ -185,7 +151,7 @@ export default function AdminDashboard() {
             </div>
             <div className="mt-3 flex items-baseline gap-2">
               <span className="text-3xl font-black font-display text-white">42 / 65</span>
-              <span className="text-xs font-mono text-amber-400 font-bold">64% aforo</span>
+              <span className="text-xs font-mono text-emerald-400 font-bold">64% ocupación</span>
             </div>
             <p className="text-[11px] text-zinc-500 mt-1">28 Sala Pesas · 14 Escuela Boxeo</p>
           </div>

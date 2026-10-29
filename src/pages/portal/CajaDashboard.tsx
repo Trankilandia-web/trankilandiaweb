@@ -13,11 +13,13 @@ import {
   DollarSign,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
+import ReceiptModal from '../../components/portal/ReceiptModal';
 import {
   GymMember,
   getStoredMembers,
   saveStoredMembers,
 } from '../../data/gymStore';
+import { registerGymMember, payMemberBalance } from '../../lib/supabaseDb';
 
 const PLANS_CATALOG = [
   { name: '1 Mes · Musculación Libre', price: 80 },
@@ -53,6 +55,21 @@ export default function CajaDashboard() {
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
   const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Digital Receipt Modal
+  const [receiptModal, setReceiptModal] = useState<{
+    isOpen: boolean;
+    member: GymMember | null;
+    amount: number;
+    type: string;
+    method: string;
+  }>({
+    isOpen: false,
+    member: null,
+    amount: 0,
+    type: '',
+    method: '',
+  });
 
   useEffect(() => {
     saveStoredMembers(members);
@@ -116,8 +133,18 @@ export default function CajaDashboard() {
 
     const updated = [newMember, ...members];
     setMembers(updated);
+    registerGymMember(newMember);
     setScannedMember(newMember);
     setHasSearched(true);
+
+    // Open receipt modal immediately
+    setReceiptModal({
+      isOpen: true,
+      member: newMember,
+      amount: paid,
+      type: isAdvancePayment ? 'Adelanto de Membresía' : 'Membresía Completa',
+      method: paymentMethod,
+    });
 
     setSuccessMessage(
       isAdvancePayment
@@ -140,6 +167,8 @@ export default function CajaDashboard() {
     if (!liquidatingMember) return;
 
     const amountPaid = liquidatingMember.balanceDue;
+    payMemberBalance(liquidatingMember.id, liquidateMethod);
+
     const updated = members.map((m) => {
       if (m.id === liquidatingMember.id) {
         return {
@@ -157,6 +186,17 @@ export default function CajaDashboard() {
     setMembers(updated);
     const updatedScanned = updated.find((m) => m.id === liquidatingMember.id) || null;
     setScannedMember(updatedScanned);
+
+    if (updatedScanned) {
+      setReceiptModal({
+        isOpen: true,
+        member: updatedScanned,
+        amount: amountPaid,
+        type: 'Cancelación de Saldo Pendiente',
+        method: liquidateMethod,
+      });
+    }
+
     setSuccessMessage(
       `¡Saldo pendiente de S/. ${amountPaid}.00 cobrado con éxito! La membresía de ${liquidatingMember.name} ahora está 100% cancelada.`
     );
@@ -365,7 +405,15 @@ export default function CajaDashboard() {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => alert(`Reimprimiendo boleta ${scannedMember.receiptNumber} para ${scannedMember.name}`)}
+                          onClick={() => {
+                            setReceiptModal({
+                              isOpen: true,
+                              member: scannedMember,
+                              amount: scannedMember.advancePaid,
+                              type: scannedMember.paymentType === 'advance' ? 'Adelanto' : 'Pago Completo',
+                              method: scannedMember.paymentMethod,
+                            });
+                          }}
                           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 border border-white/10 text-xs font-mono text-zinc-300 hover:text-white transition-colors cursor-pointer"
                         >
                           <Printer className="w-3.5 h-3.5 text-amber-400" />
@@ -776,6 +824,16 @@ export default function CajaDashboard() {
           </motion.div>
         </div>
       )}
+
+      {/* MODAL DE COMPROBANTE OFICIAL (IMPRESIÓN & WHATSAPP) */}
+      <ReceiptModal
+        isOpen={receiptModal.isOpen}
+        onClose={() => setReceiptModal({ ...receiptModal, isOpen: false })}
+        member={receiptModal.member}
+        paymentAmount={receiptModal.amount}
+        paymentTypeTitle={receiptModal.type}
+        paymentMethod={receiptModal.method}
+      />
     </div>
   );
 }

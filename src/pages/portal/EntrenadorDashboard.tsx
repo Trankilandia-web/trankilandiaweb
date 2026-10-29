@@ -21,10 +21,9 @@ import {
   ProgressRecord,
   getStoredMembers,
   getStoredRoutines,
-  saveStoredRoutines,
   getStoredProgress,
-  saveStoredProgress,
 } from '../../data/gymStore';
+import { saveMemberRoutine, saveProgressRecord } from '../../lib/supabaseDb';
 
 // Plantillas predeterminadas de rutinas
 const ROUTINE_TEMPLATES = [
@@ -154,7 +153,7 @@ export default function EntrenadorDashboard() {
 
     const newRoutines = { ...routines, [selectedMember.id]: updated };
     setRoutines(newRoutines);
-    saveStoredRoutines(newRoutines);
+    saveMemberRoutine(updated);
 
     setSuccessAlert(`Rutina asignada y guardada con éxito para ${selectedMember.name}. El socio ya puede verla en su portal.`);
     setTimeout(() => setSuccessAlert(null), 4000);
@@ -217,7 +216,7 @@ export default function EntrenadorDashboard() {
 
     const updated = [newRecord, ...progressList];
     setProgressList(updated);
-    saveStoredProgress(updated);
+    saveProgressRecord(newRecord);
 
     setShowProgressModal(false);
     setSuccessAlert(`Nueva evaluación registrada para ${selectedMember.name}. ¡Progresos actualizados!`);
