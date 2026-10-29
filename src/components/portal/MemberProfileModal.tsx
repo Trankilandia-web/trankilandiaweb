@@ -231,7 +231,7 @@ export default function MemberProfileModal({
                     maxLength={8}
                     value={formData.dni || ''}
                     onChange={(e) => handleInputChange('dni', e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ej. 46593520"
+                    placeholder="Ej. 87654321"
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
                   />
                 </div>

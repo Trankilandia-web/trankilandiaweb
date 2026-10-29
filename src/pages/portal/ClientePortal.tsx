@@ -464,7 +464,7 @@ export default function ClientePortal() {
                     maxLength={8}
                     value={inputDni}
                     onChange={(e) => setInputDni(e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ej: 70447087"
+                    placeholder="Ej: 87654321"
                     className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-2xl px-5 py-3.5 text-xl font-mono text-white tracking-widest outline-none transition-colors"
                     required
                   />

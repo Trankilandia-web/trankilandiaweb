@@ -303,7 +303,7 @@ export default function LoginModal({
                         type="text"
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
-                        placeholder="Ej. 72481920 o socio@correo.com"
+                        placeholder="Ej. 87654321 o socio@correo.com"
                         required
                         className="w-full bg-zinc-950/80 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors font-sans"
                       />
