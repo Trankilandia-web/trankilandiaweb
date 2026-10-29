@@ -2,11 +2,14 @@
 // TRANKILANDIA GYM · STORE DE CLIENTES, COBROS CON ADELANTO Y RUTINAS DEL COACH
 // ==============================================================================
 
+import realMembersData from './realMembers.json';
+
 export interface GymMember {
   id: string;
   name: string;
   dni: string;
   email: string;
+  phone?: string;
   plan: string;
   planPrice: number;
   paymentType: 'full' | 'advance';
@@ -19,6 +22,9 @@ export interface GymMember {
   expiresAt: string;
   coachName: string;
   registeredAt: string;
+  observations?: string;
+  age?: number;
+  gender?: string;
 }
 
 export interface RoutineExercise {
@@ -59,81 +65,8 @@ export interface ProgressRecord {
   notes: string;
 }
 
-// Initial Mock Members (Huamanga, Ayacucho)
-export const INITIAL_MEMBERS: GymMember[] = [
-  {
-    id: 'MEM-001',
-    name: 'Luis Gerardo Llocclla',
-    dni: '73921845',
-    email: 'luisgerardolloccllasaune@gmail.com',
-    plan: 'Combo Musculación + Escuela de Boxeo',
-    planPrice: 140,
-    paymentType: 'advance',
-    advancePaid: 70,
-    balanceDue: 70,
-    paymentDueDate: '05 Nov 2026',
-    paymentMethod: 'yape',
-    receiptNumber: 'B001-000492',
-    membershipStatus: 'active',
-    expiresAt: '22 Nov 2026',
-    coachName: 'Coach Marcos Rivas',
-    registeredAt: '22 Oct 2026',
-  },
-  {
-    id: 'MEM-002',
-    name: 'Maricielo Sulca Cárdenas',
-    dni: '76541230',
-    email: 'maricielo.sulca@gmail.com',
-    plan: '1 Mes · Combo Boxeo + Pesas',
-    planPrice: 140,
-    paymentType: 'advance',
-    advancePaid: 50,
-    balanceDue: 90,
-    paymentDueDate: '02 Nov 2026',
-    paymentMethod: 'plin',
-    receiptNumber: 'B001-000488',
-    membershipStatus: 'expiring',
-    expiresAt: '03 Nov 2026',
-    coachName: 'Coach Marcos Rivas',
-    registeredAt: '03 Oct 2026',
-  },
-  {
-    id: 'MEM-003',
-    name: 'Javier Rojas Palomino',
-    dni: '72983411',
-    email: 'javier.rojas@gmail.com',
-    plan: '3 Meses · Musculación Libre',
-    planPrice: 230,
-    paymentType: 'full',
-    advancePaid: 230,
-    balanceDue: 0,
-    paymentDueDate: undefined,
-    paymentMethod: 'tarjeta',
-    receiptNumber: 'B001-000489',
-    membershipStatus: 'active',
-    expiresAt: '15 Dic 2026',
-    coachName: 'Coach Carlos Mendoza',
-    registeredAt: '15 Sep 2026',
-  },
-  {
-    id: 'MEM-004',
-    name: 'Renato Flores Bendezú',
-    dni: '70192834',
-    email: 'renato.flores@gmail.com',
-    plan: '6 Meses · Musculación Libre',
-    planPrice: 420,
-    paymentType: 'full',
-    advancePaid: 420,
-    balanceDue: 0,
-    paymentDueDate: undefined,
-    paymentMethod: 'plin',
-    receiptNumber: 'B001-000491',
-    membershipStatus: 'active',
-    expiresAt: '28 Abr 2027',
-    coachName: 'Coach Carlos Mendoza',
-    registeredAt: '28 Oct 2026',
-  },
-];
+// Initial Real Members Loaded directly from Gym.xlsm (389 socios)
+export const INITIAL_MEMBERS: GymMember[] = realMembersData as GymMember[];
 
 // Initial Custom Routines per Member
 export const INITIAL_ROUTINES: Record<string, MemberRoutine> = {

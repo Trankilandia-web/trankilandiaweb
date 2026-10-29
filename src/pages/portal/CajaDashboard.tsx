@@ -20,12 +20,14 @@ import {
 } from '../../data/gymStore';
 
 const PLANS_CATALOG = [
-  { name: '1 Mes · Musculación Libre', price: 90 },
-  { name: '1 Mes · Combo Musculación + Boxeo', price: 140 },
-  { name: '3 Meses · Musculación Libre', price: 230 },
-  { name: '3 Meses · Combo Musculación + Boxeo', price: 340 },
-  { name: '6 Meses · Musculación Libre', price: 420 },
-  { name: '1 Año · Musculación Libre', price: 750 },
+  { name: '1 Mes · Musculación Libre', price: 80 },
+  { name: '2 Meses · Musculación Libre', price: 130 },
+  { name: '3 Meses · Musculación Libre', price: 190 },
+  { name: '4 Meses · Musculación Libre', price: 200 },
+  { name: '6 Meses · Musculación Libre', price: 330 },
+  { name: '8 Meses · Musculación Libre', price: 330 },
+  { name: '1 Año · Musculación Libre', price: 430 },
+  { name: '1 Mes · Combo Musculación + Boxeo', price: 130 },
   { name: 'Pase Diario de Entrenamiento', price: 15 },
 ];
 
@@ -208,7 +210,7 @@ export default function CajaDashboard() {
 
             {/* Quick Demo Test Buttons */}
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-[11px] font-mono text-zinc-500 mr-1">Probar con:</span>
+              <span className="text-[11px] font-mono text-zinc-500 mr-1">Probar con DNIs de Gym.xlsm:</span>
               <button
                 type="button"
                 onClick={() => handleQuickTestScan('73921845')}
@@ -218,17 +220,24 @@ export default function CajaDashboard() {
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickTestScan('76541230')}
+                onClick={() => handleQuickTestScan('46593520')}
                 className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-[11px] font-mono font-bold border border-amber-400/30 transition-colors cursor-pointer"
               >
-                76541230 (Maricielo · Debe S/. 90)
+                46593520 (Ana Sembrera · Debe S/. 310)
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickTestScan('72983411')}
+                onClick={() => handleQuickTestScan('45259734')}
+                className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-[11px] font-mono font-bold border border-amber-400/30 transition-colors cursor-pointer"
+              >
+                45259734 (Fiorela · Debe S/. 30)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickTestScan('70472299')}
                 className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-emerald-400 text-[11px] font-mono font-bold border border-emerald-500/30 transition-colors cursor-pointer"
               >
-                72983411 (Javier · Al día)
+                70472299 (Alfred · Al día)
               </button>
             </div>
           </div>
