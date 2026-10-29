@@ -1,31 +1,100 @@
+import { useState } from 'react';
 import {
   Dumbbell,
   CreditCard,
   MessageCircle,
   Flame,
+  AlertTriangle,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import { useAuth } from '../../context/AuthContext';
+import {
+  getStoredMembers,
+  getStoredRoutines,
+  getStoredProgress,
+  INITIAL_ROUTINES,
+} from '../../data/gymStore';
 
 export default function ClientePortal() {
   const { user } = useAuth();
+  const members = getStoredMembers();
+
+  // Match current member or default to Luis (MEM-001)
+  const currentMember =
+    members.find(
+      (m) =>
+        m.email.toLowerCase() === (user?.email || '').toLowerCase() ||
+        m.dni === (user?.user_metadata?.dni || '')
+    ) || members[0];
+
+  const routines = getStoredRoutines();
+  const currentRoutine = routines[currentMember.id] || INITIAL_ROUTINES['MEM-001'] || {
+    memberId: currentMember.id,
+    routineTitle: 'Rutina Base de Fuerza & Musculación',
+    objective: 'Acondicionamiento físico general',
+    coachName: 'Coach Marcos Rivas',
+    updatedAt: 'Hoy',
+    coachNotes: 'Mantener buena forma y calentar 10 minutos antes de entrenar.',
+    days: [],
+  };
+
+  const progressList = getStoredProgress().filter((p) => p.memberId === currentMember.id);
+  const latestProgress = progressList[0];
+
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
 
   const memberName =
-    user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Luis Gerardo Llocclla';
-  const memberEmail = user?.email || 'luisgerardolloccllasaune@gmail.com';
+    user?.user_metadata?.full_name || currentMember.name || 'Luis Gerardo Llocclla';
+  const memberEmail = user?.email || currentMember.email;
+
+  const activeDay = currentRoutine.days[selectedDayIndex] || currentRoutine.days[0];
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans">
+    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16">
       <PortalHeader
         currentRole="cliente"
         title="Portal del Socio"
-        subtitle="Mi Carnet Digital & Estado de Membresía · Trankilandia Gym"
+        subtitle="Mi Carnet Digital, Estado de Cuenta & Rutina del Coach · Trankilandia Gym"
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Welcome Hero / Member Card Grid */}
+        {/* ALERTA DE COBRANZA EN CASO DE TENER SALDO PENDIENTE */}
+        {currentMember.balanceDue > 0 && (
+          <div className="p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 rounded-xl bg-amber-500 text-black font-black flex-shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-base font-black font-display uppercase tracking-tight text-white">
+                  Aviso de Cobranza: Inscripción con Adelanto
+                </h4>
+                <p className="text-xs font-mono text-zinc-300 mt-0.5">
+                  Abonaste un adelanto de <span className="font-bold text-emerald-400">S/. {currentMember.advancePaid}.00</span>.
+                  Tienes un saldo pendiente de{' '}
+                  <span className="font-black text-amber-400 text-sm">S/. {currentMember.balanceDue}.00</span> por cancelar
+                  antes del <span className="font-bold text-white">{currentMember.paymentDueDate || 'en recepción'}</span>.
+                </p>
+              </div>
+            </div>
+
+            <a
+              href={`https://wa.me/51999999999?text=Hola%20Trankilandia%20Gym,%20soy%20${encodeURIComponent(
+                memberName
+              )}%20(DNI%20${currentMember.dni}),%20deseo%20completar%20mi%20saldo%20pendiente%20de%20S/.%20${currentMember.balanceDue}.00`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider transition-colors shadow-lg cursor-pointer whitespace-nowrap self-start sm:self-auto"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>Coordinar Pago por WhatsApp</span>
+            </a>
+          </div>
+        )}
+
+        {/* 1. GRID PRINCIPAL: CARNET DIGITAL + RUTINA & PROGRESOS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Digital Membership Pass (5 cols) */}
+          {/* Tarjeta Digital de Socio (5 cols) */}
           <div className="lg:col-span-5 bg-gradient-to-br from-zinc-900 via-zinc-900 to-black border-2 border-amber-400/40 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
             <div className="absolute top-0 right-0 w-48 h-48 bg-amber-400/10 rounded-full blur-3xl pointer-events-none" />
 
@@ -45,9 +114,19 @@ export default function ClientePortal() {
                 </div>
               </div>
 
-              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                ACTIVO
+              <span
+                className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border flex items-center gap-1 ${
+                  currentMember.balanceDue > 0
+                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                    : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    currentMember.balanceDue > 0 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                  }`}
+                />
+                {currentMember.balanceDue > 0 ? 'ADELANTO PENDIENTE' : 'AL DÍA'}
               </span>
             </div>
 
@@ -71,7 +150,7 @@ export default function ClientePortal() {
                 </h2>
                 <p className="text-xs text-zinc-400 font-mono mt-0.5">{memberEmail}</p>
                 <div className="text-[11px] font-mono text-amber-400 font-bold mt-1">
-                  ID SOCIO: TRK-84920
+                  DNI: {currentMember.dni} · ID: {currentMember.id}
                 </div>
               </div>
             </div>
@@ -79,7 +158,6 @@ export default function ClientePortal() {
             {/* QR Section for Torniquete Entrance */}
             <div className="mt-6 p-4 rounded-2xl bg-zinc-950 border border-white/10 text-center flex flex-col items-center justify-center">
               <div className="p-3 bg-white rounded-xl shadow-lg inline-block">
-                {/* Clean inline SVG QR representation */}
                 <svg
                   className="w-32 h-32"
                   viewBox="0 0 100 100"
@@ -87,7 +165,6 @@ export default function ClientePortal() {
                   xmlns="http://www.w3.org/2000/svg"
                 >
                   <rect width="100" height="100" fill="white" />
-                  {/* Outer markers */}
                   <rect x="10" y="10" width="24" height="24" fill="black" />
                   <rect x="14" y="14" width="16" height="16" fill="white" />
                   <rect x="18" y="18" width="8" height="8" fill="black" />
@@ -100,7 +177,6 @@ export default function ClientePortal() {
                   <rect x="14" y="70" width="16" height="16" fill="white" />
                   <rect x="18" y="74" width="8" height="8" fill="black" />
 
-                  {/* QR Data Pattern */}
                   <rect x="42" y="12" width="6" height="6" fill="black" />
                   <rect x="52" y="12" width="6" height="6" fill="black" />
                   <rect x="42" y="24" width="6" height="6" fill="black" />
@@ -117,116 +193,206 @@ export default function ClientePortal() {
                 </svg>
               </div>
               <p className="text-[11px] font-mono text-zinc-400 mt-2.5">
-                Muestra este código al escáner para ingresar a la sala en Huamanga
+                Muestra este código al escáner de torniquete en la sede de Huamanga
               </p>
             </div>
 
-            {/* Plan Specs */}
+            {/* Plan & Financial Details */}
             <div className="mt-5 space-y-2 text-xs font-mono">
               <div className="flex justify-between text-zinc-400">
-                <span>Plan Actual:</span>
-                <span className="text-white font-bold">Combo Musculación + Boxeo</span>
+                <span>Plan:</span>
+                <span className="text-white font-bold">{currentMember.plan}</span>
               </div>
               <div className="flex justify-between text-zinc-400">
-                <span>Vencimiento:</span>
-                <span className="text-emerald-400 font-bold">22 Noviembre 2026 (24 días)</span>
+                <span>Costo del Plan:</span>
+                <span className="text-white font-bold">S/. {currentMember.planPrice}.00</span>
               </div>
               <div className="flex justify-between text-zinc-400">
+                <span>Adelanto Pagado:</span>
+                <span className="text-emerald-400 font-bold">S/. {currentMember.advancePaid}.00</span>
+              </div>
+              {currentMember.balanceDue > 0 ? (
+                <div className="flex justify-between text-red-400 font-bold bg-red-500/10 p-2 rounded-lg border border-red-500/20">
+                  <span>Saldo Deudor:</span>
+                  <span>S/. {currentMember.balanceDue}.00 (Límite: {currentMember.paymentDueDate})</span>
+                </div>
+              ) : (
+                <div className="flex justify-between text-emerald-400 font-bold">
+                  <span>Estado de Pago:</span>
+                  <span>CANCELADO 100%</span>
+                </div>
+              )}
+              <div className="flex justify-between text-zinc-400 pt-1">
                 <span>Sede:</span>
                 <span className="text-amber-400 font-bold">Huamanga, Ayacucho</span>
               </div>
             </div>
           </div>
 
-          {/* Member Activities & Training WOD (7 cols) */}
+          {/* Rutina del Coach & Progresos (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
-            {/* Quick Metrics */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4">
-                <span className="text-[11px] font-mono text-zinc-400 uppercase">Visitas en Octubre</span>
-                <div className="mt-2 text-2xl font-black font-display text-white">16 días</div>
-                <p className="text-[10px] text-emerald-400 font-mono mt-0.5">Constancia de 4 días/sem</p>
+            {/* PRs de Fuerza del Atleta */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-mono uppercase text-zinc-400">Peso Corporal</span>
+                <div className="mt-1 text-xl font-black font-display text-white">
+                  {latestProgress ? `${latestProgress.weightKg} kg` : '76.5 kg'}
+                </div>
+                <span className="text-[10px] font-mono text-zinc-500">Evaluado en sala</span>
               </div>
 
-              <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4">
-                <span className="text-[11px] font-mono text-zinc-400 uppercase">Clases de Boxeo</span>
-                <div className="mt-2 text-2xl font-black font-display text-amber-400">8 asistidas</div>
-                <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Coach Marcos Rivas</p>
+              <div className="bg-zinc-900/60 border border-amber-400/30 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-mono uppercase text-amber-400">Press Banca</span>
+                <div className="mt-1 text-xl font-black font-display text-amber-400">
+                  {latestProgress ? `${latestProgress.benchPressKg} kg` : '95 kg'}
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400">Marca Personal</span>
               </div>
 
-              <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4">
-                <span className="text-[11px] font-mono text-zinc-400 uppercase">Estado Membresía</span>
-                <div className="mt-2 text-2xl font-black font-display text-emerald-400">AL DÍA</div>
-                <p className="text-[10px] text-zinc-500 font-mono mt-0.5">Ingreso Libre activo</p>
+              <div className="bg-zinc-900/60 border border-amber-400/30 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-mono uppercase text-amber-400">Sentadilla</span>
+                <div className="mt-1 text-xl font-black font-display text-amber-400">
+                  {latestProgress ? `${latestProgress.squatKg} kg` : '120 kg'}
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400">Marca Personal</span>
+              </div>
+
+              <div className="bg-zinc-900/60 border border-amber-400/30 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-mono uppercase text-amber-400">Peso Muerto</span>
+                <div className="mt-1 text-xl font-black font-display text-amber-400">
+                  {latestProgress ? `${latestProgress.deadliftKg} kg` : '140 kg'}
+                </div>
+                <span className="text-[10px] font-mono text-emerald-400">Marca Personal</span>
               </div>
             </div>
 
-            {/* Coach's WOD Routine */}
-            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6">
-              <div className="flex items-center gap-2.5 pb-3 border-b border-white/10">
-                <Flame className="w-5 h-5 text-amber-400" />
-                <h3 className="text-base font-bold text-white font-display uppercase tracking-wide">
-                  Rutina del Día · Pizarra del Coach
-                </h3>
+            {/* SECCIÓN PRINCIPAL: RUTINA ASIGNADA POR EL COACH */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-xl space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/30 text-orange-400">
+                    <Flame className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white font-display uppercase tracking-wide">
+                      Mi Rutina de Entrenamiento
+                    </h3>
+                    <p className="text-xs text-zinc-400 font-mono mt-0.5">
+                      Asignada por: <span className="text-orange-400 font-bold">{currentRoutine.coachName}</span> (Act. {currentRoutine.updatedAt})
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-xs font-mono px-3 py-1 rounded-lg bg-zinc-950 border border-white/10 text-amber-300">
+                  {currentRoutine.objective}
+                </div>
               </div>
 
-              <div className="mt-4 p-4 rounded-xl bg-amber-400/10 border border-amber-400/20 text-xs font-sans text-zinc-200 leading-relaxed">
-                <div className="font-bold text-amber-400 font-mono mb-1">
-                  FUERZA & GOLPEO (HOY EN SALA):
+              {/* Coach Observations Box */}
+              {currentRoutine.coachNotes && (
+                <div className="p-3.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-xs text-orange-200 leading-relaxed font-sans flex items-start gap-2.5">
+                  <span className="font-bold text-orange-400 font-mono flex-shrink-0">INDICACIONES DEL COACH:</span>
+                  <span>{currentRoutine.coachNotes}</span>
                 </div>
-                Press Militar 4x8 pesado + Fondos en paralelas lastrados 3x10 + 5 rounds de golpeo al costal (1 min descanso activo).
-              </div>
+              )}
 
-              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
-                <div className="p-3 rounded-xl bg-zinc-950 border border-white/5">
-                  <div className="text-zinc-400">Horario Boxeo Hoy:</div>
-                  <div className="text-white font-bold mt-0.5">05:00 PM - 06:30 PM</div>
+              {/* Day Selector Pills */}
+              {currentRoutine.days.length > 0 && (
+                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                  {currentRoutine.days.map((d, idx) => (
+                    <button
+                      key={d.id || idx}
+                      type="button"
+                      onClick={() => setSelectedDayIndex(idx)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        selectedDayIndex === idx
+                          ? 'bg-amber-400 text-black shadow-md'
+                          : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
+                      }`}
+                    >
+                      {d.dayName.split(':')[0]}
+                    </button>
+                  ))}
                 </div>
-                <div className="p-3 rounded-xl bg-zinc-950 border border-white/5">
-                  <div className="text-zinc-400">Horario Sala Pesas:</div>
-                  <div className="text-white font-bold mt-0.5">06:00 AM - 10:00 PM (Libre)</div>
+              )}
+
+              {/* Active Day Exercises Table */}
+              {activeDay ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-white font-bold">{activeDay.dayName}</span>
+                    <span className="text-zinc-400">{activeDay.focus}</span>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-zinc-950/80 text-zinc-400 uppercase tracking-wider border-b border-white/10">
+                        <tr>
+                          <th className="py-2.5 px-3">Ejercicio</th>
+                          <th className="py-2.5 px-3">Series</th>
+                          <th className="py-2.5 px-3">Repes</th>
+                          <th className="py-2.5 px-3">Descanso</th>
+                          <th className="py-2.5 px-3">Detalle Técnico</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {activeDay.exercises.map((ex, i) => (
+                          <tr key={ex.id || i} className="hover:bg-white/[0.02]">
+                            <td className="py-2.5 px-3 font-sans font-bold text-white">
+                              {ex.name}
+                            </td>
+                            <td className="py-2.5 px-3 text-amber-400 font-bold">{ex.sets}</td>
+                            <td className="py-2.5 px-3 text-zinc-200">{ex.reps}</td>
+                            <td className="py-2.5 px-3 text-zinc-400">{ex.rest}</td>
+                            <td className="py-2.5 px-3 font-sans text-zinc-300 text-[11px]">
+                              {ex.notes || '-'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="py-8 text-center text-zinc-500 font-mono text-xs">
+                  Tu coach aún no ha cargado los ejercicios de hoy.
+                </div>
+              )}
             </div>
 
-            {/* Payment History */}
+            {/* Historial de Comprobantes */}
             <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6">
               <div className="flex items-center justify-between pb-3 border-b border-white/10">
                 <div className="flex items-center gap-2.5">
                   <CreditCard className="w-5 h-5 text-emerald-400" />
                   <h3 className="text-base font-bold text-white font-display uppercase tracking-wide">
-                    Historial de Pagos
+                    Mis Pagos y Comprobantes
                   </h3>
                 </div>
-                <span className="text-xs font-mono text-zinc-400">Comprobantes válidos</span>
+                <span className="text-xs font-mono text-zinc-400">Sede Huamanga</span>
               </div>
 
               <div className="mt-4 space-y-3">
                 <div className="p-3.5 rounded-xl bg-zinc-950 border border-white/5 flex items-center justify-between text-xs">
                   <div>
-                    <div className="font-bold text-white">Renovación Combo Boxeo + Musculación</div>
+                    <div className="font-bold text-white">{currentMember.plan}</div>
                     <div className="text-[11px] text-zinc-400 font-mono mt-0.5">
-                      22 Oct 2026 · Boleta B001-000492 · Pagado con Yape
+                      {currentMember.receiptNumber} · Pagado vía {currentMember.paymentMethod.toUpperCase()}
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-emerald-400 font-mono font-bold text-sm">S/. 140.00</span>
-                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5">PAGADO</div>
+                    <span className="text-emerald-400 font-mono font-bold text-sm">
+                      S/. {currentMember.advancePaid}.00
+                    </span>
+                    <div className="text-[10px] font-mono mt-0.5">
+                      {currentMember.balanceDue > 0 ? (
+                        <span className="text-amber-400 font-bold">ADELANTO ABONADO</span>
+                      ) : (
+                        <span className="text-emerald-400 font-bold">PAGO COMPLETO</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="mt-5 pt-4 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
-                <span className="text-xs text-zinc-400">¿Dudas con tu plan o deseas congelar días?</span>
-                <a
-                  href="https://wa.me/51999999999?text=Hola%20Trankilandia%20Gym,%20soy%20socio%20y%20tengo%20una%20consulta%20sobre%20mi%20membresía"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/30 text-xs font-mono font-bold transition-colors"
-                >
-                  <MessageCircle className="w-3.5 h-3.5" />
-                  <span>Contactar a Recepción por WhatsApp</span>
-                </a>
               </div>
             </div>
           </div>
