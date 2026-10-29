@@ -81,7 +81,7 @@ interface ClientCache {
 }
 
 export default function ClientePortal() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [members, setMembers] = useState<GymMember[]>(getStoredMembers());
 
   // Selector de socio para pruebas / demostración
@@ -124,7 +124,9 @@ export default function ClientePortal() {
   ) || null;
 
   const currentMember =
-    (selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null) || linkedMember;
+    (selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null) ||
+    linkedMember ||
+    (isAdmin ? members[0] || null : null);
 
   const handleVincularDni = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -317,89 +319,91 @@ export default function ClientePortal() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* SIMULADOR DE PERFIL DE SOCIO PARA DEMOSTRACIÓN */}
-        <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-amber-400/10 text-amber-400">
-                <Sparkles className="w-4 h-4" />
-              </div>
-              <div>
-                <span className="text-xs font-mono font-bold text-white block">
-                  Simulador de Socio (Modo Pruebas / Demostración):
-                </span>
-                <span className="text-[11px] text-zinc-400 font-mono">
-                  {currentMember ? (
-                    <>
-                      Socio en pantalla: <strong className="text-amber-400">{currentMember.name}</strong> (DNI: {currentMember.dni || 'Sin DNI'} · Turno:{' '}
-                      <span className="uppercase text-white font-bold">{currentMember.shift || 'manana'}</span> ·{' '}
-                      {currentMember.balanceDue > 0 ? (
-                        <span className="text-red-400 font-bold">Debe S/. {currentMember.balanceDue}</span>
-                      ) : (
-                        <span className="text-emerald-400 font-bold">Al Día</span>
-                      )}
-                      )
-                    </>
-                  ) : (
-                    <span>
-                      Usuario conectado: <strong className="text-white">{user?.email || 'Sin sesión'}</strong> · <span className="text-amber-400 font-bold">Completa tu DNI para vincular tu carnet</span>
-                    </span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setShowMemberPicker(!showMemberPicker)}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-white/5 transition-colors cursor-pointer self-start sm:self-auto"
-            >
-              <Search className="w-3.5 h-3.5 text-amber-400" />
-              <span>{showMemberPicker ? 'Ocultar Selector' : 'Probar con otro Socio (450 en BD)'}</span>
-            </button>
-          </div>
-
-          {showMemberPicker && (
-            <div className="mt-4 pt-3 border-t border-white/10 space-y-3">
-              <div className="relative max-w-sm">
-                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={testSearch}
-                  onChange={(e) => setTestSearch(e.target.value)}
-                  placeholder="Buscar socio por nombre o DNI..."
-                  className="w-full pl-9 pr-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
-                {filteredTestMembers.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedMemberId(m.id);
-                      setShowMemberPicker(false);
-                    }}
-                    className={`p-2 rounded-xl text-left font-mono text-xs border transition-all cursor-pointer ${
-                      currentMember?.id === m.id
-                        ? 'bg-amber-400/15 border-amber-400 text-amber-300 shadow-sm'
-                        : 'bg-zinc-950/80 border-white/5 text-zinc-300 hover:bg-zinc-800'
-                    }`}
-                  >
-                    <div className="font-bold truncate text-[11px]">{m.name}</div>
-                    <div className="text-[10px] text-zinc-400 flex items-center justify-between mt-0.5">
-                      <span>DNI: {m.dni}</span>
-                      <span className={m.balanceDue > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400'}>
-                        {m.balanceDue > 0 ? `Debe S/. ${m.balanceDue}` : 'Al Día'}
+        {/* SIMULADOR DE PERFIL DE SOCIO PARA SUPER ADMIN */}
+        {isAdmin && (
+          <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-400/10 text-amber-400">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs font-mono font-bold text-white block">
+                    Simulador de Socio (Super Admin / Control Maestro):
+                  </span>
+                  <span className="text-[11px] text-zinc-400 font-mono">
+                    {currentMember ? (
+                      <>
+                        Socio en pantalla: <strong className="text-amber-400">{currentMember.name}</strong> (DNI: {currentMember.dni || 'Sin DNI'} · Turno:{' '}
+                        <span className="uppercase text-white font-bold">{currentMember.shift || 'manana'}</span> ·{' '}
+                        {currentMember.balanceDue > 0 ? (
+                          <span className="text-red-400 font-bold">Debe S/. {currentMember.balanceDue}</span>
+                        ) : (
+                          <span className="text-emerald-400 font-bold">Al Día</span>
+                        )}
+                        )
+                      </>
+                    ) : (
+                      <span>
+                        Usuario conectado: <strong className="text-white">{user?.email || 'Sin sesión'}</strong> · <span className="text-amber-400 font-bold">Completa tu DNI para vincular tu carnet</span>
                       </span>
-                    </div>
-                  </button>
-                ))}
+                    )}
+                  </span>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setShowMemberPicker(!showMemberPicker)}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-white/5 transition-colors cursor-pointer self-start sm:self-auto"
+              >
+                <Search className="w-3.5 h-3.5 text-amber-400" />
+                <span>{showMemberPicker ? 'Ocultar Selector' : 'Probar con otro Socio (389 en BD)'}</span>
+              </button>
             </div>
-          )}
-        </div>
+
+            {showMemberPicker && (
+              <div className="mt-4 pt-3 border-t border-white/10 space-y-3">
+                <div className="relative max-w-sm">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={testSearch}
+                    onChange={(e) => setTestSearch(e.target.value)}
+                    placeholder="Buscar socio por nombre o DNI..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                  {filteredTestMembers.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedMemberId(m.id);
+                        setShowMemberPicker(false);
+                      }}
+                      className={`p-2 rounded-xl text-left font-mono text-xs border transition-all cursor-pointer ${
+                        currentMember?.id === m.id
+                          ? 'bg-amber-400/15 border-amber-400 text-amber-300 shadow-sm'
+                          : 'bg-zinc-950/80 border-white/5 text-zinc-300 hover:bg-zinc-800'
+                      }`}
+                    >
+                      <div className="font-bold truncate text-[11px]">{m.name}</div>
+                      <div className="text-[10px] text-zinc-400 flex items-center justify-between mt-0.5">
+                        <span>DNI: {m.dni}</span>
+                        <span className={m.balanceDue > 0 ? 'text-amber-400 font-bold' : 'text-emerald-400'}>
+                          {m.balanceDue > 0 ? `Debe S/. ${m.balanceDue}` : 'Al Día'}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {!currentMember ? (
           /* FORMULARIO DE VINCULACIÓN DE DNI PARA CORREOS PERSONALES */

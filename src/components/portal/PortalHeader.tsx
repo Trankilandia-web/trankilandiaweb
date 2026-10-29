@@ -19,7 +19,7 @@ interface PortalHeaderProps {
 }
 
 export default function PortalHeader({ currentRole, title, subtitle }: PortalHeaderProps) {
-  const { user, switchRole, signOut } = useAuth();
+  const { user, isAdmin, switchRole, signOut } = useAuth();
   const navigate = useNavigate();
   const activeConfig = ROLES_CONFIG[currentRole];
 
@@ -39,40 +39,42 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
 
   return (
     <header className="bg-zinc-950 border-b border-white/10 sticky top-0 z-40 backdrop-blur-md bg-zinc-950/90">
-      {/* Top Testing Switcher Banner */}
-      <div className="bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-900 border-b border-white/5 py-1.5 px-4 sm:px-6">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
-          <div className="flex items-center gap-2 text-zinc-400 font-mono">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-semibold text-zinc-300">Modo de Pruebas de Roles:</span>
-            <span className="hidden sm:inline text-zinc-500">Haz clic para simular cada perfil:</span>
-          </div>
+      {/* Top Testing Switcher Banner (Exclusivo para el Super Administrador) */}
+      {isAdmin && (
+        <div className="bg-gradient-to-r from-zinc-900 via-zinc-900 to-zinc-900 border-b border-white/5 py-1.5 px-4 sm:px-6">
+          <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-zinc-400 font-mono">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-semibold text-zinc-200">Control Maestro (Super Admin):</span>
+              <span className="hidden sm:inline text-zinc-500">Supervisar y conmutar entre los 4 módulos:</span>
+            </div>
 
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-            {(Object.keys(ROLES_CONFIG) as UserRole[]).map((r) => {
-              const cfg = ROLES_CONFIG[r];
-              const isSelected = r === currentRole;
-              const Icon = roleIcons[r];
+            <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
+              {(Object.keys(ROLES_CONFIG) as UserRole[]).map((r) => {
+                const cfg = ROLES_CONFIG[r];
+                const isSelected = r === currentRole;
+                const Icon = roleIcons[r];
 
-              return (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => handleRoleChange(r)}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-mono text-[11px] font-bold transition-all cursor-pointer ${
-                    isSelected
-                      ? `${cfg.themeColor.badgeBg} ${cfg.themeColor.badgeText} border ${cfg.themeColor.badgeBorder} shadow-sm`
-                      : 'bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
-                  }`}
-                >
-                  <Icon className="w-3 h-3" />
-                  <span>{cfg.name}</span>
-                </button>
-              );
-            })}
+                return (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => handleRoleChange(r)}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg font-mono text-[11px] font-bold transition-all cursor-pointer ${
+                      isSelected
+                        ? `${cfg.themeColor.badgeBg} ${cfg.themeColor.badgeText} border ${cfg.themeColor.badgeBorder} shadow-sm`
+                        : 'bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
+                    }`}
+                  >
+                    <Icon className="w-3 h-3" />
+                    <span>{cfg.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Main Header Bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">

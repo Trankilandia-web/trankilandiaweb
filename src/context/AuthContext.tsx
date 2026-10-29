@@ -9,6 +9,8 @@ interface AuthContextType {
   isLoading: boolean;
   isConfigured: boolean;
   role: UserRole;
+  actualRole: UserRole;
+  isAdmin: boolean;
   switchRole: (newRole: UserRole) => Promise<void>;
   getRedirectPath: () => string;
   signOut: () => Promise<void>;
@@ -20,6 +22,8 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   isConfigured: false,
   role: 'cliente',
+  actualRole: 'cliente',
+  isAdmin: false,
   switchRole: async () => {},
   getRedirectPath: () => '/cliente',
   signOut: async () => {},
@@ -49,15 +53,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [actualRole, setActualRole] = useState<UserRole>('cliente');
   const [role, setRoleState] = useState<UserRole>('cliente');
   const isConfigured = isSupabaseConfigured();
+
+  const isAdmin = actualRole === 'admin' || (!isConfigured && role === 'admin');
 
   // Try fetching role from Supabase 'profiles' table with local fallback
   const syncRole = async (currentUser: User | null) => {
     if (!currentUser) {
+      setActualRole('cliente');
       setRoleState('cliente');
       return;
     }
+
+    let dbRole: UserRole = 'cliente';
 
     if (isConfigured) {
       try {
@@ -68,15 +78,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           .maybeSingle();
 
         if (!error && data?.role && ROLES_CONFIG[data.role as UserRole]) {
-          setRoleState(data.role as UserRole);
-          return;
+          dbRole = data.role as UserRole;
         }
       } catch {
         // Table may not be created yet in Supabase
       }
+    } else {
+      dbRole = resolveDefaultRole(currentUser);
     }
 
-    setRoleState(resolveDefaultRole(currentUser));
+    setActualRole(dbRole);
+
+    // Si el usuario es administrador, puede alternar entre las 4 vistas.
+    // Restauramos la vista guardada en localStorage si existe, o usamos su rol real.
+    if (dbRole === 'admin') {
+      const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
+      if (savedRole && ROLES_CONFIG[savedRole]) {
+        setRoleState(savedRole);
+      } else {
+        setRoleState('admin');
+      }
+    } else {
+      // Los usuarios regulares operan estrictamente bajo su rol asignado
+      setRoleState(dbRole);
+      localStorage.setItem(ROLE_STORAGE_KEY, dbRole);
+    }
   };
 
   useEffect(() => {
@@ -113,21 +139,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }, [isConfigured]);
 
   const switchRole = async (newRole: UserRole) => {
-    if (ROLES_CONFIG[newRole]) {
+    if (!ROLES_CONFIG[newRole]) return;
+
+    // Solo el Administrador o en modo local tiene permitido conmutar entre los 4 roles
+    if (actualRole === 'admin' || !isConfigured) {
       setRoleState(newRole);
       localStorage.setItem(ROLE_STORAGE_KEY, newRole);
-
-      // Attempt to persist to Supabase 'profiles' if configured
-      if (user && isConfigured) {
-        try {
-          await supabase
-            .from('profiles')
-            .update({ role: newRole })
-            .eq('id', user.id);
-        } catch {
-          // Soft fail if table not present yet
-        }
-      }
+      // PRESERVACIÓN DE SEGURIDAD: NO sobrescribimos profiles.role en Supabase.
+      // El administrador conserva sus privilegios plenos en la base de datos (RLS)
+      // mientras inspecciona y opera cualquier módulo.
     }
   };
 
@@ -135,6 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     await supabaseSignOut();
     setUser(null);
     setSession(null);
+    setActualRole('cliente');
     setRoleState('cliente');
     localStorage.removeItem(ROLE_STORAGE_KEY);
   };
@@ -151,6 +172,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         isLoading,
         isConfigured,
         role,
+        actualRole,
+        isAdmin,
         switchRole,
         getRedirectPath,
         signOut: handleSignOut,
