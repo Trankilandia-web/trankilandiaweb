@@ -31,8 +31,18 @@ const AuthContext = createContext<AuthContextType>({
 
 const ROLE_STORAGE_KEY = 'trankilandia_active_role';
 
+export const SUPER_ADMIN_EMAILS = [
+  'luisgerardolloccllasaune@gmail.com',
+  'trankilandiagymperu@gmail.com',
+];
+
 // Helper to determine initial role fallback: EVERY user is 'cliente' by default
 function resolveDefaultRole(user: User | null): UserRole {
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  if (SUPER_ADMIN_EMAILS.includes(userEmail)) {
+    return 'admin';
+  }
+
   // 1. Saved role in local testing storage (only if explicitly set by role switcher)
   const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
   if (savedRole && ROLES_CONFIG[savedRole]) {
@@ -69,7 +79,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
     let dbRole: UserRole = 'cliente';
 
-    if (isConfigured) {
+    const userEmail = (currentUser.email || '').toLowerCase().trim();
+    const isMasterAdminEmail = SUPER_ADMIN_EMAILS.includes(userEmail);
+
+    if (isMasterAdminEmail) {
+      dbRole = 'admin';
+      // Asegurar rol en la tabla profiles de Supabase
+      if (isConfigured) {
+        supabase
+          .from('profiles')
+          .upsert({
+            id: currentUser.id,
+            email: currentUser.email,
+            role: 'admin',
+            full_name: currentUser.user_metadata?.full_name || 'Luis Gerardo Lloclla Sauñe',
+            updated_at: new Date().toISOString(),
+          })
+          .then(() => {});
+      }
+    } else if (isConfigured) {
       try {
         const { data, error } = await supabase
           .from('profiles')
@@ -93,10 +121,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     // Restauramos la vista guardada en localStorage si existe, o usamos su rol real.
     if (dbRole === 'admin') {
       const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
-      if (savedRole && ROLES_CONFIG[savedRole]) {
+      if (savedRole && savedRole !== 'cliente' && ROLES_CONFIG[savedRole]) {
         setRoleState(savedRole);
       } else {
         setRoleState('admin');
+        localStorage.setItem(ROLE_STORAGE_KEY, 'admin');
       }
     } else {
       // Los usuarios regulares operan estrictamente bajo su rol asignado
