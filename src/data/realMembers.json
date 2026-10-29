@@ -669,7 +669,7 @@
   {
     "id": "MEM-241",
     "name": "Debora Valensuela Ramires",
-    "dni": "12345678",
+    "dni": null,
     "email": null,
     "phone": null,
     "plan": "8 MESES · Musculación Libre",
@@ -692,7 +692,7 @@
   {
     "id": "MEM-242",
     "name": "Jorge Paniagua Barreda",
-    "dni": "12345678",
+    "dni": null,
     "email": null,
     "phone": null,
     "plan": "8 MESES · Musculación Libre",
@@ -715,7 +715,7 @@
   {
     "id": "MEM-244",
     "name": "Karina Chipana Palomino",
-    "dni": "12345678",
+    "dni": null,
     "email": null,
     "phone": "988634103",
     "plan": "8 MESES · Musculación Libre",
@@ -899,7 +899,7 @@
   {
     "id": "MEM-296",
     "name": "Said Abel Quispe Quispe",
-    "dni": "12345678",
+    "dni": null,
     "email": null,
     "phone": "123456789",
     "plan": "8 MESES · Musculación Libre",
@@ -968,7 +968,7 @@
   {
     "id": "MEM-309",
     "name": "Thalia Rios Cardenas",
-    "dni": "12345678",
+    "dni": null,
     "email": null,
     "phone": "123456789",
     "plan": "8 MESES · Musculación Libre",
@@ -3521,7 +3521,7 @@
   {
     "id": "MEM-643",
     "name": "Rous Berrocal",
-    "dni": "12345678",
+    "dni": null,
     "email": null,
     "phone": null,
     "plan": "1 mes · Musculación Libre",

@@ -6,6 +6,7 @@
 
 -- Asegurar que la columna DNI permita NULL si el socio aún no tiene DNI registrado
 alter table public.socios alter column dni drop not null;
+update public.socios set dni = null where dni = '12345678';
 
 insert into public.socios (
   id, nombre, dni, email, celular, plan, precio_plan, tipo_pago, adelanto_pagado,
@@ -41,9 +42,9 @@ insert into public.socios (
 ('MEM-227', 'Jhon Arhuata', null, null, null, '3 MESES · Musculación Libre', 190, 'advance', 150, 40, '05 Nov 2026', '2026-06-15'::date, '2026-09-04'::date, 'efectivo', 'B001-000126', 'manana', 'Coach Camila Mendoza', null, null, 'Masculino'),
 ('MEM-232', 'Elsa Vargas', null, null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-04'::date, '2026-10-30'::date, 'efectivo', 'B001-000127', 'tarde', 'Coach Valeria Gómez', null, null, 'Femenino'),
 ('MEM-240', 'Guadalupe Revatta', null, null, null, '3 MESES · Musculación Libre', 190, 'advance', 150, 40, '05 Nov 2026', '2026-06-12'::date, '2026-09-10'::date, 'efectivo', 'B001-000128', 'noche', 'Coach Daniel Quispe', null, null, 'Femenino'),
-('MEM-241', 'Debora Valensuela Ramires', '12345678', null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-03'::date, '2026-10-29'::date, 'yape', 'B001-000129', 'manana', 'Coach Marcos Rivas', null, null, 'Femenino'),
-('MEM-242', 'Jorge Paniagua Barreda', '12345678', null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-03'::date, '2026-10-29'::date, 'efectivo', 'B001-000130', 'manana', 'Coach Camila Mendoza', null, null, 'Masculino'),
-('MEM-244', 'Karina Chipana Palomino', '12345678', null, '988634103', '8 MESES · Musculación Libre', 330, 'advance', 300, 30, '05 Nov 2026', '2026-07-01'::date, '2027-02-25'::date, 'efectivo', 'B001-000131', 'tarde', 'Coach Valeria Gómez', null, null, 'Femenino'),
+('MEM-241', 'Debora Valensuela Ramires', null, null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-03'::date, '2026-10-29'::date, 'yape', 'B001-000129', 'manana', 'Coach Marcos Rivas', null, null, 'Femenino'),
+('MEM-242', 'Jorge Paniagua Barreda', null, null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-03'::date, '2026-10-29'::date, 'efectivo', 'B001-000130', 'manana', 'Coach Camila Mendoza', null, null, 'Masculino'),
+('MEM-244', 'Karina Chipana Palomino', null, null, '988634103', '8 MESES · Musculación Libre', 330, 'advance', 300, 30, '05 Nov 2026', '2026-07-01'::date, '2027-02-25'::date, 'efectivo', 'B001-000131', 'tarde', 'Coach Valeria Gómez', null, null, 'Femenino'),
 ('MEM-247', 'Abigail Licas', null, null, null, '1 mes · Musculación Libre', 400, 'advance', 100, 300, '05 Nov 2026', '2026-06-03'::date, '2027-01-04'::date, 'efectivo', 'B001-000132', 'noche', 'Coach Daniel Quispe', null, null, 'Femenino'),
 ('MEM-251', 'Katia De La Cruz Huaman', '70090207', null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-04'::date, '2026-10-30'::date, 'efectivo', 'B001-000133', 'manana', 'Coach Marcos Rivas', null, 33, 'Femenino'),
 ('MEM-254', 'Elsa Vargas De La Cruz', '70112352', null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-06'::date, '2026-11-01'::date, 'yape', 'B001-000134', 'manana', 'Coach Camila Mendoza', null, null, 'Femenino'),
@@ -51,10 +52,10 @@ insert into public.socios (
 ('MEM-266', 'Martha Lima Ponce', null, null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-04-14'::date, '2026-12-10'::date, 'efectivo', 'B001-000136', 'noche', 'Coach Daniel Quispe', null, null, 'Femenino'),
 ('MEM-288', 'Nayra Huaranccay De La Cruz', '73421575', null, '993089446', '8 MESES · Musculación Libre', 330, 'full', 330, 0, null, '2026-06-15'::date, '2027-02-10'::date, 'yape', 'B001-000137', 'manana', 'Coach Marcos Rivas', null, 27, 'Femenino'),
 ('MEM-289', 'Daniel Caballero Palacios', '47627943', null, '950523535', '6 MESES · Musculación Libre', 350, 'full', 350, 0, null, '2026-03-17'::date, '2026-09-13'::date, 'yape', 'B001-000138', 'manana', 'Coach Camila Mendoza', null, 35, 'Masculino'),
-('MEM-296', 'Said Abel Quispe Quispe', '12345678', null, '123456789', '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-20'::date, '2026-11-15'::date, 'yape', 'B001-000139', 'tarde', 'Coach Valeria Gómez', null, null, 'Masculino'),
+('MEM-296', 'Said Abel Quispe Quispe', null, null, '123456789', '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-20'::date, '2026-11-15'::date, 'yape', 'B001-000139', 'tarde', 'Coach Valeria Gómez', null, null, 'Masculino'),
 ('MEM-301', 'Juan Vera Gomez', null, null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-03-24'::date, '2026-11-19'::date, 'yape', 'B001-000140', 'noche', 'Coach Daniel Quispe', null, null, 'Masculino'),
 ('MEM-308', 'Kevin Balboa Cruz', '75169984', null, '999324118', '1 mes · Musculación Libre', 80, 'full', 80, 0, null, '2026-10-01'::date, '2026-11-30'::date, 'yape', 'B001-000141', 'manana', 'Coach Marcos Rivas', null, 21, 'Masculino'),
-('MEM-309', 'Thalia Rios Cardenas', '12345678', null, '123456789', '8 MESES · Musculación Libre', 300, 'advance', 150, 150, '05 Nov 2026', '2026-06-15'::date, '2027-02-19'::date, 'efectivo', 'B001-000142', 'manana', 'Coach Camila Mendoza', null, null, 'Femenino'),
+('MEM-309', 'Thalia Rios Cardenas', null, null, '123456789', '8 MESES · Musculación Libre', 300, 'advance', 150, 150, '05 Nov 2026', '2026-06-15'::date, '2027-02-19'::date, 'efectivo', 'B001-000142', 'manana', 'Coach Camila Mendoza', null, null, 'Femenino'),
 ('MEM-322', 'Vanesa Curo', null, null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-04-01'::date, '2026-11-27'::date, 'efectivo', 'B001-000143', 'tarde', 'Coach Valeria Gómez', null, null, 'Femenino'),
 ('MEM-326', 'Indira Zuñiga', null, null, null, '8 MESES · Musculación Libre', 300, 'advance', 50, 250, '05 Nov 2026', '2026-06-03'::date, '2027-01-01'::date, 'efectivo', 'B001-000144', 'noche', 'Coach Daniel Quispe', null, null, 'Femenino'),
 ('MEM-341', 'Yanina Morote Lizana', null, null, null, '8 MESES · Musculación Libre', 300, 'full', 300, 0, null, '2026-04-08'::date, '2026-12-04'::date, 'yape', 'B001-000145', 'manana', 'Coach Marcos Rivas', null, null, 'Femenino'),
@@ -165,7 +166,7 @@ insert into public.socios (
 ('MEM-640', 'Crist Guillen Prado', null, null, '900909041', '1 mes · Musculación Libre', 80, 'advance', 70, 10, '05 Nov 2026', '2026-08-03'::date, '2026-09-02'::date, 'yape', 'B001-000250', 'manana', 'Coach Camila Mendoza', null, 25, 'Femenino'),
 ('MEM-641', 'David Ramos Pariona', '80863069', null, '961710778', '1 mes · Musculación Libre', 80, 'full', 80, 0, null, '2026-08-03'::date, '2026-09-02'::date, 'yape', 'B001-000251', 'tarde', 'Coach Valeria Gómez', null, 18, 'Masculino'),
 ('MEM-642', 'Juana Chahuayo Menezes', '40319855', null, '997047228', '1 mes · Musculación Libre', 80, 'full', 80, 0, null, '2026-10-13'::date, '2026-11-12'::date, 'efectivo', 'B001-000252', 'noche', 'Coach Daniel Quispe', null, null, 'Femenino'),
-('MEM-643', 'Rous Berrocal', '12345678', null, null, '1 mes · Musculación Libre', 80, 'advance', 50, 30, '05 Nov 2026', '2026-08-03'::date, '2026-09-02'::date, 'efectivo', 'B001-000253', 'manana', 'Coach Marcos Rivas', null, null, 'Femenino'),
+('MEM-643', 'Rous Berrocal', null, null, null, '1 mes · Musculación Libre', 80, 'advance', 50, 30, '05 Nov 2026', '2026-08-03'::date, '2026-09-02'::date, 'efectivo', 'B001-000253', 'manana', 'Coach Marcos Rivas', null, null, 'Femenino'),
 ('MEM-644', 'Karen Ruiz Huamani', '70115708', null, '929708091', '6 MESES · Musculación Libre', 330, 'advance', 280, 50, '05 Nov 2026', '2026-08-04'::date, '2027-01-31'::date, 'yape', 'B001-000254', 'manana', 'Coach Camila Mendoza', null, null, 'Femenino'),
 ('MEM-645', 'Ana Villalobos', '71553969', null, null, '1 mes · Musculación Libre', 80, 'advance', 50, 30, '05 Nov 2026', '2026-08-05'::date, '2026-09-04'::date, 'efectivo', 'B001-000255', 'tarde', 'Coach Valeria Gómez', null, null, 'Femenino'),
 ('MEM-646', 'Ricardo Huaman Rodriguez', '71217150', null, '932197911', '1 mes · Musculación Libre', 80, 'full', 80, 0, null, '2026-08-05'::date, '2026-09-04'::date, 'efectivo', 'B001-000256', 'noche', 'Coach Daniel Quispe', null, null, 'Masculino'),

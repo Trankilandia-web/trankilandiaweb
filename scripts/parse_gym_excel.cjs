@@ -121,11 +121,11 @@ sClientes.forEach((c, idx) => {
   // If this happens to be Luis Gerardo, skip duplicate
   if (nombre.toLowerCase().includes('luis gerardo')) return;
 
-  // DNI: clean 8 digits if valid
+  // DNI: clean 8 digits if valid (ignorar placeholders ficticios como '12345678')
   let dni = null;
   if (c.__EMPTY_2) {
     const rawDni = String(c.__EMPTY_2).trim().replace(/\D/g, '');
-    if (rawDni.length >= 6) {
+    if (rawDni.length >= 6 && rawDni !== '12345678' && !/^(\d)\1+$/.test(rawDni)) {
       dni = rawDni.padStart(8, '0');
     }
   }
@@ -260,6 +260,7 @@ sqlLines.push('-- Correos: NULL (Los socios ingresan con su propio correo y comp
 sqlLines.push('');
 sqlLines.push('-- Asegurar que la columna DNI permita NULL si el socio aún no tiene DNI registrado');
 sqlLines.push('alter table public.socios alter column dni drop not null;');
+sqlLines.push('update public.socios set dni = null where dni = \'12345678\';');
 sqlLines.push('');
 sqlLines.push('insert into public.socios (');
 sqlLines.push('  id, nombre, dni, email, celular, plan, precio_plan, tipo_pago, adelanto_pagado,');
