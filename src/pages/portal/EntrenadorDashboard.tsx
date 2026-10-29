@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion } from 'motion/react';
 import {
   Dumbbell,
@@ -13,6 +13,12 @@ import {
   Search,
   Sparkles,
   ClipboardList,
+  Clock,
+  Sun,
+  Sunset,
+  Moon,
+  RefreshCw,
+  Filter,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import {
@@ -20,10 +26,22 @@ import {
   MemberRoutine,
   ProgressRecord,
   getStoredMembers,
-  getStoredRoutines,
   getStoredProgress,
 } from '../../data/gymStore';
-import { saveMemberRoutine, saveProgressRecord } from '../../lib/supabaseDb';
+import {
+  getMemberRoutine,
+  saveMemberRoutine,
+  saveProgressRecord,
+} from '../../lib/supabaseDb';
+
+// Staff Oficial de Entrenadores (2 mujeres, 2 varones en los 3 turnos oficiales)
+export const OFFICIAL_COACH_LIST = [
+  { id: 'all', name: 'Todos los Coaches', shift: 'all' },
+  { id: 'marcos', name: 'Coach Marcos Rivas', shift: 'manana', label: 'Coach Marcos Rivas (Varón · Mañana)' },
+  { id: 'camila', name: 'Coach Camila Mendoza', shift: 'manana', label: 'Coach Camila Mendoza (Mujer · Mañana)' },
+  { id: 'valeria', name: 'Coach Valeria Gómez', shift: 'tarde', label: 'Coach Valeria Gómez (Mujer · Tarde)' },
+  { id: 'daniel', name: 'Coach Daniel Quispe', shift: 'noche', label: 'Coach Daniel Quispe (Varón · Noche)' },
+];
 
 // Plantillas predeterminadas de rutinas
 const ROUTINE_TEMPLATES = [
@@ -91,76 +109,180 @@ const ROUTINE_TEMPLATES = [
           { id: '17', name: 'Extensiones de Tríceps en Polea', sets: 4, reps: '12-15', rest: '60s', notes: 'Codos inmóviles' },
         ],
       },
+      {
+        id: 'D3',
+        dayName: 'Día 3: Piernas Completas',
+        focus: 'Cuádriceps, Isquios & Gemelos',
+        exercises: [
+          { id: '18', name: 'Sentadilla Hack o Barra', sets: 4, reps: '10', rest: '90s', notes: 'Pies firmes' },
+          { id: '19', name: 'Curl Femoral Tumbado', sets: 4, reps: '12', rest: '60s', notes: 'Control excéntrico' },
+          { id: '20', name: 'Elevación de Talones de Pie', sets: 4, reps: '15', rest: '45s', notes: 'Estiramiento abajo' },
+        ],
+      },
+    ],
+  },
+  {
+    name: 'Glúteos, Pierna & Tonificación (Camila/Valeria)',
+    objective: 'Desarrollo de tren inferior, cintura fina y resistencia',
+    notes: 'Priorizar conexión mente-músculo y pausas isométricas de 1 segundo.',
+    days: [
+      {
+        id: 'D1',
+        dayName: 'Día 1: Enfoque Glúteos & Isquios',
+        focus: 'Hip Thrust, Peso Muerto Rumano & Abductores',
+        exercises: [
+          { id: '21', name: 'Hip Thrust con Barra Pesado', sets: 4, reps: '10-12', rest: '90s', notes: 'Pausa arriba' },
+          { id: '22', name: 'Peso Muerto Rumano con Mancuernas', sets: 4, reps: '12', rest: '75s', notes: 'Espalda recta' },
+          { id: '23', name: 'Patada de Glúteo en Polea', sets: 3, reps: '15', rest: '45s', notes: 'Apretar glúteo' },
+        ],
+      },
+      {
+        id: 'D2',
+        dayName: 'Día 2: Tren Superior & Core',
+        focus: 'Hombros estéticos, Espalda y Abdomen',
+        exercises: [
+          { id: '24', name: 'Elevaciones Laterales con Mancuernas', sets: 4, reps: '15', rest: '45s', notes: 'Control' },
+          { id: '25', name: 'Remo Unilateral con Mancuerna', sets: 4, reps: '12', rest: '60s', notes: 'Tronco estable' },
+          { id: '26', name: 'Plancha Abdominal con Toques', sets: 4, reps: '45s', rest: '30s', notes: 'Cadera firme' },
+        ],
+      },
     ],
   },
 ];
 
 export default function EntrenadorDashboard() {
-  const members = getStoredMembers();
-  const [selectedMember, setSelectedMember] = useState<GymMember>(members[0]);
-  const [routines, setRoutines] = useState<Record<string, MemberRoutine>>(getStoredRoutines());
-  const [progressList, setProgressList] = useState<ProgressRecord[]>(getStoredProgress());
+  const [members] = useState<GymMember[]>(getStoredMembers());
+
+  // Filtros de Turno y Coach
+  const [filterShift, setFilterShift] = useState<'all' | 'manana' | 'tarde' | 'noche'>('all');
+  const [filterCoach, setFilterCoach] = useState<string>('all');
   const [searchMember, setSearchMember] = useState('');
   const [activeTab, setActiveTab] = useState<'routine' | 'progress'>('routine');
   const [successAlert, setSuccessAlert] = useState<string | null>(null);
 
-  // Active Routine State
-  const currentRoutine = routines[selectedMember.id] || {
-    memberId: selectedMember.id,
-    routineTitle: 'Rutina Personalizada · Musculación & Boxeo',
-    objective: 'Fuerza, hipertrofia y resistencia',
+  // Socio seleccionado
+  const [selectedMember, setSelectedMember] = useState<GymMember>(members[0]);
+
+  // Caché de Rutinas bajo demanda (Lazy Fetching)
+  const [loadedRoutines, setLoadedRoutines] = useState<Record<string, MemberRoutine>>({});
+  const [isLoadingRoutine, setIsLoadingRoutine] = useState(false);
+
+  // Estado editable de la rutina activa
+  const [editableRoutine, setEditableRoutine] = useState<MemberRoutine>({
+    memberId: members[0]?.id || 'MEM-001',
+    routineTitle: 'Rutina Base de Entrenamiento',
+    objective: 'Acondicionamiento físico',
     coachName: 'Coach Marcos Rivas',
     updatedAt: 'Hoy',
-    coachNotes: 'Mantener buena forma en cada repetición y calentar 10 min antes.',
+    coachNotes: '',
     days: ROUTINE_TEMPLATES[0].days,
-  };
+  });
 
-  const [editableRoutine, setEditableRoutine] = useState<MemberRoutine>(currentRoutine);
-
-  // New Progress Record State
-  const [newWeight, setNewWeight] = useState<string>('77.0');
-  const [newBench, setNewBench] = useState<string>('97.5');
-  const [newSquat, setNewSquat] = useState<string>('122.5');
-  const [newDeadlift, setNewDeadlift] = useState<string>('145.0');
-  const [newPullups, setNewPullups] = useState<string>('15');
-  const [newProgressNotes, setNewProgressNotes] = useState<string>('Superó su marca personal en press de banca.');
+  // Progresos y Modal de Evaluación
+  const [progressList, setProgressList] = useState<ProgressRecord[]>(getStoredProgress());
   const [showProgressModal, setShowProgressModal] = useState(false);
+  const [newWeight, setNewWeight] = useState<string>('75.0');
+  const [newBench, setNewBench] = useState<string>('90.0');
+  const [newSquat, setNewSquat] = useState<string>('115.0');
+  const [newDeadlift, setNewDeadlift] = useState<string>('135.0');
+  const [newPullups, setNewPullups] = useState<string>('12');
+  const [newProgressNotes, setNewProgressNotes] = useState<string>('Excelente ejecución técnica.');
 
+  // 1. CARGA BAJO DEMANDA (LAZY FETCH) DE LA RUTINA DEL ATLETA SELECCIONADO
+  // Cero consumo de egress innecesario: NO descarga las 450 rutinas de golpe
+  const fetchRoutineForMember = useCallback(
+    async (member: GymMember) => {
+      // Si ya está en la memoria del entrenador, no volver a solicitar
+      if (loadedRoutines[member.id]) {
+        setEditableRoutine(loadedRoutines[member.id]);
+        return;
+      }
+
+      setIsLoadingRoutine(true);
+      try {
+        const fetched = await getMemberRoutine(member.id);
+        const routineToUse =
+          fetched || {
+            memberId: member.id,
+            routineTitle: `Rutina Personalizada · ${member.name.split(' ')[0]}`,
+            objective: 'Hipertrofia & Fuerza Funcional',
+            coachName: member.coachName || 'Coach Marcos Rivas',
+            updatedAt: 'Pendiente de Asignación',
+            coachNotes: 'Mantener control en fase excéntrica y calentar 10 minutos.',
+            days: ROUTINE_TEMPLATES[0].days,
+          };
+
+        setLoadedRoutines((prev) => ({ ...prev, [member.id]: routineToUse }));
+        setEditableRoutine(routineToUse);
+      } catch {
+        // Fallback local
+        const defaultRoutine = {
+          memberId: member.id,
+          routineTitle: `Rutina Personalizada · ${member.name.split(' ')[0]}`,
+          objective: 'Acondicionamiento',
+          coachName: member.coachName || 'Coach Marcos Rivas',
+          updatedAt: 'Hoy',
+          coachNotes: 'Completar las series indicadas.',
+          days: ROUTINE_TEMPLATES[0].days,
+        };
+        setEditableRoutine(defaultRoutine);
+      }
+      setIsLoadingRoutine(false);
+    },
+    [loadedRoutines]
+  );
+
+  // Al cambiar de socio seleccionado, cargar su rutina bajo demanda
   useEffect(() => {
-    const existing = routines[selectedMember.id];
-    if (existing) {
-      setEditableRoutine(existing);
-    } else {
-      setEditableRoutine({
-        memberId: selectedMember.id,
-        routineTitle: `Rutina Personalizada para ${selectedMember.name.split(' ')[0]}`,
-        objective: 'Acondicionamiento físico e hipertrofia',
-        coachName: 'Coach Marcos Rivas',
-        updatedAt: 'Hoy',
-        coachNotes: 'Cumplir con los descansos indicados y calentar adecuadamente.',
-        days: ROUTINE_TEMPLATES[0].days,
-      });
+    if (selectedMember) {
+      fetchRoutineForMember(selectedMember);
     }
-  }, [selectedMember, routines]);
+  }, [selectedMember, fetchRoutineForMember]);
 
-  // Save Routine
-  const handleSaveRoutine = () => {
+  // 2. FILTRADO DE ATLETAS POR TURNO OFICIAL Y ENTRENADOR
+  const filteredMembers = useMemo(() => {
+    return members.filter((m) => {
+      // Filtro de Turno
+      const memberShift = m.shift || 'manana';
+      const matchShift = filterShift === 'all' || memberShift === filterShift;
+
+      // Filtro de Coach
+      const matchCoach = filterCoach === 'all' || (m.coachName && m.coachName.includes(filterCoach));
+
+      // Búsqueda por texto
+      const query = searchMember.toLowerCase();
+      const matchSearch =
+        m.name.toLowerCase().includes(query) || m.dni.includes(query) || m.id.toLowerCase().includes(query);
+
+      return matchShift && matchCoach && matchSearch;
+    });
+  }, [members, filterShift, filterCoach, searchMember]);
+
+  // 3. GUARDAR RUTINA
+  const handleSaveRoutine = async () => {
     const updated: MemberRoutine = {
       ...editableRoutine,
       memberId: selectedMember.id,
-      updatedAt: new Date().toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }),
+      coachName: selectedMember.coachName || editableRoutine.coachName,
+      updatedAt: new Date().toLocaleDateString('es-PE', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }),
     };
 
-    const newRoutines = { ...routines, [selectedMember.id]: updated };
-    setRoutines(newRoutines);
-    saveMemberRoutine(updated);
+    setLoadedRoutines((prev) => ({ ...prev, [selectedMember.id]: updated }));
+    setEditableRoutine(updated);
 
-    setSuccessAlert(`Rutina asignada y guardada con éxito para ${selectedMember.name}. El socio ya puede verla en su portal.`);
+    // Guardar en Supabase / Local
+    await saveMemberRoutine(updated);
+
+    setSuccessAlert(`Rutina guardada y asignada con éxito a ${selectedMember.name}.`);
     setTimeout(() => setSuccessAlert(null), 4000);
   };
 
-  // Apply Predefined Template
-  const handleApplyTemplate = (tmpl: typeof ROUTINE_TEMPLATES[0]) => {
+  // 4. APLICAR PLANTILLA PREDETERMINADA
+  const handleApplyTemplate = (tmpl: (typeof ROUTINE_TEMPLATES)[0]) => {
     setEditableRoutine((prev) => ({
       ...prev,
       routineTitle: tmpl.name,
@@ -172,15 +294,15 @@ export default function EntrenadorDashboard() {
     setTimeout(() => setSuccessAlert(null), 3500);
   };
 
-  // Add Exercise to a Day
+  // 5. AGREGAR / ELIMINAR EJERCICIOS
   const handleAddExercise = (dayIndex: number) => {
     const newEx = {
       id: Date.now().toString(),
       name: 'Nuevo Ejercicio',
-      sets: 3,
+      sets: 4,
       reps: '10-12',
       rest: '60s',
-      notes: 'Ejecución controlada',
+      notes: 'Control excéntrico',
     };
 
     setEditableRoutine((prev) => {
@@ -190,7 +312,6 @@ export default function EntrenadorDashboard() {
     });
   };
 
-  // Remove Exercise
   const handleRemoveExercise = (dayIndex: number, exIndex: number) => {
     setEditableRoutine((prev) => {
       const newDays = [...prev.days];
@@ -199,13 +320,17 @@ export default function EntrenadorDashboard() {
     });
   };
 
-  // Save New Progress Record
-  const handleSaveProgress = (e: React.FormEvent) => {
+  // 6. GUARDAR NUEVA EVALUACIÓN DE PROGRESO
+  const handleSaveProgress = async (e: React.FormEvent) => {
     e.preventDefault();
     const newRecord: ProgressRecord = {
       id: `PRG-${Date.now()}`,
       memberId: selectedMember.id,
-      date: new Date().toLocaleDateString('es-PE', { day: '2-digit', month: 'short', year: 'numeric' }),
+      date: new Date().toLocaleDateString('es-PE', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }),
       weightKg: Number(newWeight) || 75,
       benchPressKg: Number(newBench) || 90,
       squatKg: Number(newSquat) || 115,
@@ -216,32 +341,26 @@ export default function EntrenadorDashboard() {
 
     const updated = [newRecord, ...progressList];
     setProgressList(updated);
-    saveProgressRecord(newRecord);
+    await saveProgressRecord(newRecord);
 
     setShowProgressModal(false);
-    setSuccessAlert(`Nueva evaluación registrada para ${selectedMember.name}. ¡Progresos actualizados!`);
+    setSuccessAlert(`Nueva evaluación física registrada para ${selectedMember.name}.`);
     setTimeout(() => setSuccessAlert(null), 4000);
   };
 
-  // Filtered member progress
+  // Progresos del socio seleccionado
   const memberProgress = progressList.filter((p) => p.memberId === selectedMember.id);
   const latestProgress = memberProgress[0];
 
-  const filteredMembers = members.filter(
-    (m) =>
-      m.name.toLowerCase().includes(searchMember.toLowerCase()) ||
-      m.dni.includes(searchMember)
-  );
-
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16">
+    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-orange-500 selection:text-black">
       <PortalHeader
         currentRole="entrenador"
         title="Panel del Entrenador (Coach)"
-        subtitle="Gestión de Rutinas Personalizadas y Evolución de Progresos · Trankilandia Gym"
+        subtitle="Gestión de Rutinas por Turno · Carga Bajo Demanda · Evaluación de Marcas"
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {successAlert && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
@@ -253,65 +372,133 @@ export default function EntrenadorDashboard() {
           </motion.div>
         )}
 
-        {/* 1. SELECCIÓN DE ATLETA / CLIENTE */}
-        <section className="bg-zinc-900/60 border border-white/10 rounded-2xl p-5 shadow-xl">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-white/10">
+        {/* 1. BARRA DE FILTROS POR TURNO OFICIAL Y ENTRENADOR */}
+        <section className="bg-zinc-900/80 border border-white/10 rounded-2xl p-5 shadow-xl space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 pb-4 border-b border-white/10">
             <div>
               <h2 className="text-base font-bold text-white font-display uppercase tracking-wide flex items-center gap-2">
                 <Users className="w-4 h-4 text-orange-400" />
-                <span>Atleta a Gestionar</span>
+                <span>Atletas por Turno & Entrenador</span>
               </h2>
               <p className="text-xs text-zinc-400">
-                Selecciona a un alumno para armar su rutina o registrar sus marcas de fuerza
+                Filtra alumnos de tu turno para armar su plan de entrenamiento sin saturar la red
               </p>
             </div>
 
-            {/* Quick search */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            {/* Buscador de Alumno */}
+            <div className="relative w-full lg:w-72">
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={searchMember}
                 onChange={(e) => setSearchMember(e.target.value)}
-                placeholder="Buscar por nombre o DNI..."
-                className="w-full pl-9 pr-3 py-1.5 bg-zinc-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
+                placeholder="Buscar por nombre, DNI o ID..."
+                className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-white/10 rounded-xl text-xs font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-orange-500"
               />
             </div>
           </div>
 
-          {/* Member chips selector */}
-          <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
-            {filteredMembers.map((m) => {
-              const isSelected = m.id === selectedMember.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setSelectedMember(m)}
-                  className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
-                    isSelected
-                      ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20'
-                      : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-white/5'
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
-                      isSelected ? 'bg-black text-white' : 'bg-orange-500/20 text-orange-400'
+          {/* Filtros de Turno y Coach */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            {/* Botones de Turnos Oficiales */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+              <span className="text-[11px] font-mono text-zinc-400 flex items-center gap-1 mr-1">
+                <Filter className="w-3.5 h-3.5 text-orange-400" /> Turno:
+              </span>
+              {[
+                { id: 'all', label: 'Todos', icon: Clock },
+                { id: 'manana', label: 'Mañana (6am-2pm)', icon: Sun },
+                { id: 'tarde', label: 'Tarde (2pm-6pm)', icon: Sunset },
+                { id: 'noche', label: 'Noche (6pm-10pm)', icon: Moon },
+              ].map((t) => {
+                const Icon = t.icon;
+                const isSelected = filterShift === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setFilterShift(t.id as any)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      isSelected
+                        ? 'bg-orange-500 text-black shadow-md'
+                        : 'bg-zinc-950 border border-white/10 text-zinc-400 hover:text-white'
                     }`}
                   >
-                    {m.name[0]}
-                  </div>
-                  <span>{m.name}</span>
-                  <span className={`text-[10px] ${isSelected ? 'text-black/70' : 'text-zinc-500'}`}>
-                    ({m.dni})
-                  </span>
-                </button>
-              );
-            })}
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{t.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Selector de Coach */}
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-mono text-zinc-400 whitespace-nowrap">Coach:</span>
+              <select
+                value={filterCoach}
+                onChange={(e) => setFilterCoach(e.target.value)}
+                className="bg-zinc-950 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-mono text-zinc-200 focus:outline-none focus:border-orange-500 cursor-pointer"
+              >
+                {OFFICIAL_COACH_LIST.map((c) => (
+                  <option key={c.id} value={c.id === 'all' ? 'all' : c.name}>
+                    {c.label || c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Carrusel de Chips de Alumnos Filtrados */}
+          <div className="pt-2">
+            <div className="text-[11px] font-mono text-zinc-400 mb-2">
+              Alumnos encontrados: <strong className="text-white">{filteredMembers.length}</strong> (Haz clic para cargar su rutina bajo demanda):
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+              {filteredMembers.length === 0 ? (
+                <div className="py-4 text-xs font-mono text-zinc-500">
+                  No hay atletas registrados en este turno o filtro.
+                </div>
+              ) : (
+                filteredMembers.map((m) => {
+                  const isSelected = m.id === selectedMember.id;
+                  const shift = m.shift || 'manana';
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setSelectedMember(m)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                        isSelected
+                          ? 'bg-orange-500 text-black shadow-lg shadow-orange-500/20'
+                          : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-300 border border-white/5'
+                      }`}
+                    >
+                      <div
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                          isSelected ? 'bg-black text-white' : 'bg-orange-500/20 text-orange-400'
+                        }`}
+                      >
+                        {m.name[0]}
+                      </div>
+                      <span>{m.name}</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded uppercase ${
+                          isSelected
+                            ? 'bg-black/20 text-black font-black'
+                            : 'bg-zinc-900 text-zinc-400'
+                        }`}
+                      >
+                        {shift}
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
         </section>
 
-        {/* 2. HEADER DEL ALUMNO SELECCIONADO + TABS (RUTINA VS PROGRESOS) */}
+        {/* 2. HEADER DEL ALUMNO SELECCIONADO + TABS */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-zinc-900 via-zinc-900 to-black border border-orange-500/30 shadow-xl">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-orange-500/20 border border-orange-500/40 text-orange-400 flex items-center justify-center font-black text-xl font-display">
@@ -325,10 +512,13 @@ export default function EntrenadorDashboard() {
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-orange-500/15 text-orange-400 border border-orange-500/30">
                   DNI: {selectedMember.dni}
                 </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-zinc-800 text-zinc-300">
+                  Turno: {selectedMember.shift || 'manana'}
+                </span>
               </div>
               <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                Plan: <span className="text-zinc-200 font-bold">{selectedMember.plan}</span> · Coach a cargo:{' '}
-                <span className="text-orange-400 font-bold">{selectedMember.coachName}</span>
+                Plan: <span className="text-zinc-200 font-bold">{selectedMember.plan}</span> · Coach:{' '}
+                <span className="text-orange-400 font-bold">{selectedMember.coachName || 'Coach Marcos Rivas'}</span>
               </p>
             </div>
           </div>
@@ -346,6 +536,7 @@ export default function EntrenadorDashboard() {
             >
               <ClipboardList className="w-4 h-4" />
               <span>GESTIONAR RUTINA</span>
+              {isLoadingRoutine && <RefreshCw className="w-3 h-3 animate-spin ml-1 text-black" />}
             </button>
             <button
               type="button"
@@ -357,20 +548,19 @@ export default function EntrenadorDashboard() {
               }`}
             >
               <TrendingUp className="w-4 h-4" />
-              <span>EVOLUCIÓN & MARCAS</span>
+              <span>EVOLUCIÓN & MARCAS ({memberProgress.length})</span>
             </button>
           </div>
         </div>
 
-        {/* 3. VISTA 1: GESTIÓN DE RUTINAS DEL CLIENTE */}
+        {/* 3. VISTA 1: GESTIÓN DE RUTINA */}
         {activeTab === 'routine' && (
           <div className="space-y-6">
-            {/* Quick Templates Selector */}
+            {/* Selector de Plantillas Predeterminadas */}
             <div className="p-4 rounded-2xl bg-zinc-900/60 border border-white/10 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-mono text-zinc-300">
                 <Sparkles className="w-4 h-4 text-orange-400" />
-                <span className="font-bold">Plantillas Rápidas del Coach:</span>
-                <span className="text-zinc-500 hidden sm:inline">Carga una estructura probada en 1 clic:</span>
+                <span className="font-bold">Plantillas Rápidas del Staff:</span>
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -387,7 +577,7 @@ export default function EntrenadorDashboard() {
               </div>
             </div>
 
-            {/* General Routine Details */}
+            {/* Cabecera de la Rutina y Guardado */}
             <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-white/10">
                 <div className="flex-1 space-y-3">
@@ -427,16 +617,16 @@ export default function EntrenadorDashboard() {
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-black font-black text-xs font-display uppercase tracking-wider transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
-                    <span>GUARDAR Y ASIGNAR RUTINA</span>
+                    <span>GUARDAR Y ASIGNAR AL ATLETA</span>
                   </button>
                 </div>
               </div>
 
-              {/* Coach Technical Notes */}
+              {/* Indicaciones del Coach */}
               <div>
                 <label className="block text-orange-400 text-xs font-mono font-bold mb-1.5 uppercase flex items-center gap-1.5">
                   <Flame className="w-3.5 h-3.5" />
-                  <span>Indicaciones Técnicas del Coach para {selectedMember.name.split(' ')[0]}:</span>
+                  <span>Indicaciones Técnicas para {selectedMember.name.split(' ')[0]}:</span>
                 </label>
                 <textarea
                   rows={2}
@@ -444,13 +634,13 @@ export default function EntrenadorDashboard() {
                   onChange={(e) =>
                     setEditableRoutine({ ...editableRoutine, coachNotes: e.target.value })
                   }
-                  placeholder="Ej: Cuidar bloqueo de rodillas en sentadilla, 4 rounds de sparring al 70%..."
+                  placeholder="Ej: Calentar manguito rotador 10 min, en sentadilla no rebotar abajo..."
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl p-3 text-xs text-zinc-200 focus:outline-none focus:border-orange-500 font-sans"
                 />
               </div>
             </div>
 
-            {/* Routine Days & Exercise Builder */}
+            {/* Días y Constructor de Ejercicios */}
             <div className="space-y-4">
               {editableRoutine.days.map((day, dayIndex) => (
                 <div
@@ -496,7 +686,7 @@ export default function EntrenadorDashboard() {
                     </button>
                   </div>
 
-                  {/* Exercises Table */}
+                  {/* Tabla de Ejercicios */}
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
                       <thead className="bg-zinc-950/80 text-zinc-400 font-mono uppercase tracking-wider border-b border-white/10">
@@ -571,7 +761,7 @@ export default function EntrenadorDashboard() {
                                   newDays[dayIndex].exercises[exIndex].notes = e.target.value;
                                   setEditableRoutine({ ...editableRoutine, days: newDays });
                                 }}
-                                placeholder="Nota opcional..."
+                                placeholder="Nota técnica..."
                                 className="w-full bg-zinc-950 border border-white/10 rounded-lg px-2.5 py-1 text-zinc-400 font-sans text-xs focus:outline-none focus:border-orange-500"
                               />
                             </td>
@@ -596,7 +786,7 @@ export default function EntrenadorDashboard() {
           </div>
         )}
 
-        {/* 4. VISTA 2: GESTIÓN DE PROGRESOS Y MARCAS DEL CLIENTE */}
+        {/* 4. VISTA 2: GESTIÓN DE PROGRESOS */}
         {activeTab === 'progress' && (
           <div className="space-y-6">
             {/* PRs Highlights Cards */}
@@ -606,7 +796,7 @@ export default function EntrenadorDashboard() {
                 <div className="mt-1 text-2xl font-black font-display text-white">
                   {latestProgress ? `${latestProgress.weightKg} kg` : '75.0 kg'}
                 </div>
-                <span className="text-[10px] font-mono text-zinc-500">Última medición</span>
+                <span className="text-[10px] font-mono text-zinc-500">Evaluación sala</span>
               </div>
 
               <div className="bg-zinc-900/70 border border-amber-500/30 rounded-2xl p-4 text-center">
@@ -614,7 +804,7 @@ export default function EntrenadorDashboard() {
                 <div className="mt-1 text-2xl font-black font-display text-amber-400">
                   {latestProgress ? `${latestProgress.benchPressKg} kg` : '90 kg'}
                 </div>
-                <span className="text-[10px] font-mono text-emerald-400">+5 kg reciente</span>
+                <span className="text-[10px] font-mono text-emerald-400">Marca Personal</span>
               </div>
 
               <div className="bg-zinc-900/70 border border-amber-500/30 rounded-2xl p-4 text-center">
@@ -638,18 +828,18 @@ export default function EntrenadorDashboard() {
                 <div className="mt-1 text-2xl font-black font-display text-emerald-400">
                   {latestProgress ? `${latestProgress.pullupsRep} reps` : '12 reps'}
                 </div>
-                <span className="text-[10px] font-mono text-zinc-500">Rango estricto</span>
+                <span className="text-[10px] font-mono text-zinc-500">Estrictas</span>
               </div>
             </div>
 
-            {/* Actions Bar */}
+            {/* Acciones y Botón de Nueva Evaluación */}
             <div className="flex items-center justify-between p-4 rounded-2xl bg-zinc-900/60 border border-white/10">
               <div>
                 <h4 className="text-sm font-bold text-white font-display uppercase tracking-wide">
                   Historial de Evaluaciones Físicas
                 </h4>
                 <p className="text-xs text-zinc-400">
-                  Seguimiento de peso corporal y cargas de fuerza de {selectedMember.name}
+                  Registro de marcas de {selectedMember.name}
                 </p>
               </div>
 
@@ -659,11 +849,11 @@ export default function EntrenadorDashboard() {
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-black font-black text-xs font-mono uppercase transition-colors shadow-lg shadow-orange-500/20 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>NUEVA EVALUACIÓN</span>
+                <span>NUEVA EVALUACIÓN FÍSICA</span>
               </button>
             </div>
 
-            {/* Progress Records Timeline / Table */}
+            {/* Tabla de Evaluaciones */}
             <div className="bg-zinc-900/60 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs font-mono">
@@ -679,17 +869,25 @@ export default function EntrenadorDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
-                    {memberProgress.map((p) => (
-                      <tr key={p.id} className="hover:bg-white/[0.02]">
-                        <td className="py-3 px-4 text-white font-bold">{p.date}</td>
-                        <td className="py-3 px-4 text-zinc-300">{p.weightKg} kg</td>
-                        <td className="py-3 px-4 text-amber-400 font-bold">{p.benchPressKg} kg</td>
-                        <td className="py-3 px-4 text-amber-400 font-bold">{p.squatKg} kg</td>
-                        <td className="py-3 px-4 text-amber-400 font-bold">{p.deadliftKg} kg</td>
-                        <td className="py-3 px-4 text-emerald-400 font-bold">{p.pullupsRep} reps</td>
-                        <td className="py-3 px-4 text-zinc-400 font-sans text-xs">{p.notes}</td>
+                    {memberProgress.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-8 text-center text-zinc-500">
+                          Este socio aún no tiene evaluaciones registradas. Haz clic en "Nueva Evaluación Física".
+                        </td>
                       </tr>
-                    ))}
+                    ) : (
+                      memberProgress.map((p) => (
+                        <tr key={p.id} className="hover:bg-white/[0.02]">
+                          <td className="py-3 px-4 text-white font-bold">{p.date}</td>
+                          <td className="py-3 px-4 text-zinc-300">{p.weightKg} kg</td>
+                          <td className="py-3 px-4 text-amber-400 font-bold">{p.benchPressKg} kg</td>
+                          <td className="py-3 px-4 text-amber-400 font-bold">{p.squatKg} kg</td>
+                          <td className="py-3 px-4 text-amber-400 font-bold">{p.deadliftKg} kg</td>
+                          <td className="py-3 px-4 text-emerald-400 font-bold">{p.pullupsRep} reps</td>
+                          <td className="py-3 px-4 text-zinc-400 font-sans text-xs">{p.notes}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -737,7 +935,7 @@ export default function EntrenadorDashboard() {
                 </div>
                 <div>
                   <label className="block text-zinc-400 font-bold mb-1 uppercase">
-                    Dominadas (Reps Max)
+                    Dominadas (Reps)
                   </label>
                   <input
                     type="number"
@@ -751,7 +949,7 @@ export default function EntrenadorDashboard() {
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-amber-400 font-bold mb-1 uppercase">
+                  <label className="block text-zinc-400 font-bold mb-1 uppercase">
                     Press Banca (kg)
                   </label>
                   <input
@@ -760,11 +958,11 @@ export default function EntrenadorDashboard() {
                     required
                     value={newBench}
                     onChange={(e) => setNewBench(e.target.value)}
-                    className="w-full bg-zinc-950 border border-amber-400/30 rounded-xl px-3 py-2 text-amber-400 font-bold focus:outline-none"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-amber-400 font-bold mb-1 uppercase">
+                  <label className="block text-zinc-400 font-bold mb-1 uppercase">
                     Sentadilla (kg)
                   </label>
                   <input
@@ -773,11 +971,11 @@ export default function EntrenadorDashboard() {
                     required
                     value={newSquat}
                     onChange={(e) => setNewSquat(e.target.value)}
-                    className="w-full bg-zinc-950 border border-amber-400/30 rounded-xl px-3 py-2 text-amber-400 font-bold focus:outline-none"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-amber-400 font-bold mb-1 uppercase">
+                  <label className="block text-zinc-400 font-bold mb-1 uppercase">
                     Peso Muerto (kg)
                   </label>
                   <input
@@ -786,7 +984,7 @@ export default function EntrenadorDashboard() {
                     required
                     value={newDeadlift}
                     onChange={(e) => setNewDeadlift(e.target.value)}
-                    className="w-full bg-zinc-950 border border-amber-400/30 rounded-xl px-3 py-2 text-amber-400 font-bold focus:outline-none"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white focus:outline-none focus:border-orange-500"
                   />
                 </div>
               </div>
@@ -796,11 +994,11 @@ export default function EntrenadorDashboard() {
                   Observaciones Técnicas del Coach
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={newProgressNotes}
                   onChange={(e) => setNewProgressNotes(e.target.value)}
-                  placeholder="Comentario sobre avances de técnica, potencia de golpeo o mejoras..."
-                  className="w-full bg-zinc-950 border border-white/10 rounded-xl p-3 text-xs text-zinc-200 focus:outline-none focus:border-orange-500 font-sans"
+                  placeholder="Ej: Buena profundidad en sentadilla, subió 5kg en press banca..."
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-orange-500 font-sans"
                 />
               </div>
 
@@ -808,13 +1006,13 @@ export default function EntrenadorDashboard() {
                 <button
                   type="button"
                   onClick={() => setShowProgressModal(false)}
-                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-3 rounded-xl text-xs font-mono font-bold cursor-pointer transition-colors"
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-3 rounded-xl font-bold cursor-pointer transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-orange-500 hover:bg-orange-400 text-black py-3 rounded-xl text-xs font-mono font-black cursor-pointer transition-colors shadow-lg shadow-orange-500/20"
+                  className="flex-1 bg-orange-500 hover:bg-orange-400 text-black py-3 rounded-xl font-black cursor-pointer transition-colors shadow-lg shadow-orange-500/20"
                 >
                   GUARDAR EVALUACIÓN
                 </button>

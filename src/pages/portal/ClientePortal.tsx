@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Dumbbell,
-  CreditCard,
   MessageCircle,
   Flame,
   AlertTriangle,
@@ -9,29 +8,105 @@ import {
   Printer,
   Search,
   Sparkles,
+  Download,
+  RefreshCw,
+  Sun,
+  Sunset,
+  Moon,
+  Clock,
+  UserCheck,
+  CheckCircle2,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
 import { useAuth } from '../../context/AuthContext';
 import {
+  GymMember,
+  MemberRoutine,
   getStoredMembers,
   getStoredRoutines,
   getStoredProgress,
   INITIAL_ROUTINES,
 } from '../../data/gymStore';
+import {
+  getMemberRoutine,
+  updateMemberShift,
+} from '../../lib/supabaseDb';
+import {
+  renderBarcodeToCanvas,
+  exportCarnetDigitalPNG,
+} from '../../lib/barcode128';
+
+// Entrenadores oficiales del gimnasio (2 mujeres y 2 varones distribuidos en los 3 turnos)
+export const OFFICIAL_COACHES = [
+  {
+    id: 'coach-marcos',
+    name: 'Coach Marcos Rivas',
+    gender: 'varon' as const,
+    shift: 'manana' as const,
+    shiftLabel: 'Mañana (6:00 AM - 2:00 PM)',
+    specialty: 'Fuerza, Hipertrofia & Musculación',
+  },
+  {
+    id: 'coach-camila',
+    name: 'Coach Camila Mendoza',
+    gender: 'mujer' as const,
+    shift: 'manana' as const,
+    shiftLabel: 'Mañana (6:00 AM - 2:00 PM)',
+    specialty: 'Acondicionamiento, Glúteos & Cardio',
+  },
+  {
+    id: 'coach-valeria',
+    name: 'Coach Valeria Gómez',
+    gender: 'mujer' as const,
+    shift: 'tarde' as const,
+    shiftLabel: 'Tarde (2:00 PM - 6:00 PM)',
+    specialty: 'Definición, Tonificación & Funcional',
+  },
+  {
+    id: 'coach-daniel',
+    name: 'Coach Daniel Quispe',
+    gender: 'varon' as const,
+    shift: 'noche' as const,
+    shiftLabel: 'Noche (6:00 PM - 10:00 PM)',
+    specialty: 'Potencia, Boxeo & Hipertrofia Pesada',
+  },
+];
+
+interface ClientCache {
+  timestamp: number;
+  routine: MemberRoutine | null;
+}
 
 export default function ClientePortal() {
   const { user } = useAuth();
-  const members = getStoredMembers();
+  const [members, setMembers] = useState<GymMember[]>(getStoredMembers());
 
-  // Test simulation: allow picking another member from the 389 socios for testing
+  // Selector de socio para pruebas / demostración
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
   const [testSearch, setTestSearch] = useState('');
   const [showMemberPicker, setShowMemberPicker] = useState(false);
+
+  // Estados de rutina y entrenamiento
   const [completedExercises, setCompletedExercises] = useState<Record<string, boolean>>({});
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
 
-  // Match current member or default to Luis (MEM-001)
+  // Estados de turno y entrenador
+  const [selectedShift, setSelectedShift] = useState<'manana' | 'tarde' | 'noche'>('manana');
+  const [selectedCoachName, setSelectedCoachName] = useState<string>('Coach Marcos Rivas');
+  const [isSavingShift, setIsSavingShift] = useState(false);
+  const [shiftSuccessMsg, setShiftSuccessMsg] = useState<string | null>(null);
+
+  // Rutina cargada con caché de 10 min
+  const [memberRoutine, setMemberRoutine] = useState<MemberRoutine | null>(null);
+  const [isLoadingRoutine, setIsLoadingRoutine] = useState(false);
+  const [lastCacheSync, setLastCacheSync] = useState<string>('');
+
+  // Canvas ref para el código de barras 1D
+  const barcodeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Socio activo determinado por autenticación o simulación
   const defaultMember =
     members.find(
       (m) =>
@@ -42,27 +117,144 @@ export default function ClientePortal() {
   const currentMember =
     (selectedMemberId ? members.find((m) => m.id === selectedMemberId) : null) || defaultMember;
 
-  const routines = getStoredRoutines();
-  const currentRoutine = routines[currentMember.id] || INITIAL_ROUTINES['MEM-001'] || {
-    memberId: currentMember.id,
-    routineTitle: 'Rutina Base de Fuerza & Musculación',
-    objective: 'Acondicionamiento físico general',
-    coachName: 'Coach Marcos Rivas',
-    updatedAt: 'Hoy',
-    coachNotes: 'Mantener buena forma y calentar 10 minutos antes de entrenar.',
-    days: [],
+  // Sincronizar estados locales de turno y coach con el socio seleccionado
+  useEffect(() => {
+    if (currentMember) {
+      setSelectedShift(currentMember.shift || 'manana');
+      setSelectedCoachName(currentMember.coachName || 'Coach Marcos Rivas');
+    }
+  }, [currentMember]);
+
+  // CARGAR RUTINA CON CACHÉ DE CLIENTE (TTL: 10 MINUTOS EN SESSIONSTORAGE)
+  const loadRoutineWithCache = useCallback(
+    async (forceRefresh: boolean = false) => {
+      if (!currentMember) return;
+      const cacheKey = `trankilandia_routine_${currentMember.id}`;
+
+      // 1. Revisar caché local si no se fuerza la recarga
+      if (!forceRefresh) {
+        try {
+          const raw = sessionStorage.getItem(cacheKey);
+          if (raw) {
+            const parsed: ClientCache = JSON.parse(raw);
+            const isFresh = Date.now() - parsed.timestamp < 10 * 60 * 1000; // 10 min TTL
+            if (isFresh && parsed.routine) {
+              setMemberRoutine(parsed.routine);
+              setLastCacheSync(
+                new Date(parsed.timestamp).toLocaleTimeString('es-PE', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })
+              );
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Fetch fresco desde Supabase
+      setIsLoadingRoutine(true);
+      try {
+        const freshRoutine = await getMemberRoutine(currentMember.id);
+        const fallback =
+          freshRoutine ||
+          getStoredRoutines()[currentMember.id] ||
+          INITIAL_ROUTINES['MEM-001'] || {
+            memberId: currentMember.id,
+            routineTitle: 'Rutina Base de Fuerza & Musculación',
+            objective: 'Acondicionamiento físico general',
+            coachName: currentMember.coachName || 'Coach Marcos Rivas',
+            updatedAt: 'Hoy',
+            coachNotes: 'Mantener buena forma y calentar 10 minutos antes de entrenar.',
+            days: [],
+          };
+
+        setMemberRoutine(fallback);
+
+        // Guardar en sessionStorage
+        const cacheData: ClientCache = {
+          timestamp: Date.now(),
+          routine: fallback,
+        };
+        sessionStorage.setItem(cacheKey, JSON.stringify(cacheData));
+        setLastCacheSync(
+          new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' })
+        );
+      } catch {
+        // En caso de falla, fallback local
+        const local = getStoredRoutines()[currentMember.id] || INITIAL_ROUTINES['MEM-001'];
+        setMemberRoutine(local);
+      }
+      setIsLoadingRoutine(false);
+    },
+    [currentMember]
+  );
+
+  useEffect(() => {
+    loadRoutineWithCache(false);
+  }, [loadRoutineWithCache]);
+
+  // RENDERIZAR CÓDIGO DE BARRAS 1D (CODE 128) CON QUIET ZONE >= 16PX Y FONDO BLANCO PURO
+  useEffect(() => {
+    if (barcodeCanvasRef.current && currentMember.dni) {
+      renderBarcodeToCanvas(barcodeCanvasRef.current, currentMember.dni, {
+        moduleWidth: 2,
+        height: 60,
+        quietZone: 20,
+        includeText: true,
+        scale: 1.5,
+      });
+    }
+  }, [currentMember.dni]);
+
+  // DESCARGA DEL CARNET DIGITAL EN ALTA RESOLUCIÓN (SCALE 2.5)
+  const handleDownloadCarnetPNG = () => {
+    exportCarnetDigitalPNG(
+      {
+        nombre: currentMember.name,
+        dni: currentMember.dni,
+        memberId: currentMember.id,
+        plan: currentMember.plan,
+        turno: currentMember.shift || 'manana',
+        coach: currentMember.coachName || 'Coach Marcos Rivas',
+        estado: currentMember.balanceDue > 0 ? 'Con Adelanto' : 'Al Día',
+        tieneDeuda: currentMember.balanceDue > 0,
+        saldoDeuda: currentMember.balanceDue,
+        vencimiento: currentMember.expiresAt || '30 Nov 2026',
+      },
+      2.5
+    );
+  };
+
+  // ACTUALIZAR TURNO Y ENTRENADOR
+  const handleSaveShift = async () => {
+    setIsSavingShift(true);
+    try {
+      await updateMemberShift(currentMember.id, selectedShift, selectedCoachName);
+
+      // Actualizar estado en memoria
+      const updated = members.map((m) =>
+        m.id === currentMember.id
+          ? { ...m, shift: selectedShift, coachName: selectedCoachName }
+          : m
+      );
+      setMembers(updated);
+
+      setShiftSuccessMsg(
+        `¡Turno actualizado a ${selectedShift.toUpperCase()} con ${selectedCoachName}!`
+      );
+      setTimeout(() => setShiftSuccessMsg(null), 4000);
+    } catch {
+      alert('Error al guardar el nuevo turno. Comprueba tu conexión.');
+    }
+    setIsSavingShift(false);
   };
 
   const progressList = getStoredProgress().filter((p) => p.memberId === currentMember.id);
   const latestProgress = progressList[0];
 
-  const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-
-  const memberName =
-    user?.user_metadata?.full_name || currentMember.name || 'Luis Gerardo Llocclla';
-  const memberEmail = user?.email || currentMember.email;
-
-  const activeDay = currentRoutine.days[selectedDayIndex] || currentRoutine.days[0];
+  const activeRoutine = memberRoutine || INITIAL_ROUTINES['MEM-001'];
+  const activeDay = activeRoutine?.days?.[selectedDayIndex] || activeRoutine?.days?.[0];
 
   const toggleExercise = (exerciseId: string) => {
     setCompletedExercises((prev) => ({
@@ -71,22 +263,28 @@ export default function ClientePortal() {
     }));
   };
 
-  const filteredTestMembers = members.filter(
-    (m) =>
-      m.name.toLowerCase().includes(testSearch.toLowerCase()) ||
-      m.dni.includes(testSearch)
-  ).slice(0, 8);
+  const filteredTestMembers = members
+    .filter(
+      (m) =>
+        m.name.toLowerCase().includes(testSearch.toLowerCase()) ||
+        m.dni.includes(testSearch)
+    )
+    .slice(0, 8);
+
+  const coachesForSelectedShift = OFFICIAL_COACHES.filter(
+    (c) => c.shift === selectedShift
+  );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16">
+    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
       <PortalHeader
         currentRole="cliente"
         title="Portal del Socio"
-        subtitle="Mi Carnet Digital, Estado de Cuenta & Rutina del Coach · Trankilandia Gym"
+        subtitle="Carnet 1D Descargable · Selección de Turno · Rutina Personalizada del Coach"
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* SIMULADOR DE PERFIL DE SOCIO PARA PRUEBAS */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* SIMULADOR DE PERFIL DE SOCIO PARA DEMOSTRACIÓN */}
         <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -95,10 +293,17 @@ export default function ClientePortal() {
               </div>
               <div>
                 <span className="text-xs font-mono font-bold text-white block">
-                  Simulador de Socio (Modo Pruebas):
+                  Simulador de Socio (Modo Pruebas / Demostración):
                 </span>
-                <span className="text-[11px] text-zinc-400">
-                  Viendo cuenta de: <strong className="text-amber-400">{currentMember.name}</strong> (DNI: {currentMember.dni} · {currentMember.balanceDue > 0 ? `Debe S/. ${currentMember.balanceDue}` : 'Al Día'})
+                <span className="text-[11px] text-zinc-400 font-mono">
+                  Socio en pantalla: <strong className="text-amber-400">{currentMember.name}</strong> (DNI: {currentMember.dni} · Turno:{' '}
+                  <span className="uppercase text-white font-bold">{currentMember.shift || 'manana'}</span> ·{' '}
+                  {currentMember.balanceDue > 0 ? (
+                    <span className="text-red-400 font-bold">Debe S/. {currentMember.balanceDue}</span>
+                  ) : (
+                    <span className="text-emerald-400 font-bold">Al Día</span>
+                  )}
+                  )
                 </span>
               </div>
             </div>
@@ -109,7 +314,7 @@ export default function ClientePortal() {
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-white/5 transition-colors cursor-pointer self-start sm:self-auto"
             >
               <Search className="w-3.5 h-3.5 text-amber-400" />
-              <span>{showMemberPicker ? 'Ocultar Selector' : 'Probar con otro Socio (389 en BD)'}</span>
+              <span>{showMemberPicker ? 'Ocultar Selector' : 'Probar con otro Socio (450 en BD)'}</span>
             </button>
           </div>
 
@@ -155,7 +360,7 @@ export default function ClientePortal() {
           )}
         </div>
 
-        {/* ALERTA DE COBRANZA EN CASO DE TENER SALDO PENDIENTE */}
+        {/* ALERTA DE COBRANZA EN CASO DE SALDO PENDIENTE */}
         {currentMember.balanceDue > 0 && (
           <div className="p-5 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-amber-300 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-xl">
             <div className="flex items-center gap-3.5">
@@ -164,169 +369,281 @@ export default function ClientePortal() {
               </div>
               <div>
                 <h4 className="text-base font-black font-display uppercase tracking-tight text-white">
-                  Aviso de Cobranza: Inscripción con Adelanto
+                  Aviso de Recepción: Inscripción con Adelanto
                 </h4>
                 <p className="text-xs font-mono text-zinc-300 mt-0.5">
                   Abonaste un adelanto de <span className="font-bold text-emerald-400">S/. {currentMember.advancePaid}.00</span>.
                   Tienes un saldo pendiente de{' '}
-                  <span className="font-black text-amber-400 text-sm">S/. {currentMember.balanceDue}.00</span> por cancelar
-                  antes del <span className="font-bold text-white">{currentMember.paymentDueDate || 'en recepción'}</span>.
+                  <span className="font-black text-amber-400 text-sm">S/. {currentMember.balanceDue}.00</span> por liquidar
+                  en recepción antes del <span className="font-bold text-white">{currentMember.paymentDueDate || 'próximo ingreso'}</span>.
                 </p>
               </div>
             </div>
 
             <a
-              href={`https://wa.me/51999999999?text=Hola%20Trankilandia%20Gym,%20soy%20${encodeURIComponent(
-                memberName
+              href={`https://wa.me/51999787489?text=Hola%20Trankilandia%20Gym,%20soy%20${encodeURIComponent(
+                currentMember.name
               )}%20(DNI%20${currentMember.dni}),%20deseo%20completar%20mi%20saldo%20pendiente%20de%20S/.%20${currentMember.balanceDue}.00`}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider transition-colors shadow-lg cursor-pointer whitespace-nowrap self-start sm:self-auto"
             >
               <MessageCircle className="w-4 h-4" />
-              <span>Coordinar Pago por WhatsApp</span>
+              <span>Coordinar con Caja (WhatsApp)</span>
             </a>
           </div>
         )}
 
-        {/* 1. GRID PRINCIPAL: CARNET DIGITAL + RUTINA & PROGRESOS */}
+        {/* GRID PRINCIPAL: CARNET 1D DESCARGABLE + SELECCIÓN DE TURNO + RUTINAS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Tarjeta Digital de Socio (5 cols) */}
-          <div className="lg:col-span-5 bg-gradient-to-br from-zinc-900 via-zinc-900 to-black border-2 border-amber-400/40 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-48 h-48 bg-amber-400/10 rounded-full blur-3xl pointer-events-none" />
+          {/* COLUMNA IZQUIERDA: CARNET DIGITAL CON CÓDIGO DE BARRAS 1D (5 cols) */}
+          <div className="lg:col-span-5 space-y-6">
+            {/* Tarjeta Visual de Socio */}
+            <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-black border-2 border-amber-400/40 rounded-3xl p-6 shadow-2xl relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-amber-400/10 rounded-full blur-3xl pointer-events-none" />
 
-            {/* Card Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-white/10">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-amber-400 text-black font-black">
-                  <Dumbbell className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="font-black text-sm tracking-tight text-white font-display">
-                    TRANKILANDIA CLUB
+              {/* Card Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-amber-400 text-black font-black">
+                    <Dumbbell className="w-5 h-5" />
                   </div>
-                  <div className="text-[10px] text-amber-400 font-mono tracking-widest">
-                    CARNET DE SOCIO ACTIVO
+                  <div>
+                    <div className="font-black text-sm tracking-tight text-white font-display">
+                      TRANKILANDIA GYM
+                    </div>
+                    <div className="text-[10px] text-amber-400 font-mono tracking-widest">
+                      CARNET OFICIAL DE SOCIO
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <span
-                className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border flex items-center gap-1 ${
-                  currentMember.balanceDue > 0
-                    ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
-                    : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                }`}
-              >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full ${
-                    currentMember.balanceDue > 0 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                  className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border flex items-center gap-1 ${
+                    currentMember.balanceDue > 0
+                      ? 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                      : 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
                   }`}
-                />
-                {currentMember.balanceDue > 0 ? 'ADELANTO PENDIENTE' : 'AL DÍA'}
-              </span>
-            </div>
-
-            {/* Member Details */}
-            <div className="mt-6 flex items-center gap-4">
-              {user?.user_metadata?.avatar_url ? (
-                <img
-                  src={user.user_metadata.avatar_url}
-                  alt={memberName}
-                  className="w-16 h-16 rounded-2xl object-cover border-2 border-amber-400/50 shadow-md"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-2xl bg-amber-400 text-black font-black text-2xl flex items-center justify-center border-2 border-amber-400 shadow-md">
-                  {memberName[0].toUpperCase()}
-                </div>
-              )}
-
-              <div>
-                <h2 className="text-lg font-black text-white font-display uppercase tracking-tight">
-                  {memberName}
-                </h2>
-                <p className="text-xs text-zinc-400 font-mono mt-0.5">{memberEmail}</p>
-                <div className="text-[11px] font-mono text-amber-400 font-bold mt-1">
-                  DNI: {currentMember.dni} · ID: {currentMember.id}
-                </div>
-              </div>
-            </div>
-
-            {/* QR Section for Torniquete Entrance */}
-            <div className="mt-6 p-4 rounded-2xl bg-zinc-950 border border-white/10 text-center flex flex-col items-center justify-center">
-              <div className="p-3 bg-white rounded-xl shadow-lg inline-block">
-                <svg
-                  className="w-32 h-32"
-                  viewBox="0 0 100 100"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
                 >
-                  <rect width="100" height="100" fill="white" />
-                  <rect x="10" y="10" width="24" height="24" fill="black" />
-                  <rect x="14" y="14" width="16" height="16" fill="white" />
-                  <rect x="18" y="18" width="8" height="8" fill="black" />
-
-                  <rect x="66" y="10" width="24" height="24" fill="black" />
-                  <rect x="70" y="14" width="16" height="16" fill="white" />
-                  <rect x="74" y="18" width="8" height="8" fill="black" />
-
-                  <rect x="10" y="66" width="24" height="24" fill="black" />
-                  <rect x="14" y="70" width="16" height="16" fill="white" />
-                  <rect x="18" y="74" width="8" height="8" fill="black" />
-
-                  <rect x="42" y="12" width="6" height="6" fill="black" />
-                  <rect x="52" y="12" width="6" height="6" fill="black" />
-                  <rect x="42" y="24" width="6" height="6" fill="black" />
-                  <rect x="12" y="42" width="6" height="6" fill="black" />
-                  <rect x="24" y="42" width="6" height="6" fill="black" />
-                  <rect x="36" y="36" width="12" height="12" fill="black" />
-                  <rect x="54" y="42" width="6" height="6" fill="black" />
-                  <rect x="66" y="42" width="12" height="6" fill="black" />
-                  <rect x="42" y="54" width="6" height="12" fill="black" />
-                  <rect x="54" y="60" width="12" height="6" fill="black" />
-                  <rect x="72" y="66" width="6" height="12" fill="black" />
-                  <rect x="84" y="72" width="6" height="6" fill="black" />
-                  <rect x="60" y="78" width="18" height="6" fill="black" />
-                </svg>
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      currentMember.balanceDue > 0 ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'
+                    }`}
+                  />
+                  {currentMember.balanceDue > 0 ? 'ADELANTO PENDIENTE' : 'SOCIO AL DÍA'}
+                </span>
               </div>
-              <p className="text-[11px] font-mono text-zinc-400 mt-2.5">
-                Muestra este código al escáner de torniquete en la sede de Huamanga
-              </p>
+
+              {/* Member Details */}
+              <div className="mt-5 flex items-center gap-4">
+                <div className="w-16 h-16 rounded-2xl bg-amber-400 text-black font-black text-2xl flex items-center justify-center border-2 border-amber-400 shadow-md">
+                  {currentMember.name[0].toUpperCase()}
+                </div>
+
+                <div className="truncate">
+                  <h2 className="text-lg font-black text-white font-display uppercase tracking-tight truncate">
+                    {currentMember.name}
+                  </h2>
+                  <p className="text-xs text-zinc-400 font-mono mt-0.5 truncate">{currentMember.email}</p>
+                  <div className="text-[11px] font-mono text-amber-400 font-bold mt-1">
+                    DNI: {currentMember.dni} · ID: {currentMember.id}
+                  </div>
+                </div>
+              </div>
+
+              {/* CONTENEDOR FÍSICO DEL CÓDIGO DE BARRAS 1D CODE 128 */}
+              {/* Cumple especificación: Fondo blanco puro (#FFFFFF), barras negras (#000000), Quiet Zone >= 16px */}
+              <div className="mt-5 p-4 rounded-2xl bg-white shadow-xl text-center flex flex-col items-center justify-center">
+                <div className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5">
+                  ESCANEAR EN EL ACCESO AL GIMNASIO
+                </div>
+
+                <canvas
+                  ref={barcodeCanvasRef}
+                  className="max-w-full h-auto rounded"
+                  style={{ imageRendering: 'pixelated' }}
+                />
+
+                <span className="text-[10px] font-mono text-zinc-500 mt-1">
+                  Pasa este código de barras frente a la pistola 1D al ingresar
+                </span>
+              </div>
+
+              {/* Datos del Plan & Turno */}
+              <div className="mt-5 space-y-2 text-xs font-mono">
+                <div className="flex justify-between text-zinc-400">
+                  <span>Plan:</span>
+                  <span className="text-white font-bold">{currentMember.plan}</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Turno:</span>
+                  <span className="text-amber-400 font-bold uppercase">
+                    {currentMember.shift === 'manana'
+                      ? 'Mañana (6am - 2pm)'
+                      : currentMember.shift === 'tarde'
+                      ? 'Tarde (2pm - 6pm)'
+                      : 'Noche (6pm - 10pm)'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Entrenador:</span>
+                  <span className="text-white font-bold">{currentMember.coachName || 'Coach Marcos Rivas'}</span>
+                </div>
+                <div className="flex justify-between text-zinc-400">
+                  <span>Vencimiento:</span>
+                  <span className="text-emerald-400 font-bold">{currentMember.expiresAt || '30 Nov 2026'}</span>
+                </div>
+                {currentMember.balanceDue > 0 && (
+                  <div className="flex justify-between text-red-400 font-bold bg-red-500/10 p-2 rounded-lg border border-red-500/20">
+                    <span>Saldo Deudor:</span>
+                    <span>S/. {currentMember.balanceDue}.00</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Botones de Acción: Descargar PNG Offline & Boleta */}
+              <div className="mt-5 pt-4 border-t border-white/10 flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleDownloadCarnetPNG}
+                  className="flex-1 bg-amber-400 hover:bg-amber-300 text-black font-black py-3 px-4 rounded-xl text-xs font-display uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-400/20"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>DESCARGAR PNG OFFLINE</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsReceiptOpen(true)}
+                  className="bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-3 px-3 rounded-xl text-xs font-mono font-bold transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Ver Boleta de Pago"
+                >
+                  <Printer className="w-4 h-4 text-amber-400" />
+                  <span>Boleta</span>
+                </button>
+              </div>
             </div>
 
-            {/* Plan & Financial Details */}
-            <div className="mt-5 space-y-2 text-xs font-mono">
-              <div className="flex justify-between text-zinc-400">
-                <span>Plan:</span>
-                <span className="text-white font-bold">{currentMember.plan}</span>
-              </div>
-              <div className="flex justify-between text-zinc-400">
-                <span>Costo del Plan:</span>
-                <span className="text-white font-bold">S/. {currentMember.planPrice}.00</span>
-              </div>
-              <div className="flex justify-between text-zinc-400">
-                <span>Adelanto Pagado:</span>
-                <span className="text-emerald-400 font-bold">S/. {currentMember.advancePaid}.00</span>
-              </div>
-              {currentMember.balanceDue > 0 ? (
-                <div className="flex justify-between text-red-400 font-bold bg-red-500/10 p-2 rounded-lg border border-red-500/20">
-                  <span>Saldo Deudor:</span>
-                  <span>S/. {currentMember.balanceDue}.00 (Límite: {currentMember.paymentDueDate})</span>
+            {/* CARD: SELECTOR DE TURNO & ENTRENADOR ENCARGADO */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-5 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  <h3 className="text-sm font-bold text-white font-display uppercase tracking-wide">
+                    Mi Turno & Entrenador
+                  </h3>
                 </div>
-              ) : (
-                <div className="flex justify-between text-emerald-400 font-bold">
-                  <span>Estado de Pago:</span>
-                  <span>CANCELADO 100%</span>
+                <span className="text-[11px] font-mono text-zinc-400">Atención 6am - 10pm</span>
+              </div>
+
+              {shiftSuccessMsg && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                  <span>{shiftSuccessMsg}</span>
                 </div>
               )}
-              <div className="flex justify-between text-zinc-400 pt-1">
-                <span>Sede:</span>
-                <span className="text-amber-400 font-bold">Huamanga, Ayacucho</span>
+
+              {/* Selector de los 3 Turnos Oficiales */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-mono uppercase text-zinc-400 font-bold">
+                  Selecciona tu Turno de Entrenamiento:
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'manana', label: 'Mañana', time: '6am - 2pm', icon: Sun },
+                    { id: 'tarde', label: 'Tarde', time: '2pm - 6pm', icon: Sunset },
+                    { id: 'noche', label: 'Noche', time: '6pm - 10pm', icon: Moon },
+                  ].map((t) => {
+                    const Icon = t.icon;
+                    const isSelected = selectedShift === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedShift(t.id as any);
+                          // Autoasignar el primer coach de ese turno
+                          const coachOfShift = OFFICIAL_COACHES.find((c) => c.shift === t.id);
+                          if (coachOfShift) setSelectedCoachName(coachOfShift.name);
+                        }}
+                        className={`p-2.5 rounded-xl border text-center flex flex-col items-center gap-1 cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-amber-400/20 border-amber-400 text-amber-400 shadow-md'
+                            : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        <Icon className="w-4 h-4" />
+                        <span className="text-xs font-bold font-mono">{t.label}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">{t.time}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Selector de Entrenador Asignado */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-mono uppercase text-zinc-400 font-bold">
+                  Entrenador Encargado de tu Asesoría:
+                </label>
+                <div className="space-y-2">
+                  {coachesForSelectedShift.map((coach) => {
+                    const isSelected = selectedCoachName === coach.name;
+                    return (
+                      <button
+                        key={coach.id}
+                        type="button"
+                        onClick={() => setSelectedCoachName(coach.name)}
+                        className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between gap-2 cursor-pointer transition-all ${
+                          isSelected
+                            ? 'bg-emerald-500/15 border-emerald-500 text-white'
+                            : 'bg-zinc-950 border-white/10 text-zinc-300 hover:bg-zinc-800'
+                        }`}
+                      >
+                        <div>
+                          <div className="text-xs font-bold font-sans flex items-center gap-1.5">
+                            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{coach.name}</span>
+                            <span className="text-[10px] font-mono text-zinc-400">
+                              ({coach.gender === 'mujer' ? 'Coach Femenina' : 'Coach Masculino'})
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                            {coach.specialty}
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                disabled={isSavingShift}
+                onClick={handleSaveShift}
+                className="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 font-mono text-xs font-bold border border-amber-400/30 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                {isSavingShift ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Guardar Turno & Entrenador</span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
-          {/* Rutina del Coach & Progresos (7 cols) */}
+          {/* COLUMNA DERECHA: RUTINA DEL COACH & SEGUIMIENTO (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             {/* PRs de Fuerza del Atleta */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -363,7 +680,7 @@ export default function ClientePortal() {
               </div>
             </div>
 
-            {/* SECCIÓN PRINCIPAL: RUTINA ASIGNADA POR EL COACH */}
+            {/* SECCIÓN PRINCIPAL: RUTINA ASIGNADA POR EL COACH (CON CACHÉ 10 MIN) */}
             <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-xl space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-white/10">
                 <div className="flex items-center gap-3">
@@ -372,173 +689,146 @@ export default function ClientePortal() {
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-white font-display uppercase tracking-wide">
-                      Mi Rutina de Entrenamiento
+                      Mi Plan de Entrenamiento
                     </h3>
                     <p className="text-xs text-zinc-400 font-mono mt-0.5">
-                      Asignada por: <span className="text-orange-400 font-bold">{currentRoutine.coachName}</span> (Act. {currentRoutine.updatedAt})
+                      Coach:{' '}
+                      <span className="text-orange-400 font-bold">
+                        {activeRoutine?.coachName || currentMember.coachName || 'Coach Marcos Rivas'}
+                      </span>
                     </p>
                   </div>
                 </div>
 
-                <div className="text-xs font-mono px-3 py-1 rounded-lg bg-zinc-950 border border-white/10 text-amber-300">
-                  {currentRoutine.objective}
+                {/* Botón de Sincronización Manual de Rutina (Bypass de Caché) */}
+                <div className="flex items-center gap-2">
+                  {lastCacheSync && (
+                    <span className="text-[10px] font-mono text-zinc-500 hidden sm:inline">
+                      Caché: {lastCacheSync}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isLoadingRoutine}
+                    onClick={() => loadRoutineWithCache(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono border border-white/10 transition-colors cursor-pointer"
+                    title="Actualizar rutina desde el servidor si tu coach te la acaba de cambiar"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRoutine ? 'animate-spin text-amber-400' : ''}`} />
+                    <span>Actualizar</span>
+                  </button>
                 </div>
               </div>
 
-              {/* Coach Observations Box */}
-              {currentRoutine.coachNotes && (
+              {/* Indicaciones del Coach */}
+              {activeRoutine?.coachNotes && (
                 <div className="p-3.5 rounded-xl bg-orange-500/10 border border-orange-500/20 text-xs text-orange-200 leading-relaxed font-sans flex items-start gap-2.5">
-                  <span className="font-bold text-orange-400 font-mono flex-shrink-0">INDICACIONES DEL COACH:</span>
-                  <span>{currentRoutine.coachNotes}</span>
+                  <span className="font-bold text-orange-400 font-mono flex-shrink-0">INDICACIONES:</span>
+                  <span>{activeRoutine.coachNotes}</span>
                 </div>
               )}
 
-              {/* Day Selector Pills */}
-              {currentRoutine.days.length > 0 && (
+              {/* Selector de Días de Entrenamiento */}
+              {activeRoutine?.days && activeRoutine.days.length > 0 && (
                 <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                  {currentRoutine.days.map((d, idx) => (
+                  {activeRoutine.days.map((d, idx) => (
                     <button
                       key={d.id || idx}
                       type="button"
                       onClick={() => setSelectedDayIndex(idx)}
-                      className={`px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer whitespace-nowrap ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all whitespace-nowrap cursor-pointer ${
                         selectedDayIndex === idx
                           ? 'bg-amber-400 text-black shadow-md'
-                          : 'bg-zinc-950 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
+                          : 'bg-zinc-950 border border-white/10 text-zinc-400 hover:text-white'
                       }`}
                     >
-                      {d.dayName.split(':')[0]}
+                      {d.dayName}
                     </button>
                   ))}
                 </div>
               )}
 
-              {/* Active Day Exercises Table */}
-              {activeDay ? (
+              {/* Lista de Ejercicios del Día Activo */}
+              {activeDay && (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between text-xs font-mono">
-                    <span className="text-white font-bold">{activeDay.dayName}</span>
-                    <span className="text-zinc-400">{activeDay.focus}</span>
+                  <div className="flex items-center justify-between text-xs font-mono text-zinc-400 pb-1">
+                    <span>
+                      Enfoque: <strong className="text-white">{activeDay.focus}</strong>
+                    </span>
+                    <span>
+                      {
+                        activeDay.exercises.filter((ex) => completedExercises[ex.id]).length
+                      }{' '}
+                      / {activeDay.exercises.length} Completados
+                    </span>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs font-mono">
-                      <thead className="bg-zinc-950/80 text-zinc-400 uppercase tracking-wider border-b border-white/10">
-                        <tr>
-                          <th className="py-2.5 px-3 w-8">Listo</th>
-                          <th className="py-2.5 px-3">Ejercicio</th>
-                          <th className="py-2.5 px-3">Series</th>
-                          <th className="py-2.5 px-3">Repes</th>
-                          <th className="py-2.5 px-3">Descanso</th>
-                          <th className="py-2.5 px-3">Detalle Técnico</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {activeDay.exercises.map((ex, i) => {
-                          const isDone = completedExercises[ex.id || `${selectedDayIndex}-${i}`];
-                          return (
-                            <tr
-                              key={ex.id || i}
-                              className={`transition-colors ${
-                                isDone ? 'bg-emerald-500/10' : 'hover:bg-white/[0.02]'
+                  <div className="space-y-2">
+                    {activeDay.exercises.map((ex) => {
+                      const isDone = completedExercises[ex.id];
+                      return (
+                        <div
+                          key={ex.id}
+                          className={`p-3.5 rounded-xl border transition-all flex items-center justify-between gap-3 text-xs font-mono ${
+                            isDone
+                              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                              : 'bg-zinc-950 border-white/10 text-zinc-200'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 flex-1">
+                            <button
+                              type="button"
+                              onClick={() => toggleExercise(ex.id)}
+                              className={`w-6 h-6 rounded-lg border flex items-center justify-center cursor-pointer transition-colors ${
+                                isDone
+                                  ? 'bg-emerald-500 border-emerald-500 text-black'
+                                  : 'border-white/20 hover:border-amber-400 text-transparent'
                               }`}
                             >
-                              <td className="py-2.5 px-3">
-                                <button
-                                  type="button"
-                                  onClick={() => toggleExercise(ex.id || `${selectedDayIndex}-${i}`)}
-                                  className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all cursor-pointer ${
-                                    isDone
-                                      ? 'bg-emerald-500 text-black shadow-sm'
-                                      : 'bg-zinc-800 text-zinc-500 hover:text-white border border-white/10'
-                                  }`}
-                                  title={isDone ? 'Completado' : 'Marcar como completado'}
-                                >
-                                  {isDone ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : null}
-                                </button>
-                              </td>
-                              <td className="py-2.5 px-3 font-sans font-bold">
-                                <span className={isDone ? 'line-through text-zinc-400' : 'text-white'}>
-                                  {ex.name}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-amber-400 font-bold">{ex.sets}</td>
-                              <td className="py-2.5 px-3 text-zinc-200">{ex.reps}</td>
-                              <td className="py-2.5 px-3 text-zinc-400">{ex.rest}</td>
-                              <td className="py-2.5 px-3 font-sans text-zinc-300 text-[11px]">
-                                {ex.notes || '-'}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                            </button>
+
+                            <div>
+                              <div
+                                className={`font-bold font-sans text-sm ${
+                                  isDone ? 'line-through text-zinc-400' : 'text-white'
+                                }`}
+                              >
+                                {ex.name}
+                              </div>
+                              <div className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                                <span className="text-amber-400 font-bold">{ex.sets} Series</span>
+                                <span>•</span>
+                                <span>{ex.reps} Reps</span>
+                                <span>•</span>
+                                <span className="text-zinc-500">Descanso: {ex.rest}</span>
+                                {ex.notes && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-zinc-400 italic">"{ex.notes}"</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                </div>
-              ) : (
-                <div className="py-8 text-center text-zinc-500 font-mono text-xs">
-                  Tu coach aún no ha cargado los ejercicios de hoy.
                 </div>
               )}
-            </div>
-
-            {/* Historial de Comprobantes */}
-            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6">
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <div className="flex items-center gap-2.5">
-                  <CreditCard className="w-5 h-5 text-emerald-400" />
-                  <h3 className="text-base font-bold text-white font-display uppercase tracking-wide">
-                    Mis Pagos y Comprobantes
-                  </h3>
-                </div>
-                <span className="text-xs font-mono text-zinc-400">Sede Huamanga</span>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                <div className="p-4 rounded-xl bg-zinc-950 border border-white/5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs">
-                  <div>
-                    <div className="font-bold text-white text-sm">{currentMember.plan}</div>
-                    <div className="text-[11px] text-zinc-400 font-mono mt-0.5">
-                      Recibo: <strong className="text-zinc-200">{currentMember.receiptNumber}</strong> · Pagado vía {currentMember.paymentMethod.toUpperCase()}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4 justify-between sm:justify-end">
-                    <div className="text-left sm:text-right">
-                      <span className="text-emerald-400 font-mono font-bold text-sm block">
-                        S/. {currentMember.advancePaid}.00
-                      </span>
-                      <div className="text-[10px] font-mono">
-                        {currentMember.balanceDue > 0 ? (
-                          <span className="text-amber-400 font-bold">ADELANTO ABONADO</span>
-                        ) : (
-                          <span className="text-emerald-400 font-bold">PAGO COMPLETO</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => setIsReceiptOpen(true)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono border border-white/10 transition-colors cursor-pointer"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Ver Recibo B001</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
       </main>
 
-      {/* Recibo Oficial Modal */}
+      {/* MODAL DE BOLETA / COMPROBANTE OFICIAL */}
       <ReceiptModal
         isOpen={isReceiptOpen}
         onClose={() => setIsReceiptOpen(false)}
         member={currentMember}
         paymentAmount={currentMember.advancePaid}
-        paymentTypeTitle={currentMember.balanceDue > 0 ? 'Adelanto de Membresía' : 'Membresía Completa'}
+        paymentTypeTitle={currentMember.paymentType === 'advance' ? 'Adelanto de Membresía' : 'Membresía Completa'}
         paymentMethod={currentMember.paymentMethod}
       />
     </div>

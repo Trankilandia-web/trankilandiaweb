@@ -1,0 +1,92 @@
+name: Supabase Database Backup (Free Tier Disaster Recovery)
+
+on:
+  schedule:
+    # Corre todos los días a las 08:00 UTC (03:00 AM hora de Perú / America/Lima)
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Motivo del respaldo manual'
+        required: false
+        default: 'Respaldo manual preventivo antes de mantenimiento'
+
+jobs:
+  backup:
+    name: Execute PostgreSQL Dump & Secure Artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 16 Client Tools (Postgres 15/17 Compatible)
+        run: |
+          sudo apt-get install -y -qq curl ca-certificates gnupg lsb-release
+          sudo install -d /etc/apt/keyrings
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16
+          pg_dump --version
+
+      - name: Run Secure pg_dump (Compressed GZIP)
+        # =========================================================================
+        # IMPORTANTE (IPv4 POOLER HOST):
+        # SUPABASE_DB_URL debe usar la cadena de conexión del Session Pooler IPv4:
+        # e.g.: postgres://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-sa-east-1.pooler.supabase.com:5432/postgres
+        # (Los runners de GitHub Actions no soportan IPv6 nativo; usar el host de pooler IPv4)
+        # =========================================================================
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::El secret SUPABASE_DB_URL no está configurado en el repositorio de GitHub."
+            echo "Por favor configúralo en Settings -> Secrets and variables -> Actions -> Repository secrets."
+            exit 1
+          fi
+
+          mkdir -p ./backups
+          TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
+          BACKUP_FILE="./backups/trankilandia_backup_${TIMESTAMP}.sql.gz"
+
+          echo "Iniciando respaldo seguro de Trankilandia Gym..."
+          
+          # Realizar dump excluyendo tablas internas de Supabase no deseadas, comprimiendo al vuelo
+          pg_dump "$SUPABASE_DB_URL" \
+            --schema=public \
+            --no-owner \
+            --no-privileges \
+            --clean \
+            --if-exists \
+            | gzip -9 > "$BACKUP_FILE"
+
+          FILE_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
+          SHA256=$(sha256sum "$BACKUP_FILE" | awk '{print $1}')
+          
+          echo "BACKUP_FILE=$BACKUP_FILE" >> $GITHUB_ENV
+          echo "TIMESTAMP=$TIMESTAMP" >> $GITHUB_ENV
+          echo "FILE_SIZE=$FILE_SIZE" >> $GITHUB_ENV
+          echo "SHA256=$SHA256" >> $GITHUB_ENV
+
+          echo "✅ Respaldo generado con éxito: $FILE_SIZE (SHA256: $SHA256)"
+
+      - name: Generate Backup Step Summary
+        run: |
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+          ### 🛡️ Trankilandia Gym · Respaldo de Base de Datos
+          * **Fecha (UTC):** $(date -u)
+          * **Archivo:** \`trankilandia_backup_${{ env.TIMESTAMP }}.sql.gz\`
+          * **Tamaño Comprimido:** ${{ env.FILE_SIZE }}
+          * **Checksum SHA256:** \`${{ env.SHA256 }}\`
+          * **Tablas respaldadas:** \`profiles\`, \`socios\`, \`asistencias\`, \`productos\`, \`ventas\`, \`venta_items\`, \`ingresos\`, \`rutinas\`, \`progresos\`
+          * **Retención:** 30 días en GitHub Actions Artifacts (Seguro y Privado, sin exponer datos en commits)
+          EOF
+
+      - name: Upload Backup as Secure Artifact (30 Days Retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ env.TIMESTAMP }}
+          path: ${{ env.BACKUP_FILE }}
+          retention-days: 30
+          if-no-files-found: error

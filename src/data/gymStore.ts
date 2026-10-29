@@ -25,6 +25,7 @@ export interface GymMember {
   observations?: string;
   age?: number;
   gender?: string;
+  shift?: 'manana' | 'tarde' | 'noche';
 }
 
 export interface RoutineExercise {
