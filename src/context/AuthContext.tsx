@@ -27,9 +27,9 @@ const AuthContext = createContext<AuthContextType>({
 
 const ROLE_STORAGE_KEY = 'trankilandia_active_role';
 
-// Helper to determine initial role fallback
+// Helper to determine initial role fallback: EVERY user is 'cliente' by default
 function resolveDefaultRole(user: User | null): UserRole {
-  // 1. Saved role in local testing storage
+  // 1. Saved role in local testing storage (only if explicitly set by role switcher)
   const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
   if (savedRole && ROLES_CONFIG[savedRole]) {
     return savedRole;
@@ -41,17 +41,7 @@ function resolveDefaultRole(user: User | null): UserRole {
     return metaRole;
   }
 
-  // 3. Admin emails by default
-  const email = (user?.email || '').toLowerCase();
-  if (
-    email === 'trankilandiagymperu@gmail.com' ||
-    email.startsWith('luisgerardolloccllasaune') ||
-    email.startsWith('luisllocclla')
-  ) {
-    return 'admin';
-  }
-
-  // 4. Default for normal members
+  // 3. Default for ALL users is strictly 'cliente'
   return 'cliente';
 }
 
@@ -78,13 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           .maybeSingle();
 
         if (!error && data?.role && ROLES_CONFIG[data.role as UserRole]) {
-          // If role exists in DB, prioritize it unless local storage is testing a different role
-          const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
-          if (savedRole && ROLES_CONFIG[savedRole]) {
-            setRoleState(savedRole);
-          } else {
-            setRoleState(data.role as UserRole);
-          }
+          setRoleState(data.role as UserRole);
           return;
         }
       } catch {
