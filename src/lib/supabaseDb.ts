@@ -938,6 +938,7 @@ export interface ResumenAdmin {
   };
   socios: {
     total_socios: number;
+    total_socios_global?: number;
     total_deudas_pendientes: number;
     socios_con_deuda: number;
     por_turno: {
@@ -980,7 +981,7 @@ export async function obtenerResumenAdmin(
   const hoyPeru = new Date().toISOString().slice(0, 10);
   const inicio = fechaInicio || hoyPeru;
   const fin = fechaFin || hoyPeru;
-  const isAllTime = !fechaInicio || fechaInicio <= '2020-01-01';
+  const isAllTime = !fechaInicio || fechaInicio <= '2020-01-01' || (fechaInicio === '2026-01-01' && (fechaFin || '') >= '2026-12-31');
 
   if (isSupabaseConfigured()) {
     try {
@@ -1039,6 +1040,8 @@ export async function obtenerResumenAdmin(
         const valorCosto = prods.reduce((sum, p) => sum + p.stock_actual * (p.precio_compra || p.precio_venta * 0.6), 0);
         const valorVenta = prods.reduce((sum, p) => sum + p.stock_actual * p.precio_venta, 0);
 
+        const baseSociosTurnos = isAllTime ? dbSocios : sociosFiltrados;
+
         return {
           periodo: { inicio, fin },
           recaudacion: {
@@ -1053,19 +1056,20 @@ export async function obtenerResumenAdmin(
             },
           },
           socios: {
-            total_socios: dbSocios.length,
+            total_socios: isAllTime ? dbSocios.length : sociosFiltrados.length,
+            total_socios_global: dbSocios.length,
             total_deudas_pendientes: totalDeudas,
             socios_con_deuda: sociosConDeuda,
             por_turno: {
-              manana: dbSocios.filter((s: any) => (s.turno || 'manana') === 'manana').length,
-              tarde: dbSocios.filter((s: any) => s.turno === 'tarde').length,
-              noche: dbSocios.filter((s: any) => s.turno === 'noche').length,
+              manana: baseSociosTurnos.filter((s: any) => (s.turno || 'manana') === 'manana').length,
+              tarde: baseSociosTurnos.filter((s: any) => s.turno === 'tarde').length,
+              noche: baseSociosTurnos.filter((s: any) => s.turno === 'noche').length,
             },
             por_coach: {
-              marcos: dbSocios.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('marcos')).length,
-              camila: dbSocios.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('camila')).length,
-              valeria: dbSocios.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('valeria')).length,
-              daniel: dbSocios.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('daniel')).length,
+              marcos: baseSociosTurnos.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('marcos')).length,
+              camila: baseSociosTurnos.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('camila')).length,
+              valeria: baseSociosTurnos.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('valeria')).length,
+              daniel: baseSociosTurnos.filter((s: any) => (s.coach_asignado || '').toLowerCase().includes('daniel')).length,
             },
           },
           inventario: {
@@ -1112,6 +1116,8 @@ export async function obtenerResumenAdmin(
   const valorVenta = prods.reduce((sum, p) => sum + p.stock_actual * p.precio_venta, 0);
   const stockCritico = prods.filter((p) => p.stock_actual <= p.stock_minimo).length;
 
+  const baseSociosTurnosLocal = isAllTime ? socios : sociosFiltrados;
+
   return {
     periodo: { inicio, fin },
     recaudacion: {
@@ -1126,19 +1132,20 @@ export async function obtenerResumenAdmin(
       },
     },
     socios: {
-      total_socios: totalSocios,
+      total_socios: isAllTime ? totalSocios : sociosFiltrados.length,
+      total_socios_global: totalSocios,
       total_deudas_pendientes: totalDeudas,
       socios_con_deuda: sociosConDeuda,
       por_turno: {
-        manana: socios.filter((s) => (s.shift || 'manana') === 'manana').length,
-        tarde: socios.filter((s) => s.shift === 'tarde').length,
-        noche: socios.filter((s) => s.shift === 'noche').length,
+        manana: baseSociosTurnosLocal.filter((s) => (s.shift || 'manana') === 'manana').length,
+        tarde: baseSociosTurnosLocal.filter((s) => s.shift === 'tarde').length,
+        noche: baseSociosTurnosLocal.filter((s) => s.shift === 'noche').length,
       },
       por_coach: {
-        marcos: socios.filter((s) => (s.coachName || '').toLowerCase().includes('marcos')).length,
-        camila: socios.filter((s) => (s.coachName || '').toLowerCase().includes('camila')).length,
-        valeria: socios.filter((s) => (s.coachName || '').toLowerCase().includes('valeria')).length,
-        daniel: socios.filter((s) => (s.coachName || '').toLowerCase().includes('daniel')).length,
+        marcos: baseSociosTurnosLocal.filter((s) => (s.coachName || '').toLowerCase().includes('marcos')).length,
+        camila: baseSociosTurnosLocal.filter((s) => (s.coachName || '').toLowerCase().includes('camila')).length,
+        valeria: baseSociosTurnosLocal.filter((s) => (s.coachName || '').toLowerCase().includes('valeria')).length,
+        daniel: baseSociosTurnosLocal.filter((s) => (s.coachName || '').toLowerCase().includes('daniel')).length,
       },
     },
     inventario: {

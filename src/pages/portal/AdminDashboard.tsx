@@ -31,6 +31,7 @@ import {
 import PortalHeader from '../../components/portal/PortalHeader';
 import { UserRole } from '../../types/roles';
 import { GymMember, getStoredMembers, saveStoredMembers } from '../../data/gymStore';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
   ResumenAdmin,
   obtenerResumenAdmin,
@@ -72,8 +73,8 @@ export default function AdminDashboard() {
   // Pestañas principales
   const [activeTab, setActiveTab] = useState<'kpis' | 'inventario' | 'padron'>('kpis');
 
-  // Filtro de rango de fecha para arqueo (Hora de Perú)
-  const [dateRange, setDateRange] = useState<'todo' | 'mes' | '7dias' | 'hoy'>('todo');
+  // Filtro de rango de fecha para arqueo (Hora de Perú) - Por defecto Mes Actual (Octubre)
+  const [dateRange, setDateRange] = useState<'mes' | 'hoy' | '7dias' | 'anual' | string>('mes');
   const [resumen, setResumen] = useState<ResumenAdmin | null>(null);
   const [isLoadingResumen, setIsLoadingResumen] = useState(true);
 
@@ -102,32 +103,92 @@ export default function AdminDashboard() {
   // Notificación de éxito
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
 
-  // Fallbacks calculados en tiempo real de los datos reales cargados
-  const totalCobradoMembers = useMemo(() => members.reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
+  // Fallbacks calculados en tiempo real según el rango de fecha activo
+  const rawStored = useMemo(() => getStoredMembers(), []);
+  const membersEnRango = useMemo(() => {
+    if (dateRange === 'anual') return members;
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    const curYearMonth = today.slice(0, 7);
+
+    if (dateRange === 'hoy') {
+      return members.filter(m => {
+        const raw = rawStored.find(r => r.id === m.id);
+        return raw?.registeredAt === today;
+      });
+    }
+    if (dateRange === '7dias') {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      const sevDaysAgo = d.toISOString().slice(0, 10);
+      return members.filter(m => {
+        const raw = rawStored.find(r => r.id === m.id);
+        const reg = raw?.registeredAt || '';
+        return reg >= sevDaysAgo && reg <= today;
+      });
+    }
+    if (dateRange === 'mes') {
+      return members.filter(m => {
+        const raw = rawStored.find(r => r.id === m.id);
+        const reg = raw?.registeredAt || '';
+        return reg.startsWith(curYearMonth);
+      });
+    }
+    if (typeof dateRange === 'string' && /^\d{4}-\d{2}$/.test(dateRange)) {
+      return members.filter(m => {
+        const raw = rawStored.find(r => r.id === m.id);
+        const reg = raw?.registeredAt || '';
+        return reg.startsWith(dateRange);
+      });
+    }
+    return members;
+  }, [members, dateRange, rawStored]);
+
+  const totalCobradoMembers = useMemo(() => membersEnRango.reduce((sum, m) => sum + (m.advancePaid || 0), 0), [membersEnRango]);
+  const efectivoMembers = useMemo(() => membersEnRango.filter(m => (m.paymentMethod || 'efectivo').toLowerCase() === 'efectivo').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [membersEnRango]);
+  const yapeMembers = useMemo(() => membersEnRango.filter(m => (m.paymentMethod || '').toLowerCase() === 'yape').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [membersEnRango]);
+  const plinMembers = useMemo(() => membersEnRango.filter(m => (m.paymentMethod || '').toLowerCase() === 'plin').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [membersEnRango]);
+  const tarjetaMembers = useMemo(() => membersEnRango.filter(m => (m.paymentMethod || '').toLowerCase() === 'tarjeta').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [membersEnRango]);
   const totalDeudasMembers = useMemo(() => members.reduce((sum, m) => sum + (m.balanceDue || 0), 0), [members]);
-  const efectivoMembers = useMemo(() => members.filter(m => (m.paymentMethod || 'efectivo').toLowerCase() === 'efectivo').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
-  const yapeMembers = useMemo(() => members.filter(m => (m.paymentMethod || '').toLowerCase() === 'yape').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
-  const plinMembers = useMemo(() => members.filter(m => (m.paymentMethod || '').toLowerCase() === 'plin').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
-  const tarjetaMembers = useMemo(() => members.filter(m => (m.paymentMethod || '').toLowerCase() === 'tarjeta').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [members]);
 
   // 1. CARGA INICIAL DE DATOS LIGEROS
-  const cargarSociosEnMemoria = useCallback(() => {
+  const cargarSociosEnMemoria = useCallback(async () => {
     const rawMembers = getStoredMembers();
-    const mapped: MemberRecord[] = rawMembers.map((m) => ({
-      id: m.id,
-      name: m.name,
-      dni: m.dni || '',
-      role: 'cliente',
-      plan: m.plan,
-      shift: (m.shift as 'manana' | 'tarde' | 'noche') || 'manana',
-      coachName: m.coachName || 'Coach Marcos Rivas',
-      advancePaid: m.advancePaid || 0,
-      balanceDue: m.balanceDue || 0,
-      paymentMethod: m.paymentMethod || 'efectivo',
-      status: m.membershipStatus,
-      expiresIn: m.expiresAt,
-      lastVisit: 'Reciente',
-    }));
+    let profilesRoleMap: Record<string, UserRole> = {};
+
+    if (isSupabaseConfigured()) {
+      try {
+        const { data: profs } = await supabase.from('profiles').select('dni, email, role');
+        if (profs) {
+          profs.forEach((p: any) => {
+            if (p.dni) profilesRoleMap[p.dni] = p.role;
+            if (p.email) profilesRoleMap[p.email.toLowerCase()] = p.role;
+          });
+        }
+      } catch {}
+    }
+
+    const mapped: MemberRecord[] = rawMembers.map((m) => {
+      let r: UserRole = 'cliente';
+      if (m.dni && profilesRoleMap[m.dni]) {
+        r = profilesRoleMap[m.dni];
+      }
+      return {
+        id: m.id,
+        name: m.name,
+        dni: m.dni || '',
+        role: r,
+        plan: m.plan,
+        shift: (m.shift as 'manana' | 'tarde' | 'noche') || 'manana',
+        coachName: m.coachName || 'Coach Marcos Rivas',
+        advancePaid: m.advancePaid || 0,
+        balanceDue: m.balanceDue || 0,
+        paymentMethod: m.paymentMethod || 'efectivo',
+        status: m.membershipStatus,
+        expiresIn: m.expiresAt,
+        lastVisit: 'Reciente',
+      };
+    });
     setMembers(mapped);
   }, []);
 
@@ -139,7 +200,7 @@ export default function AdminDashboard() {
   }, []);
 
   // 2. OBTENER RESUMEN AGREGADO DESDE POSTGRESQL (CERO EGRESS MASIVO)
-  const cargarResumenKPIs = useCallback(async (range: 'todo' | 'mes' | '7dias' | 'hoy') => {
+  const cargarResumenKPIs = useCallback(async (range: 'mes' | 'hoy' | '7dias' | 'anual' | string) => {
     setIsLoadingResumen(true);
 
     const now = new Date();
@@ -150,21 +211,30 @@ export default function AdminDashboard() {
       day: '2-digit',
     });
     const todayStr = peruFormatter.format(now);
+    const parts = todayStr.split('-');
+    const currentYear = parts[0] || '2026';
+    const currentMonth = parts[1] || '10';
 
-    let inicio = '2020-01-01';
-    const fin = todayStr;
+    let inicio = `${currentYear}-${currentMonth}-01`;
+    let fin = todayStr;
 
     if (range === 'hoy') {
       inicio = todayStr;
+      fin = todayStr;
     } else if (range === '7dias') {
       const d = new Date(now);
       d.setDate(d.getDate() - 7);
       inicio = peruFormatter.format(d);
+      fin = todayStr;
     } else if (range === 'mes') {
-      const parts = todayStr.split('-');
-      inicio = `${parts[0]}-${parts[1]}-01`;
-    } else if (range === 'todo') {
-      inicio = '2020-01-01';
+      inicio = `${currentYear}-${currentMonth}-01`;
+      fin = `${currentYear}-${currentMonth}-31`;
+    } else if (range === 'anual') {
+      inicio = `${currentYear}-01-01`;
+      fin = `${currentYear}-12-31`;
+    } else if (typeof range === 'string' && /^\d{4}-\d{2}$/.test(range)) {
+      inicio = `${range}-01`;
+      fin = `${range}-31`;
     }
 
     try {
@@ -291,11 +361,13 @@ export default function AdminDashboard() {
 
   // 8. FILTRADO Y PAGINACIÓN ESTRICTA DEL PADRÓN
   const filteredMembers = useMemo(() => {
+    const q = searchTerm.toLowerCase().trim();
     return members.filter((m) => {
       const matchSearch =
-        m.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        m.dni.includes(searchTerm) ||
-        m.id.toLowerCase().includes(searchTerm.toLowerCase());
+        !q ||
+        (m.name || '').toLowerCase().includes(q) ||
+        (m.dni ? String(m.dni).includes(q) : false) ||
+        (m.id || '').toLowerCase().includes(q);
 
       const matchRole = roleFilter === 'all' || m.role === roleFilter;
       const matchShift = shiftFilter === 'all' || m.shift === shiftFilter;
@@ -414,36 +486,57 @@ export default function AdminDashboard() {
            ========================================================================= */}
         {activeTab === 'kpis' && (
           <div className="space-y-6">
-            {/* Selector de Rango de Fecha */}
-            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {/* Selector de Rango de Fecha & Auditoría Anual */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 shadow-xl">
               <div className="flex items-center gap-2 text-xs font-mono text-zinc-300">
                 <Calendar className="w-4 h-4 text-purple-400" />
                 <span className="font-bold">Periodo de Arqueo (Hora Perú):</span>
-                <span className="text-zinc-500 text-[11px]">
+                <span className="text-zinc-400 text-[11px] bg-zinc-950 px-2 py-0.5 rounded-md border border-white/5">
                   {resumen ? `${resumen.periodo.inicio} al ${resumen.periodo.fin}` : 'Cargando...'}
                 </span>
               </div>
 
               <div className="flex items-center gap-1.5 flex-wrap">
                 {[
-                  { id: 'todo', label: 'Histórico Total' },
-                  { id: 'mes', label: 'Mes Actual' },
-                  { id: '7dias', label: 'Últimos 7 Días' },
+                  { id: 'mes', label: 'Mes Actual (Octubre)' },
                   { id: 'hoy', label: 'Hoy' },
+                  { id: '7dias', label: 'Últimos 7 Días' },
+                  { id: 'anual', label: 'Año 2026 (Anual)' },
                 ].map((r) => (
                   <button
                     key={r.id}
                     type="button"
-                    onClick={() => setDateRange(r.id as any)}
+                    onClick={() => setDateRange(r.id)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
                       dateRange === r.id
-                        ? 'bg-purple-600 text-white shadow-md'
+                        ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
                         : 'bg-zinc-950 border border-white/10 text-zinc-400 hover:text-white'
                     }`}
                   >
                     {r.label}
                   </button>
                 ))}
+
+                {/* Selector para auditar mes a mes exactamente como en el Excel */}
+                <select
+                  value={/^\d{4}-\d{2}$/.test(dateRange) ? dateRange : ''}
+                  onChange={(e) => {
+                    if (e.target.value) setDateRange(e.target.value);
+                  }}
+                  className="bg-zinc-950 border border-purple-500/30 rounded-xl px-2.5 py-1.5 text-xs font-mono text-purple-300 focus:outline-none cursor-pointer"
+                >
+                  <option value="">Auditar Mes Específico...</option>
+                  <option value="2026-10">Octubre 2026 (S/. 12,949 · 86 atletas)</option>
+                  <option value="2026-09">Septiembre 2026 (S/. 11,615 · 91 atletas)</option>
+                  <option value="2026-08">Agosto 2026 (S/. 8,615 · 85 atletas)</option>
+                  <option value="2026-07">Julio 2026 (S/. 9,610 · 57 atletas)</option>
+                  <option value="2026-06">Junio 2026 (S/. 5,740 · 25 atletas)</option>
+                  <option value="2026-05">Mayo 2026 (S/. 5,490 · 15 atletas)</option>
+                  <option value="2026-04">Abril 2026 (S/. 4,950 · 15 atletas)</option>
+                  <option value="2026-03">Marzo 2026 (S/. 3,480 · 11 atletas)</option>
+                  <option value="2026-02">Febrero 2026 (S/. 700 · 2 atletas)</option>
+                  <option value="2026-01">Enero 2026 (S/. 2,100 · 6 atletas)</option>
+                </select>
 
                 <button
                   type="button"
@@ -461,26 +554,29 @@ export default function AdminDashboard() {
               <div className="bg-zinc-900/70 border border-emerald-500/30 rounded-2xl p-5 relative overflow-hidden group">
                 <div className="flex items-center justify-between text-zinc-400">
                   <span className="text-xs font-mono uppercase tracking-wider text-emerald-400 font-bold">
-                    Total Recaudado
+                    {dateRange === 'anual' ? 'Recaudación Anual 2026' : (dateRange === 'mes' ? 'Recaudación Mes Actual' : 'Total Recaudado')}
                   </span>
                   <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
                     <DollarSign className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="mt-3 text-3xl font-black font-display text-white">
-                  S/. {resumen && resumen.recaudacion.total > 0
-                    ? resumen.recaudacion.total.toLocaleString('es-PE', { minimumFractionDigits: 2 })
-                    : (dateRange === 'todo'
-                        ? totalCobradoMembers.toLocaleString('es-PE', { minimumFractionDigits: 2 })
-                        : '0.00')}
+                  S/. {(resumen ? resumen.recaudacion.total : totalCobradoMembers).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
                 </div>
                 <div className="mt-2 text-[11px] font-mono text-zinc-400 flex items-center justify-between">
                   <span>
-                    Membresías: S/. {resumen && resumen.recaudacion.total > 0
-                      ? resumen.recaudacion.membresias.toFixed(0)
-                      : (dateRange === 'todo' ? totalCobradoMembers.toFixed(0) : '0')}
+                    Membresías: S/. {(resumen ? resumen.recaudacion.membresias : totalCobradoMembers).toFixed(0)}
                   </span>
                   <span>POS: S/. {resumen ? resumen.recaudacion.pos.toFixed(0) : '0'}</span>
+                </div>
+                <div className="text-[10px] text-zinc-500 font-mono mt-1">
+                  {dateRange === 'anual'
+                    ? 'Acumulado Ene-Oct 2026 (10 meses del padrón)'
+                    : (dateRange === 'mes'
+                        ? 'Caja de Octubre 2026 (Mes en curso)'
+                        : (dateRange === 'hoy'
+                            ? 'Cobros registrados el día de hoy'
+                            : 'Filtro seleccionado'))}
                 </div>
               </div>
 
@@ -500,23 +596,31 @@ export default function AdminDashboard() {
                 <p className="text-[11px] text-zinc-400 mt-1 font-mono">
                   {resumen ? resumen.socios.socios_con_deuda : members.filter(m => m.balanceDue > 0).length} socios con adelanto pendiente
                 </p>
+                <div className="text-[10px] text-zinc-500 font-mono mt-1">
+                  Deuda global activa del padrón
+                </div>
               </div>
 
               <div className="bg-zinc-900/70 border border-purple-500/30 rounded-2xl p-5 relative overflow-hidden group">
                 <div className="flex items-center justify-between text-zinc-400">
                   <span className="text-xs font-mono uppercase tracking-wider text-purple-400 font-bold">
-                    Padrón de Atletas
+                    {dateRange === 'anual' ? 'Padrón Total Atletas' : 'Inscritos en el Periodo'}
                   </span>
                   <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400">
                     <Users className="w-5 h-5" />
                   </div>
                 </div>
                 <div className="mt-3 text-3xl font-black font-display text-white">
-                  {resumen ? resumen.socios.total_socios : members.length}
+                  {resumen ? resumen.socios.total_socios : membersEnRango.length}
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-1 font-mono">
-                  Sede Central Huamanga, Ayacucho
+                  {dateRange === 'anual'
+                    ? '393 atletas en el padrón anual 2026'
+                    : `${resumen ? resumen.socios.total_socios : membersEnRango.length} inscritos en este periodo`}
                 </p>
+                <div className="text-[10px] text-zinc-500 font-mono mt-1">
+                  Sede Central Huamanga · Total: 393
+                </div>
               </div>
 
               <div className="bg-zinc-900/70 border border-cyan-500/30 rounded-2xl p-5 relative overflow-hidden group">
@@ -534,6 +638,9 @@ export default function AdminDashboard() {
                 <p className="text-[11px] text-zinc-400 mt-1 font-mono">
                   Ingresos validados con lector 1D
                 </p>
+                <div className="text-[10px] text-zinc-500 font-mono mt-1">
+                  Control de aforo en sala
+                </div>
               </div>
             </div>
 
@@ -546,7 +653,9 @@ export default function AdminDashboard() {
                     <DollarSign className="w-4 h-4 text-emerald-400" />
                     <span>Recaudación por Método de Cobro</span>
                   </h3>
-                  <span className="text-xs font-mono text-zinc-400 uppercase">Caja Consolidada</span>
+                  <span className="text-xs font-mono text-zinc-400 uppercase">
+                    {dateRange === 'anual' ? 'Caja Anual 2026' : (dateRange === 'mes' ? 'Caja Mes Actual' : 'Periodo')}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs font-mono">
@@ -556,9 +665,7 @@ export default function AdminDashboard() {
                       <span>Efectivo:</span>
                     </div>
                     <span className="font-bold text-white text-sm">
-                      S/. {resumen && resumen.recaudacion.total > 0
-                        ? resumen.recaudacion.por_metodo.efectivo.toFixed(2)
-                        : (dateRange === 'todo' ? efectivoMembers.toFixed(2) : '0.00')}
+                      S/. {(resumen ? resumen.recaudacion.por_metodo.efectivo : efectivoMembers).toFixed(2)}
                     </span>
                   </div>
 
@@ -568,9 +675,7 @@ export default function AdminDashboard() {
                       <span>Yape:</span>
                     </div>
                     <span className="font-bold text-purple-300 text-sm">
-                      S/. {resumen && resumen.recaudacion.total > 0
-                        ? resumen.recaudacion.por_metodo.yape.toFixed(2)
-                        : (dateRange === 'todo' ? yapeMembers.toFixed(2) : '0.00')}
+                      S/. {(resumen ? resumen.recaudacion.por_metodo.yape : yapeMembers).toFixed(2)}
                     </span>
                   </div>
 
@@ -580,9 +685,7 @@ export default function AdminDashboard() {
                       <span>Plin:</span>
                     </div>
                     <span className="font-bold text-cyan-300 text-sm">
-                      S/. {resumen && resumen.recaudacion.total > 0
-                        ? resumen.recaudacion.por_metodo.plin.toFixed(2)
-                        : (dateRange === 'todo' ? plinMembers.toFixed(2) : '0.00')}
+                      S/. {(resumen ? resumen.recaudacion.por_metodo.plin : plinMembers).toFixed(2)}
                     </span>
                   </div>
 
@@ -592,9 +695,7 @@ export default function AdminDashboard() {
                       <span>Tarjeta POS:</span>
                     </div>
                     <span className="font-bold text-amber-300 text-sm">
-                      S/. {resumen && resumen.recaudacion.total > 0
-                        ? resumen.recaudacion.por_metodo.tarjeta.toFixed(2)
-                        : (dateRange === 'todo' ? tarjetaMembers.toFixed(2) : '0.00')}
+                      S/. {(resumen ? resumen.recaudacion.por_metodo.tarjeta : tarjetaMembers).toFixed(2)}
                     </span>
                   </div>
                 </div>
@@ -937,6 +1038,28 @@ export default function AdminDashboard() {
                   <option value="con_deuda">Con Saldo Deudor</option>
                   <option value="al_dia">100% Al Día</option>
                 </select>
+              </div>
+            </div>
+
+            {/* Contador dinámico y estado del filtro */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between text-xs font-mono text-zinc-400 px-1 py-1 gap-2 border-b border-white/5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>
+                  Mostrando <strong className="text-white">{filteredMembers.length}</strong> de <strong className="text-zinc-300">{members.length}</strong> socios
+                </span>
+                {debtFilter === 'con_deuda' && (
+                  <span className="text-amber-400 font-bold bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                    Saldos por cobrar: S/. {filteredMembers.reduce((sum, m) => sum + m.balanceDue, 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+                {shiftFilter !== 'all' && (
+                  <span className="text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded border border-purple-500/20">
+                    Turno {shiftFilter.toUpperCase()} ({filteredMembers.length} alumnos)
+                  </span>
+                )}
+              </div>
+              <div className="text-zinc-500 text-[11px]">
+                Página {currentPage} de {totalPages} ({pageSize} por página)
               </div>
             </div>
 

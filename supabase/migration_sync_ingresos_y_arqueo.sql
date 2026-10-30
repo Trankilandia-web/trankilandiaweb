@@ -80,11 +80,12 @@ begin
     from public.socios s;
   end if;
 
-  -- 2. Estadísticas de Socios y Turnos
+  -- 2. Estadísticas de Socios y Turnos (Separadas por Periodo)
   select jsonb_build_object(
     'total_socios', count(*),
-    'total_deudas_pendientes', coalesce(sum(saldo_pendiente), 0),
-    'socios_con_deuda', count(case when saldo_pendiente > 0 then 1 end),
+    'total_socios_global', (select count(*) from public.socios),
+    'total_deudas_pendientes', (select coalesce(sum(saldo_pendiente), 0) from public.socios),
+    'socios_con_deuda', (select count(*) from public.socios where saldo_pendiente > 0),
     'por_turno', jsonb_build_object(
       'manana', count(case when turno = 'manana' then 1 end),
       'tarde', count(case when turno = 'tarde' then 1 end),
@@ -97,7 +98,9 @@ begin
       'daniel', count(case when coach_asignado ilike '%Daniel%' then 1 end)
     )
   ) into v_socios_stats
-  from public.socios;
+  from public.socios
+  where (p_fecha_inicio is null or p_fecha_inicio <= '2020-01-01'::date or (p_fecha_inicio = '2026-01-01'::date and p_fecha_fin >= '2026-12-31'::date))
+     or (coalesce(fecha_inicio, created_at::date) between v_inicio and v_fin);
 
   -- 3. Métricas de Inventario y Margen de Ganancia
   select jsonb_build_object(
