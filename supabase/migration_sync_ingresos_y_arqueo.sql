@@ -142,3 +142,17 @@ $$;
 
 revoke execute on function public.obtener_resumen_admin(date, date) from public, anon;
 grant execute on function public.obtener_resumen_admin(date, date) to authenticated;
+
+-- ==============================================================================
+-- 3. Vincular y asegurar rol 'admin' para tu cuenta en public.profiles
+-- ==============================================================================
+insert into public.profiles (id, email, full_name, role)
+select 
+  id, 
+  email, 
+  coalesce(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', 'Luis Gerardo Lloclla Sauñe'), 
+  'admin'
+from auth.users
+where lower(email) in ('luisgerardolloccllasaune@gmail.com', 'trankilandiagymperu@gmail.com')
+on conflict (id) do update set role = 'admin';
+
