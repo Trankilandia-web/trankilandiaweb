@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Dumbbell, Menu, X, MapPin, User, Ticket, ArrowRight } from 'lucide-react';
+import { Dumbbell, Menu, X, MapPin, User, Ticket, ArrowRight, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES_CONFIG } from '../types/roles';
@@ -111,6 +111,17 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
         <div className="hidden md:flex items-center gap-2.5">
           {user ? (
             <>
+              {role === 'admin' && (
+                <Link
+                  to="/admin?tab=planes"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:text-white hover:bg-purple-500/20 text-xs font-mono font-bold transition-all shadow-sm"
+                  title="Gestionar Planes & Tarifas en Vivo"
+                >
+                  <Tag className="w-3.5 h-3.5 text-purple-400" />
+                  <span>Tarifas</span>
+                </Link>
+              )}
+
               <UserProfileDropdown />
 
               <Link
@@ -218,6 +229,17 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
                       {ROLES_CONFIG[role].name}
                     </span>
                   </motion.button>
+
+                  {role === 'admin' && (
+                    <Link
+                      to="/admin?tab=planes"
+                      onClick={closeMenu}
+                      className="w-full flex items-center justify-center gap-2 bg-purple-500/15 border border-purple-500/30 text-purple-300 font-bold py-3 rounded-xl text-xs font-mono uppercase tracking-wide"
+                    >
+                      <Tag className="w-4 h-4 text-purple-400" />
+                      <span>Gestionar Planes &amp; Tarifas</span>
+                    </Link>
+                  )}
 
                   <Link
                     to={getRedirectPath()}

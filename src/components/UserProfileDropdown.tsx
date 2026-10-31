@@ -16,17 +16,19 @@ import {
   Sparkles,
   MapPin,
   Check,
+  Tag,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES_CONFIG, UserRole } from '../types/roles';
 import { GYM_CONTACT } from '../data/gymData';
+import { getStoredMembers } from '../data/gymStore';
 
 export interface UserProfileDropdownProps {
   onClose?: () => void;
 }
 
 export default function UserProfileDropdown() {
-  const { user, role, isAdmin, switchRole, signOut, getRedirectPath } = useAuth();
+  const { user, role, switchRole, signOut, getRedirectPath } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -64,11 +66,18 @@ export default function UserProfileDropdown() {
 
   if (!user) return null;
 
+  const isCanonicalDni = Boolean(user.email?.endsWith('@socio.trankilandia.pe'));
+  const userDni = isCanonicalDni ? user.email?.split('@')[0] : (user.user_metadata?.dni || '');
+  const localMember = userDni ? getStoredMembers().find((m) => m.dni === userDni) : null;
+
   const displayName =
     user.user_metadata?.full_name ||
-    user.email?.split('@')[0] ||
+    localMember?.name ||
+    (isCanonicalDni ? `Atleta DNI ${userDni}` : user.email?.split('@')[0]) ||
     'Socio';
-  const displayEmail = user.email || 'socio@trankilandia.pe';
+  const displayEmail = isCanonicalDni
+    ? `DNI: ${userDni} · Carnet Digital`
+    : user.email || 'socio@trankilandia.pe';
 
   const handleNavigateToPortal = () => {
     setIsOpen(false);
@@ -305,43 +314,57 @@ export default function UserProfileDropdown() {
                     </span>
                     <span className="text-[10px] font-mono text-purple-400">Gerencia</span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      navigate('/admin?tab=planes');
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-amber-400 hover:text-black hover:bg-amber-400 transition-colors text-left cursor-pointer font-bold"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Tag className="w-4 h-4" />
+                      <span>Gestionar Planes &amp; Tarifas</span>
+                    </span>
+                    <span className="text-[10px] font-mono uppercase bg-black/30 px-1.5 py-0.5 rounded">
+                      En vivo
+                    </span>
+                  </button>
                 </>
               )}
             </div>
 
-            {/* Quick Role Switcher for Admin (Acceso pleno a los 4 roles) */}
-            {isAdmin && (
-              <div className="mt-3 pt-3 border-t border-white/10">
-                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-2">
-                  <span className="flex items-center gap-1 font-bold text-amber-400">
-                    <Sparkles className="w-3 h-3" />
-                    <span>VISTA DE CONTROL (SUPER ADMIN):</span>
-                  </span>
-                  <span className="text-zinc-500">4 roles en 1 clic</span>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {(['cliente', 'caja', 'entrenador', 'admin'] as UserRole[]).map((r) => {
-                    const cfg = ROLES_CONFIG[r];
-                    const isCurrent = r === role;
-                    return (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => handleRoleSelect(r)}
-                        className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono font-bold transition-all flex items-center justify-between cursor-pointer ${
-                          isCurrent
-                            ? `${cfg.themeColor.badgeBg} ${cfg.themeColor.badgeText} border ${cfg.themeColor.badgeBorder} shadow-sm`
-                            : 'bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
-                        }`}
-                      >
-                        <span className="capitalize">{cfg.name.split(' ')[0]}</span>
-                        {isCurrent && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
+            {/* Quick Role Switcher (Acceso pleno a los 4 roles para demostración y gerencia) */}
+            <div className="mt-3 pt-3 border-t border-white/10">
+              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-2">
+                <span className="flex items-center gap-1 font-bold text-amber-400">
+                  <Sparkles className="w-3 h-3" />
+                  <span>VISTA DE CONTROL (DEMO / ROLES):</span>
+                </span>
+                <span className="text-zinc-500">4 roles en 1 clic</span>
               </div>
-            )}
+              <div className="grid grid-cols-2 gap-1.5">
+                {(['cliente', 'caja', 'entrenador', 'admin'] as UserRole[]).map((r) => {
+                  const cfg = ROLES_CONFIG[r];
+                  const isCurrent = r === role;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => handleRoleSelect(r)}
+                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono font-bold transition-all flex items-center justify-between cursor-pointer ${
+                        isCurrent
+                          ? `${cfg.themeColor.badgeBg} ${cfg.themeColor.badgeText} border ${cfg.themeColor.badgeBorder} shadow-sm`
+                          : 'bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
+                      }`}
+                    >
+                      <span className="capitalize">{cfg.name.split(' ')[0]}</span>
+                      {isCurrent && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Footer Actions */}
             <div className="mt-3.5 pt-3 border-t border-white/10 flex items-center justify-between text-xs font-mono">

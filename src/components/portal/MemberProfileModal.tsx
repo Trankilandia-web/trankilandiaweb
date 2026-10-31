@@ -8,9 +8,13 @@ import {
   Save,
   MessageCircle,
   DollarSign,
+  FileCheck,
+  Upload,
+  Eye,
 } from 'lucide-react';
-import { GymMember } from '../../data/gymStore';
+import { GymMember, getStoredCatalogPlans, CatalogPlanOption } from '../../data/gymStore';
 import { OFFICIAL_COACHES } from '../../pages/portal/ClientePortal';
+import { normalizeDateToISO } from '../../lib/supabaseDb';
 
 interface MemberProfileModalProps {
   isOpen: boolean;
@@ -19,17 +23,6 @@ interface MemberProfileModalProps {
   onSave: (updatedMember: GymMember) => Promise<void>;
   onOpenPaymentModal?: (member: GymMember) => void;
 }
-
-const GYM_PLANS = [
-  { name: '1 mes · Musculación Libre', price: 80, months: 1 },
-  { name: '2 MESES · Musculación Libre', price: 130, months: 2 },
-  { name: '3 MESES · Musculación Libre', price: 180, months: 3 },
-  { name: '4 mes · Musculación Libre', price: 230, months: 4 },
-  { name: '6 MESES · Musculación Libre', price: 330, months: 6 },
-  { name: '8 MESES · Musculación Libre', price: 300, months: 8 },
-  { name: '1 AÑO · Musculación Libre', price: 450, months: 12 },
-  { name: 'Combo Musculación + Escuela de Boxeo', price: 140, months: 1 },
-];
 
 export default function MemberProfileModal({
   isOpen,
@@ -41,9 +34,16 @@ export default function MemberProfileModal({
   if (!isOpen || !member) return null;
 
   const [formData, setFormData] = useState<GymMember>({ ...member });
-  const [activeTab, setActiveTab] = useState<'personal' | 'membership' | 'shift'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'membership' | 'shift' | 'documentos'>('personal');
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [gymPlans, setGymPlans] = useState<CatalogPlanOption[]>(getStoredCatalogPlans);
+
+  useEffect(() => {
+    const handleUpdate = () => setGymPlans(getStoredCatalogPlans());
+    window.addEventListener('gym-plans-updated', handleUpdate);
+    return () => window.removeEventListener('gym-plans-updated', handleUpdate);
+  }, []);
 
   useEffect(() => {
     setFormData({ ...member });
@@ -75,7 +75,7 @@ export default function MemberProfileModal({
   };
 
   const handlePlanSelect = (planName: string) => {
-    const found = GYM_PLANS.find((p) => p.name === planName);
+    const found = gymPlans.find((p) => p.name === planName);
     if (found) {
       setFormData((prev) => {
         const newPrice = found.price;
@@ -118,12 +118,12 @@ export default function MemberProfileModal({
         <div className="p-5 sm:p-6 border-b border-white/10 bg-zinc-950/80 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 font-bold font-mono text-lg shrink-0">
-              {formData.name.charAt(0)}
+              {formData.name ? formData.name.charAt(0).toUpperCase() : '+'}
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-lg sm:text-xl font-black text-white font-display uppercase tracking-tight">
-                  {formData.name}
+                  {formData.name || 'Nuevo Socio / Atleta'}
                 </h3>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400">
                   {formData.id}
@@ -193,6 +193,25 @@ export default function MemberProfileModal({
           >
             <Clock className="w-3.5 h-3.5" />
             <span>Turno & Entrenador</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('documentos')}
+            className={`py-3 px-3 border-b-2 font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              activeTab === 'documentos'
+                ? 'border-amber-400 text-amber-400'
+                : 'border-transparent text-zinc-400 hover:text-white'
+            }`}
+          >
+            <FileCheck className="w-3.5 h-3.5" />
+            <span>Documentos</span>
+            {formData.documentStatus === 'pendiente' && (
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            )}
+            {formData.documentStatus === 'verificado' && (
+              <span className="text-[10px] text-emerald-400 font-black">✓</span>
+            )}
           </button>
         </div>
 
@@ -321,12 +340,12 @@ export default function MemberProfileModal({
                   onChange={(e) => handlePlanSelect(e.target.value)}
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-sans"
                 >
-                  {(formData.plan === 'Sin Membresía Activa' || !GYM_PLANS.some((p) => p.name === formData.plan)) && (
+                  {(formData.plan === 'Sin Membresía Activa' || !gymPlans.some((p) => p.name === formData.plan)) && (
                     <option value={formData.plan}>
                       {formData.plan === 'Sin Membresía Activa' ? '⚪ Sin Membresía Activa (Seleccionar Plan)' : formData.plan}
                     </option>
                   )}
-                  {GYM_PLANS.map((p) => (
+                  {gymPlans.map((p) => (
                     <option key={p.name} value={p.name}>
                       {p.name} — S/. {p.price}.00 ({p.months} {p.months === 1 ? 'mes' : 'meses'})
                     </option>
@@ -408,10 +427,53 @@ export default function MemberProfileModal({
                   </label>
                   <input
                     type="date"
-                    value={formData.expiresAt}
+                    value={formData.expiresAt ? normalizeDateToISO(formData.expiresAt) : ''}
                     onChange={(e) => handleInputChange('expiresAt', e.target.value)}
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
                   />
+                  {/* Extensiones Rápidas de Membresía */}
+                  <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                    <span className="text-[10px] font-mono text-zinc-400">Extender:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const baseDate = formData.expiresAt ? new Date(normalizeDateToISO(formData.expiresAt)) : new Date();
+                        baseDate.setDate(baseDate.getDate() + 30);
+                        const nextISO = baseDate.toISOString().split('T')[0];
+                        handleInputChange('expiresAt', nextISO);
+                        handleInputChange('membershipStatus', 'active');
+                      }}
+                      className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-amber-300 border border-white/10 cursor-pointer"
+                    >
+                      +30 Días
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const baseDate = formData.expiresAt ? new Date(normalizeDateToISO(formData.expiresAt)) : new Date();
+                        baseDate.setDate(baseDate.getDate() + 90);
+                        const nextISO = baseDate.toISOString().split('T')[0];
+                        handleInputChange('expiresAt', nextISO);
+                        handleInputChange('membershipStatus', 'active');
+                      }}
+                      className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-amber-300 border border-white/10 cursor-pointer"
+                    >
+                      +90 Días (3M)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const baseDate = formData.expiresAt ? new Date(normalizeDateToISO(formData.expiresAt)) : new Date();
+                        baseDate.setFullYear(baseDate.getFullYear() + 1);
+                        const nextISO = baseDate.toISOString().split('T')[0];
+                        handleInputChange('expiresAt', nextISO);
+                        handleInputChange('membershipStatus', 'active');
+                      }}
+                      className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-amber-300 border border-white/10 cursor-pointer"
+                    >
+                      +1 Año
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -428,6 +490,44 @@ export default function MemberProfileModal({
                   <option value="expiring">Por Vencer (Próxima)</option>
                   <option value="inactive">Inactiva (Vencida/Pausa)</option>
                 </select>
+              </div>
+
+              {/* Congelación de Membresía */}
+              <div className="p-3.5 rounded-2xl bg-cyan-950/20 border border-cyan-500/30 flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="freeze-membership"
+                  checked={
+                    formData.membershipStatus === 'inactive' &&
+                    (formData.observations || '').includes('[MEMBRESÍA CONGELADA]')
+                  }
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      const obs = formData.observations || '';
+                      const newObs = obs.includes('[MEMBRESÍA CONGELADA]')
+                        ? obs
+                        : `[MEMBRESÍA CONGELADA - Pausa temporal] ${obs}`.trim();
+                      handleInputChange('membershipStatus', 'inactive');
+                      handleInputChange('observations', newObs);
+                    } else {
+                      const newObs = (formData.observations || '')
+                        .replace('[MEMBRESÍA CONGELADA - Pausa temporal]', '')
+                        .replace('[MEMBRESÍA CONGELADA]', '')
+                        .trim();
+                      handleInputChange('membershipStatus', 'active');
+                      handleInputChange('observations', newObs);
+                    }
+                  }}
+                  className="mt-1 w-4 h-4 rounded border-cyan-400/50 text-cyan-500 focus:ring-cyan-400 cursor-pointer"
+                />
+                <label htmlFor="freeze-membership" className="cursor-pointer text-xs font-mono">
+                  <span className="font-bold text-cyan-300 flex items-center gap-1.5">
+                    ❄️ Congelar Membresía (Pausa por viaje, lesión o salud)
+                  </span>
+                  <p className="text-zinc-400 font-sans mt-0.5 text-[11px] leading-relaxed">
+                    Pausa temporal de acceso. Bloquea el ingreso en recepción hasta que el administrador o caja lo reactive.
+                  </p>
+                </label>
               </div>
             </div>
           )}
@@ -486,6 +586,148 @@ export default function MemberProfileModal({
                     ))}
                   </optgroup>
                 </select>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: VALIDACIÓN DE DOCUMENTOS (ESCOLAR / UNIVERSITARIO) */}
+          {activeTab === 'documentos' && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-3 font-mono text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-white uppercase flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-amber-400" />
+                    Estado de Documento
+                  </span>
+                  <span
+                    className={`px-2.5 py-1 rounded-full font-bold uppercase ${
+                      formData.documentStatus === 'verificado'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : formData.documentStatus === 'pendiente'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                        : formData.documentStatus === 'rechazado'
+                        ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                        : 'bg-zinc-800 text-zinc-400'
+                    }`}
+                  >
+                    {formData.documentStatus === 'verificado'
+                      ? '✓ Verificado'
+                      : formData.documentStatus === 'pendiente'
+                      ? '🟡 Pendiente de Aprobación'
+                      : formData.documentStatus === 'rechazado'
+                      ? '✕ Rechazado'
+                      : '⚪ Sin Documento Adjunto'}
+                  </span>
+                </div>
+
+                <p className="text-zinc-400 text-[11px] leading-relaxed">
+                  Requisito para <strong>Plan Escolar</strong> (DNI acreditando edad entre 14 y 17 años) o <strong>Plan Universitario/Instituto</strong> (Carnet vigente o constancia de matrícula). Puedes validarlo en un clic.
+                </p>
+
+                {/* Acciones directas para el Admin */}
+                <div className="pt-2 flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleInputChange('documentStatus', 'verificado');
+                      handleInputChange(
+                        'documentNotes',
+                        `Documento verificado correctamente el ${new Date().toLocaleDateString('es-PE')}`
+                      );
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Aprobar y Validar Documento</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleInputChange('documentStatus', 'rechazado');
+                      handleInputChange(
+                        'documentNotes',
+                        'Documento observado / no legible. Solicitar nuevo documento.'
+                      );
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold text-xs border border-red-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Rechazar Documento</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Vista previa o carga de foto */}
+              <div>
+                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                  Fotografía de DNI o Carnet de Estudios
+                </label>
+                {formData.documentUrl ? (
+                  <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/60 p-3 space-y-2">
+                    <img
+                      src={formData.documentUrl}
+                      alt="Documento del socio"
+                      className="w-full max-h-64 object-contain rounded-xl mx-auto"
+                    />
+                    <div className="flex items-center justify-between text-xs font-mono pt-1 border-t border-white/5">
+                      <span className="text-zinc-400">
+                        Tipo: <strong className="text-white">{formData.documentType || 'DNI / Carnet'}</strong>
+                      </span>
+                      <a
+                        href={formData.documentUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ver imagen ampliada</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-6 rounded-2xl border-2 border-dashed border-white/10 bg-zinc-950/60 text-center font-mono">
+                    <p className="text-xs text-zinc-400 mb-2">No hay foto de documento cargada para este socio.</p>
+                    <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold cursor-pointer transition-colors">
+                      <Upload className="w-4 h-4 text-amber-400" />
+                      <span>Cargar foto del documento</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                              const dataUrl = event.target?.result as string;
+                              handleInputChange('documentUrl', dataUrl);
+                              handleInputChange('documentStatus', 'pendiente');
+                              handleInputChange(
+                                'documentType',
+                                formData.plan.toLowerCase().includes('escolar') ? 'dni_escolar' : 'carnet_estudiante'
+                              );
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                  Notas de Auditoría del Documento
+                </label>
+                <input
+                  type="text"
+                  value={formData.documentNotes || ''}
+                  onChange={(e) => handleInputChange('documentNotes', e.target.value)}
+                  placeholder="Ej: DNI 70447087 verificado edad 16 años / Carnet UNSCH ciclo 2026-I..."
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-sans"
+                />
               </div>
             </div>
           )}

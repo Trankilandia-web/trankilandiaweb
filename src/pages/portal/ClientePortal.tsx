@@ -18,6 +18,8 @@ import {
   CreditCard,
   Lock,
   X,
+  Upload,
+  ShieldCheck,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
@@ -26,13 +28,17 @@ import {
   GymMember,
   MemberRoutine,
   getStoredMembers,
+  saveStoredMembers,
   getStoredRoutines,
   getStoredProgress,
   INITIAL_ROUTINES,
+  getStoredMembershipPlans,
 } from '../../data/gymStore';
 import {
   getMemberRoutine,
   vincularDniCliente,
+  obtenerSocioPorUserId,
+  updateMemberProfile,
 } from '../../lib/supabaseDb';
 import {
   renderBarcodeToCanvas,
@@ -75,57 +81,103 @@ export const OFFICIAL_COACHES = [
   },
 ];
 
-export const GYM_PLANS_CATALOG = [
-  {
-    id: '1m',
-    name: '1 mes · Musculación Libre',
-    price: 80,
-    duration: '1 mes',
-    badge: 'Estándar',
-    features: ['Acceso total a máquinas y peso libre', 'Asesoría con entrenadores oficiales', 'Sin costo de matrícula'],
-  },
-  {
-    id: '2m',
-    name: '2 MESES · Musculación Libre',
-    price: 130,
-    duration: '2 meses',
-    badge: 'Ahorro S/. 30',
-    features: ['S/. 65.00 al mes', 'Acceso ilimitado en tu turno', 'Evaluación física mensual'],
-  },
-  {
-    id: '3m',
-    name: '3 MESES · Musculación Libre',
-    price: 180,
-    duration: '3 meses',
-    popular: true,
-    badge: 'Más Elegido · S/. 60/mes',
-    features: ['Ahorro total de S/. 60', 'Rutina progresiva de 12 semanas', 'Reasignación de coach libre'],
-  },
-  {
-    id: '6m',
-    name: '6 MESES · Musculación Libre',
-    price: 330,
-    duration: '6 meses',
-    badge: 'S/. 55/mes',
-    features: ['Medio año de transformación', 'Monitoreo de PRs y cargas', 'Acompañamiento personalizado'],
-  },
-  {
-    id: '1y',
-    name: '1 AÑO · Musculación Libre',
-    price: 450,
-    duration: '12 meses',
-    badge: 'Máximo Ahorro · S/. 37.50/mes',
-    features: ['12 meses de acceso total', 'Plan anual con congelamiento', 'Carnet digital VIP'],
-  },
-  {
-    id: 'boxeo',
-    name: 'Combo Musculación + Escuela de Boxeo',
-    price: 140,
-    duration: '1 mes',
-    badge: 'Combo 2 en 1',
-    features: ['Acceso a sala de pesas y máquinas', 'Clases de Boxeo y técnica', 'Guantes y saco en sede'],
-  },
-];
+export const getClientePlansCatalog = () => {
+  const plans = getStoredMembershipPlans().filter((p) => p.isActive !== false);
+  const result: any[] = [];
+
+  plans.forEach((p) => {
+    if (p.id === 'escolar') {
+      result.push({
+        id: 'escolar',
+        name: 'Plan Escolar (14-17 años)',
+        price: p.monthlyPrice,
+        duration: '1 mes',
+        badge: p.badge || `Escolar · S/. ${p.monthlyPrice}/mes`,
+        requiresDocument: true,
+        documentRequirement: 'Foto de DNI (14 a 17 años)',
+        features: p.highlights || ['Requisito: DNI acreditando edad 14 a 17 años', 'Acceso a sala de pesas y máquinas', 'Supervisión técnica de entrenadores'],
+      });
+    } else if (p.id === 'universitario') {
+      result.push({
+        id: 'universitario',
+        name: 'Plan Universitario / Instituto (1 Mes)',
+        price: p.monthlyPrice,
+        duration: '1 mes',
+        badge: `Universitario · S/. ${p.monthlyPrice}/mes`,
+        requiresDocument: true,
+        documentRequirement: 'Carnet de Universidad/Instituto o Matrícula',
+        features: ['Requisito: Carnet vigente de estudiante', 'Acceso completo a máquinas y peso libre', 'Horario libre en tu turno oficial'],
+      });
+      if (p.quarterlyPrice > 0) {
+        result.push({
+          id: 'universitario-3m',
+          name: 'Plan Universitario (Trimestral - 3 Meses)',
+          price: p.quarterlyPrice,
+          duration: '3 meses',
+          popular: true,
+          badge: `Promoción Oficial · S/. ${(p.quarterlyPrice / 3).toFixed(0)}/mes`,
+          requiresDocument: true,
+          documentRequirement: 'Carnet de Universidad/Instituto o Matrícula',
+          features: [`¡Solo S/. ${(p.quarterlyPrice / 3).toFixed(1)} al mes!`, '3 meses completos de entrenamiento', 'Rutina progresiva trimestral'],
+        });
+      }
+    } else if (p.id === 'combo_boxeo') {
+      result.push({
+        id: 'combo_boxeo',
+        name: 'Combo Musculación + Escuela de Boxeo',
+        price: p.monthlyPrice,
+        duration: '1 mes',
+        badge: p.badge || `Combo · S/. ${p.monthlyPrice}/mes`,
+        features: p.highlights || ['Acceso a sala de pesas y máquinas', 'Clases dirigidas de Boxeo con instructores'],
+      });
+    } else {
+      // General o personalizado
+      result.push({
+        id: p.id,
+        name: `1 Mes · ${p.name}`,
+        price: p.monthlyPrice,
+        duration: '1 mes',
+        badge: p.badge || 'Estándar Libre',
+        popular: p.isPopular,
+        features: p.highlights || ['Acceso total a máquinas y peso libre', 'Asesoría con entrenadores oficiales'],
+      });
+      if (p.quarterlyPrice > 0) {
+        result.push({
+          id: `${p.id}-3m`,
+          name: `3 Meses · ${p.name}`,
+          price: p.quarterlyPrice,
+          duration: '3 meses',
+          badge: 'Ahorro Trimestral',
+          features: [`S/. ${(p.quarterlyPrice / 3).toFixed(1)} al mes`, 'Rutina de 12 semanas por coach'],
+        });
+      }
+      if (p.semiannualPrice > 0) {
+        result.push({
+          id: `${p.id}-6m`,
+          name: `6 Meses · ${p.name}`,
+          price: p.semiannualPrice,
+          duration: '6 meses',
+          badge: 'Semestral',
+          features: ['Medio año de transformación física', 'Acompañamiento personalizado'],
+        });
+      }
+      if (p.annualPrice > 0) {
+        result.push({
+          id: `${p.id}-1y`,
+          name: `1 Año · ${p.name}`,
+          price: p.annualPrice,
+          duration: '12 meses',
+          badge: 'Máximo Ahorro',
+          features: ['12 meses de acceso total', 'Carnet digital VIP'],
+        });
+      }
+    }
+  });
+
+  return result;
+};
+
+export const GYM_PLANS_CATALOG = getClientePlansCatalog();
 
 interface ClientCache {
   timestamp: number;
@@ -160,16 +212,58 @@ export default function ClientePortal() {
   const [isLinkingDni, setIsLinkingDni] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [plansCatalogList, setPlansCatalogList] = useState(getClientePlansCatalog);
   const [selectedPlanForSub, setSelectedPlanForSub] = useState<string>('1 mes · Musculación Libre');
+  const [isLoadingSocioOnline, setIsLoadingSocioOnline] = useState(false);
+
+  useEffect(() => {
+    const handleUpdate = () => setPlansCatalogList(getClientePlansCatalog());
+    window.addEventListener('gym-plans-updated', handleUpdate);
+    return () => window.removeEventListener('gym-plans-updated', handleUpdate);
+  }, []);
+
+  // Sincronización automática de perfil/socio desde Supabase al iniciar sesión (Multi-dispositivo)
+  useEffect(() => {
+    let isMounted = true;
+    async function sincronizarSocioOnline() {
+      if (!user?.id) return;
+      setIsLoadingSocioOnline(true);
+      try {
+        const onlineMember = await obtenerSocioPorUserId(user.id);
+        if (onlineMember && isMounted) {
+          setMembers((prev) => {
+            const exists = prev.some(
+              (m) => m.id === onlineMember.id || (onlineMember.dni && m.dni === onlineMember.dni)
+            );
+            return exists
+              ? prev.map((m) =>
+                  m.id === onlineMember.id || (onlineMember.dni && m.dni === onlineMember.dni)
+                    ? onlineMember
+                    : m
+                )
+              : [onlineMember, ...prev];
+          });
+          setSelectedMemberId(onlineMember.id);
+        }
+      } catch {}
+      if (isMounted) setIsLoadingSocioOnline(false);
+    }
+    sincronizarSocioOnline();
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
 
   // Socio activo determinado por correo personal o DNI vinculado
   const userEmail = (user?.email || '').toLowerCase().trim();
   const userDni = (user?.user_metadata?.dni || '').trim();
+  const canonicalDniMatch = userEmail.match(/^(\d{8})@socio\.trankilandia\.pe$/);
+  const effectiveDni = userDni || (canonicalDniMatch ? canonicalDniMatch[1] : '');
 
   const linkedMember = members.find(
     (m) =>
       (m.email && userEmail && m.email.toLowerCase().trim() === userEmail) ||
-      (userDni && m.dni && m.dni.trim() === userDni)
+      (effectiveDni && m.dni && m.dni.trim() === effectiveDni)
   ) || null;
 
   const currentMember =
@@ -364,7 +458,11 @@ export default function ClientePortal() {
                       </>
                     ) : (
                       <span>
-                        Usuario conectado: <strong className="text-white">{user?.email || 'Sin sesión'}</strong> · <span className="text-amber-400 font-bold">Completa tu DNI para vincular tu carnet</span>
+                        Usuario conectado: <strong className="text-white">
+                          {user?.email?.endsWith('@socio.trankilandia.pe')
+                            ? `DNI: ${user.email.split('@')[0]}`
+                            : (user?.email || 'Sin sesión')}
+                        </strong> · <span className="text-amber-400 font-bold">Completa tu DNI para vincular tu carnet</span>
                       </span>
                     )}
                   </span>
@@ -424,7 +522,12 @@ export default function ClientePortal() {
           </div>
         )}
 
-        {!currentMember ? (
+        {isLoadingSocioOnline ? (
+          <div className="max-w-md mx-auto py-24 text-center space-y-4">
+            <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs font-mono text-zinc-400">Verificando membresía en el padrón oficial...</p>
+          </div>
+        ) : !currentMember ? (
           /* FORMULARIO DE REGISTRO / VINCULACIÓN UNIVERSAL PARA CLIENTES CON DNI */
           <div className="max-w-xl mx-auto py-10">
             <div className="bg-zinc-900 border border-amber-400/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
@@ -436,7 +539,15 @@ export default function ClientePortal() {
                 Genera tu Tarjeta de Ingreso
               </h2>
               <p className="text-xs sm:text-sm text-zinc-400 mt-2 font-mono leading-relaxed">
-                Has iniciado sesión con tu correo personal <strong className="text-amber-400">{user?.email || 'de usuario'}</strong>. Completa tu nombre y DNI para vincular tu membresía histórica o crear tu carnet oficial con código de barras 1D:
+                {user?.email?.endsWith('@socio.trankilandia.pe') ? (
+                  <>
+                    Has iniciado sesión con tu <strong className="text-amber-400">DNI: {user.email.split('@')[0]}</strong>. Completa tus datos para activar tu carnet oficial con código de barras 1D:
+                  </>
+                ) : (
+                  <>
+                    Has iniciado sesión con tu cuenta de <strong className="text-amber-400">{user?.email || 'Google'}</strong>. Ingresa tu número de DNI para vincular tu carnet oficial con código de barras 1D:
+                  </>
+                )}
               </p>
 
               <form onSubmit={handleVincularDni} className="mt-6 space-y-4">
@@ -693,6 +804,30 @@ export default function ClientePortal() {
                         {isNoMembership ? 'Inactivo · Requiere Pago' : currentMember.expiresAt || '30 Nov 2026'}
                       </span>
                     </div>
+
+                    {/* Verificación de Documento para planes Escolar o Universitario */}
+                    {(currentMember.plan.toLowerCase().includes('escolar') || currentMember.plan.toLowerCase().includes('universit')) && (
+                      <div className="flex justify-between items-center text-zinc-400">
+                        <span>Doc. Estudiante:</span>
+                        {currentMember.documentStatus === 'verificado' ? (
+                          <span className="text-emerald-400 font-bold flex items-center gap-1">
+                            <Check className="w-3.5 h-3.5" />
+                            Verificado
+                          </span>
+                        ) : currentMember.documentStatus === 'pendiente' ? (
+                          <span className="text-amber-400 font-bold">🟡 En Revisión</span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setShowPlansModal(true)}
+                            className="text-amber-400 hover:text-amber-300 underline font-bold cursor-pointer"
+                          >
+                            + Subir Foto
+                          </button>
+                        )}
+                      </div>
+                    )}
+
                     {!isNoMembership && currentMember.balanceDue > 0 && (
                       <div className="flex justify-between text-red-400 font-bold bg-red-500/10 p-2 rounded-lg border border-red-500/20">
                         <span>Saldo Deudor:</span>
@@ -1090,7 +1225,7 @@ export default function ClientePortal() {
 
             {/* Grid de Planes */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-              {GYM_PLANS_CATALOG.map((plan) => {
+              {plansCatalogList.map((plan) => {
                 const isSelected = selectedPlanForSub === plan.name;
                 return (
                   <div
@@ -1125,7 +1260,7 @@ export default function ClientePortal() {
                       </div>
 
                       <ul className="mt-3 space-y-1 text-[11px] font-mono text-zinc-400">
-                        {plan.features.map((feat, i) => (
+                        {(plan.features || []).map((feat: string, i: number) => (
                           <li key={i} className="flex items-center gap-1.5">
                             <Check className="w-3 h-3 text-emerald-400 flex-shrink-0" />
                             <span>{feat}</span>
@@ -1152,6 +1287,134 @@ export default function ClientePortal() {
                 );
               })}
             </div>
+
+            {/* SECCIÓN DE CARGA Y VALIDACIÓN DE DOCUMENTO PARA PLANES CON DESCUENTO */}
+            {(selectedPlanForSub.toLowerCase().includes('escolar') || selectedPlanForSub.toLowerCase().includes('universit')) && (
+              <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-amber-400/10 border-2 border-amber-400/40 space-y-3 font-mono">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
+                    <h4 className="text-sm font-black text-amber-300 uppercase">
+                      {selectedPlanForSub.toLowerCase().includes('escolar')
+                        ? 'Validación Obligatoria: DNI Escolar (14 a 17 años)'
+                        : 'Validación Obligatoria: Carnet de Universidad / Instituto'}
+                    </h4>
+                  </div>
+                  <span
+                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
+                      currentMember.documentStatus === 'verificado'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : currentMember.documentStatus === 'pendiente'
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                        : 'bg-zinc-800 text-zinc-300'
+                    }`}
+                  >
+                    {currentMember.documentStatus === 'verificado'
+                      ? '✓ Documento Aprobado'
+                      : currentMember.documentStatus === 'pendiente'
+                      ? '🟡 Foto en Revisión'
+                      : '⚪ Foto Pendiente'}
+                  </span>
+                </div>
+
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                  {selectedPlanForSub.toLowerCase().includes('escolar')
+                    ? 'Para acceder a la tarifa escolar de S/. 50.00/mes, debes acreditar tu edad (14 a 17 años). Sube una foto de tu DNI o preséntalo físicamente en el mostrador.'
+                    : 'Para la tarifa universitaria de S/. 60.00/mes o 3 meses x S/. 150.00, sube una foto nítida de tu carnet universitario/instituto vigente o constancia de matrícula.'}
+                </p>
+
+                {/* Foto cargada o botón para subir */}
+                {currentMember.documentUrl ? (
+                  <div className="flex items-center justify-between gap-4 p-3 rounded-xl bg-zinc-950 border border-white/10">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={currentMember.documentUrl}
+                        alt="Documento cargado"
+                        className="w-14 h-14 object-cover rounded-lg border border-white/10"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-white">Foto de documento adjuntada</div>
+                        <div className="text-[11px] text-zinc-400">
+                          Estado:{' '}
+                          <span className="text-amber-400 font-bold">
+                            {currentMember.documentStatus === 'verificado'
+                              ? 'Verificado ✓'
+                              : 'Pendiente de validación'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <label className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold cursor-pointer transition-colors border border-white/10">
+                      <span>Cambiar foto</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = async (event) => {
+                              const dataUrl = event.target?.result as string;
+                              const docType = selectedPlanForSub.toLowerCase().includes('escolar')
+                                ? 'dni_escolar'
+                                : 'carnet_estudiante';
+                              const updated = await updateMemberProfile(currentMember.id, {
+                                documentUrl: dataUrl,
+                                documentStatus: 'pendiente',
+                                documentType: docType,
+                                documentNotes: 'Documento subido por el alumno vía portal web',
+                              });
+                              saveStoredMembers(updated);
+                              setMembers(updated);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-xl border border-dashed border-amber-400/40 bg-zinc-950/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+                    <div>
+                      <div className="text-xs font-bold text-white">Sube la foto de tu documento ahora</div>
+                      <div className="text-[11px] text-zinc-400">Formatos permitidos: JPG, PNG o foto con la cámara</div>
+                    </div>
+                    <label className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-md shrink-0">
+                      <Upload className="w-4 h-4" />
+                      <span>Subir Foto de DNI / Carnet</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onload = async (event) => {
+                              const dataUrl = event.target?.result as string;
+                              const docType = selectedPlanForSub.toLowerCase().includes('escolar')
+                                ? 'dni_escolar'
+                                : 'carnet_estudiante';
+                              const updated = await updateMemberProfile(currentMember.id, {
+                                documentUrl: dataUrl,
+                                documentStatus: 'pendiente',
+                                documentType: docType,
+                                documentNotes: 'Documento subido por el alumno vía portal web',
+                              });
+                              saveStoredMembers(updated);
+                              setMembers(updated);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Opciones de Pago */}
             <div className="p-5 rounded-2xl bg-zinc-950 border border-white/10 space-y-4 font-mono">
@@ -1184,7 +1447,11 @@ export default function ClientePortal() {
                       currentMember.name
                     )}%20(DNI%20${currentMember.dni}).%20Deseo%20activar%20el%20plan%20"${encodeURIComponent(
                       selectedPlanForSub
-                    )}"%20vía%20Yape/Plin.`}
+                    )}"%20vía%20Yape/Plin.${
+                      selectedPlanForSub.toLowerCase().includes('escolar') || selectedPlanForSub.toLowerCase().includes('universit')
+                        ? '%20He%20adjuntado%20la%20foto%20de%20mi%20documento%20para%20la%20tarifa%20preferencial.'
+                        : ''
+                    }`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-2.5 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs font-mono uppercase tracking-wider transition-colors flex items-center justify-center gap-2 cursor-pointer mt-2"

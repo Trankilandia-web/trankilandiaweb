@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
@@ -17,7 +17,8 @@ import OfficialBenefitsSection from '../components/OfficialBenefitsSection';
 import ProgramsSection from '../components/ProgramsSection';
 import AboutSection from '../components/AboutSection';
 import QuickInfoBar from '../components/QuickInfoBar';
-import { MEMBERSHIP_PLANS, BOXING_ADDON } from '../data/gymData';
+import { BOXING_ADDON } from '../data/gymData';
+import { getStoredMembershipPlans, GymPlanTier } from '../data/gymStore';
 import type { BillingPeriod } from '../types';
 
 export interface HomePageProps {
@@ -26,8 +27,15 @@ export interface HomePageProps {
 
 export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React.JSX.Element {
   const [selectedPeriod, setSelectedPeriod] = useState<BillingPeriod>('mes');
+  const [plans, setPlans] = useState<GymPlanTier[]>(getStoredMembershipPlans);
 
-  const getPrice = (plan: typeof MEMBERSHIP_PLANS[0]) => {
+  useEffect(() => {
+    const handleUpdate = () => setPlans(getStoredMembershipPlans());
+    window.addEventListener('gym-plans-updated', handleUpdate);
+    return () => window.removeEventListener('gym-plans-updated', handleUpdate);
+  }, []);
+
+  const getPrice = (plan: GymPlanTier) => {
     switch (selectedPeriod) {
       case 'mes':
         return { total: plan.monthlyPrice, perMonth: plan.monthlyPrice, label: 'al mes' };
@@ -152,8 +160,8 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
           </div>
 
           {/* Cards Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
-            {MEMBERSHIP_PLANS.map((plan) => {
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
+            {plans.filter((p) => p.isActive !== false).slice(0, 4).map((plan) => {
               const pricing = getPrice(plan);
 
               return (

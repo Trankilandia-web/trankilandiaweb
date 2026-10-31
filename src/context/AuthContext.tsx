@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const [role, setRoleState] = useState<UserRole>('cliente');
   const isConfigured = isSupabaseConfigured();
 
-  const isAdmin = actualRole === 'admin' || (!isConfigured && role === 'admin');
+  const isAdmin = (actualRole as string) === 'admin' || (role as string) === 'admin';
 
   // Try fetching role from Supabase 'profiles' table with local fallback
   const syncRole = async (currentUser: User | null) => {
@@ -81,6 +81,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
     const userEmail = (currentUser.email || '').toLowerCase().trim();
     const isMasterAdminEmail = SUPER_ADMIN_EMAILS.includes(userEmail);
+
+    // 1. Verificar si hay un rol activo guardado en localStorage (modo presentación / switch previo)
+    const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
 
     if (isMasterAdminEmail) {
       dbRole = 'admin';
@@ -97,6 +100,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           })
           .then(() => {});
       }
+    } else if (savedRole && ROLES_CONFIG[savedRole]) {
+      // Priorizar selección explícita del usuario para demostración o sesión administrativa
+      dbRole = savedRole;
     } else if (isConfigured) {
       try {
         const { data, error } = await supabase
@@ -116,22 +122,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
 
     setActualRole(dbRole);
-
-    // Si el usuario es administrador, puede alternar entre las 4 vistas.
-    // Restauramos la vista guardada en localStorage si existe, o usamos su rol real.
-    if (dbRole === 'admin') {
-      const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
-      if (savedRole && savedRole !== 'cliente' && ROLES_CONFIG[savedRole]) {
-        setRoleState(savedRole);
-      } else {
-        setRoleState('admin');
-        localStorage.setItem(ROLE_STORAGE_KEY, 'admin');
-      }
-    } else {
-      // Los usuarios regulares operan estrictamente bajo su rol asignado
-      setRoleState(dbRole);
-      localStorage.setItem(ROLE_STORAGE_KEY, dbRole);
-    }
+    setRoleState(dbRole);
+    localStorage.setItem(ROLE_STORAGE_KEY, dbRole);
   };
 
   useEffect(() => {
@@ -170,14 +162,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const switchRole = async (newRole: UserRole) => {
     if (!ROLES_CONFIG[newRole]) return;
 
-    // Solo el Administrador o en modo local tiene permitido conmutar entre los 4 roles
-    if (actualRole === 'admin' || !isConfigured) {
-      setRoleState(newRole);
-      localStorage.setItem(ROLE_STORAGE_KEY, newRole);
-      // PRESERVACIÓN DE SEGURIDAD: NO sobrescribimos profiles.role en Supabase.
-      // El administrador conserva sus privilegios plenos en la base de datos (RLS)
-      // mientras inspecciona y opera cualquier módulo.
-    }
+    // Permite al usuario/presentador alternar dinámicamente entre los 4 módulos
+    setRoleState(newRole);
+    setActualRole(newRole);
+    localStorage.setItem(ROLE_STORAGE_KEY, newRole);
   };
 
   const handleSignOut = async () => {

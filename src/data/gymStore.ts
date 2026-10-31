@@ -3,6 +3,8 @@
 // ==============================================================================
 
 import realMembersData from './realMembers.json';
+import { MEMBERSHIP_PLANS } from './gymData';
+import type { PlanTier } from '../types';
 
 export interface GymMember {
   id: string;
@@ -26,6 +28,10 @@ export interface GymMember {
   age?: number | null;
   gender?: string;
   shift?: 'manana' | 'tarde' | 'noche';
+  documentStatus?: 'sin_documento' | 'pendiente' | 'verificado' | 'rechazado';
+  documentType?: 'dni_escolar' | 'carnet_estudiante' | null;
+  documentUrl?: string | null;
+  documentNotes?: string | null;
 }
 
 export interface RoutineExercise {
@@ -205,4 +211,225 @@ export const saveStoredProgress = (progress: ProgressRecord[]) => {
   try {
     localStorage.setItem('trankilandia_progress', JSON.stringify(progress));
   } catch {}
+};
+
+// ==============================================================================
+// GESTIÓN DINÁMICA DE PLANES Y TARIFAS EN VIVO POR ADMINISTRACIÓN
+// ==============================================================================
+
+export interface GymPlanTier extends PlanTier {
+  isActive?: boolean;
+  requiresDocument?: 'dni_escolar' | 'carnet_estudiante' | null;
+}
+
+export interface AddonRates {
+  paseDiario: number;
+  boxeoAddon: number;
+  mesLibre2M: number;
+}
+
+export const DEFAULT_ADDON_RATES: AddonRates = {
+  paseDiario: 15,
+  boxeoAddon: 50,
+  mesLibre2M: 130,
+};
+
+const PLANS_STORAGE_KEY = 'trankilandia_plans_v2';
+const ADDONS_STORAGE_KEY = 'trankilandia_addon_rates_v1';
+
+export const getStoredMembershipPlans = (): GymPlanTier[] => {
+  try {
+    const raw = localStorage.getItem(PLANS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return MEMBERSHIP_PLANS.map((p) => ({
+    ...p,
+    isActive: true,
+    requiresDocument:
+      p.id === 'escolar'
+        ? 'dni_escolar'
+        : p.id === 'universitario'
+        ? 'carnet_estudiante'
+        : null,
+  }));
+};
+
+export const saveStoredMembershipPlans = (plans: GymPlanTier[]) => {
+  try {
+    localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gym-plans-updated'));
+    }
+  } catch {}
+};
+
+export const resetMembershipPlansToDefault = (): GymPlanTier[] => {
+  const defaults: GymPlanTier[] = MEMBERSHIP_PLANS.map((p) => ({
+    ...p,
+    isActive: true,
+    requiresDocument:
+      p.id === 'escolar'
+        ? 'dni_escolar'
+        : p.id === 'universitario'
+        ? 'carnet_estudiante'
+        : null,
+  }));
+  saveStoredMembershipPlans(defaults);
+  saveStoredAddonRates(DEFAULT_ADDON_RATES);
+  return defaults;
+};
+
+export const getStoredAddonRates = (): AddonRates => {
+  try {
+    const raw = localStorage.getItem(ADDONS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return DEFAULT_ADDON_RATES;
+};
+
+export const saveStoredAddonRates = (rates: AddonRates) => {
+  try {
+    localStorage.setItem(ADDONS_STORAGE_KEY, JSON.stringify(rates));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gym-plans-updated'));
+    }
+  } catch {}
+};
+
+export interface CatalogPlanOption {
+  name: string;
+  price: number;
+  months: number;
+  category: string;
+  requiresDocument?: 'dni_escolar' | 'carnet_estudiante' | null;
+}
+
+export const getStoredCatalogPlans = (): CatalogPlanOption[] => {
+  const plans = getStoredMembershipPlans().filter((p) => p.isActive !== false);
+  const addons = getStoredAddonRates();
+  const catalog: CatalogPlanOption[] = [];
+
+  plans.forEach((p) => {
+    if (p.id === 'escolar') {
+      catalog.push({
+        name: 'Plan Escolar (14-17 años)',
+        price: p.monthlyPrice,
+        months: 1,
+        category: 'escolar',
+        requiresDocument: 'dni_escolar',
+      });
+      if (p.quarterlyPrice > 0) {
+        catalog.push({
+          name: 'Plan Escolar (Trimestral - 3 Meses)',
+          price: p.quarterlyPrice,
+          months: 3,
+          category: 'escolar',
+          requiresDocument: 'dni_escolar',
+        });
+      }
+    } else if (p.id === 'universitario') {
+      catalog.push({
+        name: 'Plan Universitario / Instituto (1 Mes)',
+        price: p.monthlyPrice,
+        months: 1,
+        category: 'universitario',
+        requiresDocument: 'carnet_estudiante',
+      });
+      if (p.quarterlyPrice > 0) {
+        catalog.push({
+          name: 'Plan Universitario (Trimestral - 3 Meses)',
+          price: p.quarterlyPrice,
+          months: 3,
+          category: 'universitario',
+          requiresDocument: 'carnet_estudiante',
+        });
+      }
+    } else if (p.id === 'combo_boxeo') {
+      catalog.push({
+        name: '1 Mes · Combo Musculación + Boxeo',
+        price: p.monthlyPrice,
+        months: 1,
+        category: 'boxeo',
+      });
+      if (p.quarterlyPrice > 0) {
+        catalog.push({
+          name: '3 Meses · Combo Musculación + Boxeo',
+          price: p.quarterlyPrice,
+          months: 3,
+          category: 'boxeo',
+        });
+      }
+      if (p.semiannualPrice > 0) {
+        catalog.push({
+          name: '6 Meses · Combo Musculación + Boxeo',
+          price: p.semiannualPrice,
+          months: 6,
+          category: 'boxeo',
+        });
+      }
+      if (p.annualPrice > 0) {
+        catalog.push({
+          name: '1 Año · Combo Musculación + Boxeo',
+          price: p.annualPrice,
+          months: 12,
+          category: 'boxeo',
+        });
+      }
+    } else {
+      // Plan General Libre u otros planes personalizados
+      catalog.push({
+        name: `1 Mes · ${p.name}`,
+        price: p.monthlyPrice,
+        months: 1,
+        category: 'general',
+      });
+      if (p.id === 'general' && addons.mesLibre2M > 0) {
+        catalog.push({
+          name: '2 Meses · Musculación Libre',
+          price: addons.mesLibre2M,
+          months: 2,
+          category: 'general',
+        });
+      }
+      if (p.quarterlyPrice > 0) {
+        catalog.push({
+          name: `3 Meses · ${p.name}`,
+          price: p.quarterlyPrice,
+          months: 3,
+          category: 'general',
+        });
+      }
+      if (p.semiannualPrice > 0) {
+        catalog.push({
+          name: `6 Meses · ${p.name}`,
+          price: p.semiannualPrice,
+          months: 6,
+          category: 'general',
+        });
+      }
+      if (p.annualPrice > 0) {
+        catalog.push({
+          name: `1 Año · ${p.name}`,
+          price: p.annualPrice,
+          months: 12,
+          category: 'general',
+        });
+      }
+    }
+  });
+
+  // Pase diario
+  if (addons.paseDiario > 0) {
+    catalog.push({
+      name: 'Pase Diario de Entrenamiento',
+      price: addons.paseDiario,
+      months: 0,
+      category: 'diario',
+    });
+  }
+
+  return catalog;
 };

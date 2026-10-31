@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Check,
   Minus,
@@ -7,14 +8,28 @@ import {
   Ticket,
   ArrowRight,
   Zap,
+  ShieldCheck,
+  Settings,
+  Edit3,
+  Plus,
+  Trash2,
+  RotateCcw,
+  ExternalLink,
+  CheckCircle2,
+  X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  MEMBERSHIP_PLANS,
   PLAN_COMPARISON_CATEGORIES,
   MEMBERSHIP_FAQS,
   BOXING_ADDON,
 } from '../data/gymData';
+import {
+  getStoredMembershipPlans,
+  saveStoredMembershipPlans,
+  resetMembershipPlansToDefault,
+  GymPlanTier,
+} from '../data/gymStore';
 import type { PlanTier, ComparisonCategory, ComparisonFeature, BillingPeriod } from '../types';
 
 export interface PlansPageProps {
@@ -28,6 +43,96 @@ export default function PlansPage({
 }: PlansPageProps = {}): React.JSX.Element {
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('mes');
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+  const [plans, setPlans] = useState<GymPlanTier[]>(getStoredMembershipPlans);
+
+  // Estados de Gestión de Tarifas & Beneficios en Vivo por el Administrador
+  const [isEditingModalOpen, setIsEditingModalOpen] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<GymPlanTier | null>(null);
+  const [successNotification, setSuccessNotification] = useState<string | null>(null);
+  const [newHighlightText, setNewHighlightText] = useState('');
+
+  useEffect(() => {
+    const handleUpdate = () => setPlans(getStoredMembershipPlans());
+    window.addEventListener('gym-plans-updated', handleUpdate);
+    return () => window.removeEventListener('gym-plans-updated', handleUpdate);
+  }, []);
+
+  const handleOpenEditModal = (targetPlan?: GymPlanTier) => {
+    const p = targetPlan || plans[0];
+    if (p) {
+      setEditingPlan({
+        ...p,
+        highlights: [...(p.highlights || [])],
+      });
+      setIsEditingModalOpen(true);
+      setNewHighlightText('');
+    }
+  };
+
+  const handleSelectPlanTab = (planId: string) => {
+    const found = plans.find((p) => p.id === planId);
+    if (found) {
+      setEditingPlan({
+        ...found,
+        highlights: [...(found.highlights || [])],
+      });
+      setNewHighlightText('');
+    }
+  };
+
+  const handleSavePlanEdits = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlan) return;
+
+    const nextPlans = plans.map((p) => (p.id === editingPlan.id ? editingPlan : p));
+    setPlans(nextPlans);
+    saveStoredMembershipPlans(nextPlans);
+    setIsEditingModalOpen(false);
+    setSuccessNotification(
+      `¡Tarifas y beneficios de "${editingPlan.name}" actualizados en vivo! Los cambios ya son visibles en la web.`
+    );
+    setTimeout(() => setSuccessNotification(null), 4000);
+  };
+
+  const handleResetPlans = () => {
+    if (
+      window.confirm(
+        '¿Deseas restablecer los planes a las tarifas oficiales base (Escolar S/. 50, Universitario S/. 60, General S/. 80, Gym + Boxeo S/. 120)?'
+      )
+    ) {
+      const defs = resetMembershipPlansToDefault();
+      setPlans(defs);
+      setSuccessNotification('¡Tarifas oficiales de Trankilandia Gym restauradas con éxito!');
+      setTimeout(() => setSuccessNotification(null), 4000);
+    }
+  };
+
+  const handleAddHighlight = () => {
+    if (!newHighlightText.trim() || !editingPlan) return;
+    setEditingPlan({
+      ...editingPlan,
+      highlights: [...(editingPlan.highlights || []), newHighlightText.trim()],
+    });
+    setNewHighlightText('');
+  };
+
+  const handleRemoveHighlight = (index: number) => {
+    if (!editingPlan) return;
+    setEditingPlan({
+      ...editingPlan,
+      highlights: editingPlan.highlights.filter((_, i) => i !== index),
+    });
+  };
+
+  const handleUpdateHighlight = (index: number, val: string) => {
+    if (!editingPlan) return;
+    const updated = [...editingPlan.highlights];
+    updated[index] = val;
+    setEditingPlan({
+      ...editingPlan,
+      highlights: updated,
+    });
+  };
 
   const handleSelectPlan = (planId: string) => {
     if (onSelectPlan) {
@@ -163,10 +268,103 @@ export default function PlansPage({
         </div>
 
         {/* ========================================================= */}
+        {/* BANNER INFORMATIVO DE VALIDACIÓN DE DOCUMENTOS (ESCOLAR / UNIVERSITARIO) */}
+        {/* ========================================================= */}
+        <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-400/10 via-zinc-900 to-amber-400/5 border border-amber-400/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-black flex items-center justify-center font-black shrink-0 mt-0.5">
+              <Zap className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-400">
+                  Tarifas con Descuento Estudiantil
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 font-bold">
+                  Validación Online &amp; en Mostrador
+                </span>
+              </div>
+              <p className="text-zinc-300 text-xs sm:text-sm mt-1 font-sans">
+                <strong>Plan Escolar (S/. 50/mes):</strong> Presenta DNI (14 a 17 años). · <strong>Plan Universitario (S/. 60/mes · 3M x S/. 150):</strong> Carnet de universidad o instituto. Puedes subir la foto de tu documento al crear tu cuenta o validarlo físicamente en recepción.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ========================================================= */}
+        {/* BARRA DE GESTIÓN DE TARIFAS & BENEFICIOS (MODO ADMINISTRADOR) */}
+        {/* ========================================================= */}
+        <div className="mb-10 p-4 sm:p-5 rounded-2xl bg-zinc-900/90 border-2 border-amber-400/40 shadow-2xl relative overflow-hidden backdrop-blur-md">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="w-10 h-10 rounded-xl bg-amber-400 text-black flex items-center justify-center font-black shrink-0 mt-0.5 shadow-md">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-mono font-black uppercase tracking-wider text-amber-400">
+                    Panel de Gestión de Planes &amp; Tarifas (Administración)
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold">
+                    Sincronización en Vivo
+                  </span>
+                </div>
+                <p className="text-zinc-300 text-xs sm:text-sm mt-1 font-sans">
+                  Modifica precios (1M, 3M, 6M, 1A), nombres, etiquetas o beneficios. Cualquier cambio se refleja de inmediato en esta página pública, en la portada y en caja.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center flex-wrap gap-2.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal()}
+                className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs font-mono uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-amber-400/20 transition-all cursor-pointer"
+              >
+                <Settings className="w-4 h-4" />
+                <span>Gestionar Precios &amp; Beneficios</span>
+              </button>
+
+              <Link
+                to="/admin?tab=planes"
+                className="px-4 py-2.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 hover:text-white font-bold text-xs font-mono uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4 text-purple-400" />
+                <span>Panel Gerencial (/admin)</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+
+              <button
+                type="button"
+                onClick={handleResetPlans}
+                className="px-3 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Restaurar a tarifas oficiales (Escolar 50, Universitario 60, General 80, Boxeo 120)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restaurar Oficiales</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Toast de confirmación en vivo */}
+          {successNotification && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mt-3.5 p-3 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-mono flex items-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{successNotification}</span>
+            </motion.div>
+          )}
+        </div>
+
+        {/* ========================================================= */}
         {/* 2. TARJETAS DE PLANES CON PRECIOS EN SOLES */}
         {/* ========================================================= */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch mb-20">
-          {MEMBERSHIP_PLANS.map((plan: PlanTier) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 items-stretch mb-20">
+          {plans.filter((p) => p.isActive !== false).map((plan) => {
             const pricing = getPlanPricing(plan);
 
             return (
@@ -190,10 +388,23 @@ export default function PlansPage({
                   </div>
                 )}
 
-                {/* Título & Tagline */}
-                <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight mt-1">
-                  {plan.name}
-                </h3>
+                {/* Título, Botón de Edición Rápida & Tagline */}
+                <div className="flex items-start justify-between gap-2 mt-1">
+                  <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight flex-1">
+                    {plan.name}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenEditModal(plan);
+                    }}
+                    className="p-1.5 rounded-xl bg-zinc-800 hover:bg-amber-400 text-zinc-400 hover:text-black border border-white/5 hover:border-amber-400/50 transition-all cursor-pointer shrink-0"
+                    title={`Editar tarifas y beneficios de ${plan.name}`}
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
                 <p className="text-zinc-400 text-sm mt-1 min-h-[38px] font-sans">
                   {plan.tagline}
                 </p>
@@ -571,6 +782,296 @@ export default function PlansPage({
           </motion.button>
         </div>
       </div>
+
+      {/* =========================================================================
+          MODAL DE GESTIÓN DE PLANES & BENEFICIOS EN VIVO (MODO ADMINISTRADOR)
+         ========================================================================= */}
+      <AnimatePresence>
+        {isEditingModalOpen && editingPlan && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="relative w-full max-w-2xl bg-zinc-900 border-2 border-amber-400/50 rounded-3xl p-6 sm:p-8 shadow-2xl text-left my-8 overflow-hidden font-sans"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-400 text-black flex items-center justify-center font-black">
+                    <Settings className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg sm:text-xl font-black text-white uppercase font-display">
+                      Gestión de Tarifas &amp; Beneficios
+                    </h3>
+                    <p className="text-xs text-zinc-400 font-mono">
+                      Edición en vivo · Los cambios se actualizan al instante en la web pública y caja
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingModalOpen(false)}
+                  className="p-2 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Selector de Plan (Tabs) */}
+              <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-2">
+                {plans.map((p) => {
+                  const isCurrent = p.id === editingPlan.id;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSelectPlanTab(p.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all whitespace-nowrap cursor-pointer ${
+                        isCurrent
+                          ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      {p.name.split(' (')[0].split(' / ')[0]} · S/. {p.monthlyPrice}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <form onSubmit={handleSavePlanEdits} className="mt-4 space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+                {/* 1. Tarifas en Soles para los 4 Períodos */}
+                <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-3">
+                  <span className="text-xs font-mono uppercase font-black text-amber-400 tracking-wider block">
+                    1. TARIFAS EN SOLES (S/.) SEGÚN DURACIÓN
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                        1 Mes (S/.)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={editingPlan.monthlyPrice}
+                        onChange={(e) =>
+                          setEditingPlan({ ...editingPlan, monthlyPrice: Number(e.target.value) || 0 })
+                        }
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white font-mono font-black text-sm focus:border-amber-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                        3 Meses (S/.)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={editingPlan.quarterlyPrice}
+                        onChange={(e) =>
+                          setEditingPlan({ ...editingPlan, quarterlyPrice: Number(e.target.value) || 0 })
+                        }
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white font-mono font-black text-sm focus:border-amber-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                        6 Meses (S/.)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={editingPlan.semiannualPrice}
+                        onChange={(e) =>
+                          setEditingPlan({ ...editingPlan, semiannualPrice: Number(e.target.value) || 0 })
+                        }
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white font-mono font-black text-sm focus:border-amber-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                        1 Año (S/.)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        required
+                        value={editingPlan.annualPrice}
+                        onChange={(e) =>
+                          setEditingPlan({ ...editingPlan, annualPrice: Number(e.target.value) || 0 })
+                        }
+                        className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white font-mono font-black text-sm focus:border-amber-400 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Información Comercial */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                      Nombre Oficial del Plan
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editingPlan.name}
+                      onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-xs focus:border-amber-400 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                      Etiqueta / Badge Promocional
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ej. MÁS POPULAR, PROMO"
+                      value={editingPlan.badge || ''}
+                      onChange={(e) => setEditingPlan({ ...editingPlan, badge: e.target.value })}
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-xs focus:border-amber-400 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                    Subtítulo / Tagline
+                  </label>
+                  <input
+                    type="text"
+                    value={editingPlan.tagline}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, tagline: e.target.value })}
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-xs focus:border-amber-400 outline-none"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-mono text-zinc-400 mb-1">
+                      Requisito de Documento
+                    </label>
+                    <select
+                      value={editingPlan.requiresDocument || ''}
+                      onChange={(e) =>
+                        setEditingPlan({
+                          ...editingPlan,
+                          requiresDocument: (e.target.value || null) as any,
+                        })
+                      }
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-xs focus:border-amber-400 outline-none"
+                    >
+                      <option value="">Sin requisito de documento</option>
+                      <option value="dni_escolar">DNI Escolar (14 a 17 años)</option>
+                      <option value="carnet_estudiante">Carnet Universitario / Instituto</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-6">
+                    <input
+                      type="checkbox"
+                      id="plan-is-popular"
+                      checked={editingPlan.isPopular}
+                      onChange={(e) => setEditingPlan({ ...editingPlan, isPopular: e.target.checked })}
+                      className="w-4 h-4 rounded border-amber-400 text-amber-400 focus:ring-amber-400 cursor-pointer"
+                    />
+                    <label htmlFor="plan-is-popular" className="text-xs font-mono text-zinc-300 font-bold cursor-pointer">
+                      Destacar como "Plan Más Popular"
+                    </label>
+                  </div>
+                </div>
+
+                {/* 3. Beneficios Incluidos (Bullets) */}
+                <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono uppercase font-black text-amber-400 tracking-wider">
+                      3. BENEFICIOS INCLUIDOS (HIGHLIGHTS)
+                    </span>
+                    <span className="text-[11px] font-mono text-zinc-500">
+                      {editingPlan.highlights.length} beneficios
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {editingPlan.highlights.map((highlight, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-amber-400/20 text-amber-400 text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={highlight}
+                          onChange={(e) => handleUpdateHighlight(idx, e.target.value)}
+                          className="flex-1 bg-zinc-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white font-sans focus:border-amber-400 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveHighlight(idx)}
+                          className="p-1.5 rounded-lg bg-zinc-800 text-zinc-400 hover:text-red-400 transition-colors cursor-pointer shrink-0"
+                          title="Eliminar beneficio"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Input para agregar nuevo beneficio */}
+                  <div className="flex items-center gap-2 pt-2 border-t border-white/5">
+                    <input
+                      type="text"
+                      placeholder="Escribe un nuevo beneficio y presiona Añadir..."
+                      value={newHighlightText}
+                      onChange={(e) => setNewHighlightText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddHighlight();
+                        }
+                      }}
+                      className="flex-1 bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-sans focus:border-amber-400 outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddHighlight}
+                      className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-400 text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Añadir</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="pt-2 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingModalOpen(false)}
+                    className="flex-1 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-xs font-bold transition-colors cursor-pointer text-center"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-mono text-xs font-black uppercase tracking-wider transition-all shadow-lg shadow-amber-400/20 cursor-pointer text-center"
+                  >
+                    Guardar Cambios en Vivo
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

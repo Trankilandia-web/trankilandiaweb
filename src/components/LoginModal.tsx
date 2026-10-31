@@ -4,7 +4,7 @@ import { User, Lock, Eye, EyeOff, X, ArrowRight, CheckCircle2, MessageCircle, Sh
 import { motion, AnimatePresence } from 'motion/react';
 import { GYM_CONTACT } from '../data/gymData';
 import { useAuth } from '../context/AuthContext';
-import { signInWithGoogle, signInWithEmail } from '../lib/supabase';
+import { signInWithGoogle, signInWithDni } from '../lib/supabase';
 import { ROLES_CONFIG, UserRole } from '../types/roles';
 
 export interface LoginModalProps {
@@ -43,7 +43,7 @@ export default function LoginModal({
 }: LoginModalProps): React.JSX.Element | null {
   const navigate = useNavigate();
   const { user, isConfigured, signOut, role, switchRole, getRedirectPath } = useAuth();
-  const [identifier, setIdentifier] = useState('');
+  const [dni, setDni] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -80,7 +80,7 @@ export default function LoginModal({
     onClose();
     setTimeout(() => {
       setErrorMessage('');
-      setIdentifier('');
+      setDni('');
       setPassword('');
       setIsLoading(false);
       setIsGoogleLoading(false);
@@ -118,8 +118,13 @@ export default function LoginModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!identifier.trim() || !password.trim()) {
-      setErrorMessage('Por favor ingresa tu DNI / correo y contraseña.');
+    const cleanDni = dni.trim().replace(/\D/g, '');
+    if (cleanDni.length !== 8) {
+      setErrorMessage('Por favor ingresa un número de DNI válido de 8 dígitos.');
+      return;
+    }
+    if (!password.trim()) {
+      setErrorMessage('Por favor ingresa tu contraseña (tu DNI si es tu primer ingreso).');
       return;
     }
 
@@ -130,7 +135,7 @@ export default function LoginModal({
       // Local simulation
       setTimeout(() => {
         setIsLoading(false);
-        setDemoLoggedInUser(identifier.trim());
+        setDemoLoggedInUser(`${cleanDni}@socio.trankilandia.pe`);
         handleModalClose();
         navigate(getRedirectPath());
       }, 700);
@@ -138,10 +143,19 @@ export default function LoginModal({
     }
 
     try {
-      const { error } = await signInWithEmail(identifier.trim(), password);
+      const { error } = await signInWithDni(cleanDni, password.trim());
       setIsLoading(false);
       if (error) {
-        setErrorMessage(error.message);
+        if (
+          error.message.includes('Invalid login credentials') ||
+          error.message.includes('credentials')
+        ) {
+          setErrorMessage(
+            'DNI o contraseña incorrecta. Si es tu primer ingreso, escribe tu DNI en ambos campos.'
+          );
+        } else {
+          setErrorMessage(error.message);
+        }
       } else {
         handleModalClose();
         navigate(getRedirectPath());
@@ -155,7 +169,7 @@ export default function LoginModal({
 
   const handleResetPasswordViaWhatsApp = () => {
     const text = encodeURIComponent(
-      `Hola Trankilandia Gym, necesito ayuda para recuperar la contraseña de mi cuenta de socio (Usuario: ${identifier.trim() || 'No especificado'}).`
+      `Hola Trankilandia Gym, necesito ayuda para recuperar la contraseña de mi cuenta de socio (DNI: ${dni.trim() || 'No especificado'}).`
     );
     window.open(`https://wa.me/${GYM_CONTACT.phone.replace(/[^0-9]/g, '')}?text=${text}`, '_blank');
   };
@@ -168,6 +182,8 @@ export default function LoginModal({
   };
 
   const activeUserEmail = user?.email || demoLoggedInUser;
+  const isCanonicalUser = Boolean(activeUserEmail?.endsWith('@socio.trankilandia.pe'));
+  const userDniDisplay = isCanonicalUser ? `DNI: ${activeUserEmail?.split('@')[0]}` : activeUserEmail;
 
   return (
     <AnimatePresence>
@@ -228,7 +244,7 @@ export default function LoginModal({
                     INICIAR SESIÓN
                   </h2>
                   <p className="text-zinc-400 text-xs sm:text-sm mt-1.5 font-sans leading-relaxed">
-                    Accede a tu cuenta para consultar el estado de tu membresía, registrar asistencia y ver tus planes.
+                    Ingresa con tu cuenta de <strong className="text-white">Google</strong> o con tu <strong className="text-amber-400">número de DNI</strong>.
                   </p>
                 </div>
 
@@ -278,8 +294,8 @@ export default function LoginModal({
                 {/* Divider */}
                 <div className="my-5 flex items-center gap-3">
                   <div className="flex-1 h-px bg-white/10" />
-                  <span className="text-[11px] font-mono uppercase text-zinc-500 tracking-wider">
-                    o con tu DNI / correo
+                  <span className="text-[11px] font-mono uppercase text-zinc-400 font-bold tracking-wider">
+                    o ingresa con tu DNI
                   </span>
                   <div className="flex-1 h-px bg-white/10" />
                 </div>
@@ -289,23 +305,29 @@ export default function LoginModal({
                   {/* User / DNI Input */}
                   <div>
                     <label
-                      htmlFor="login-identifier"
+                      htmlFor="login-dni"
                       className="block text-xs font-mono uppercase tracking-wider text-zinc-300 font-semibold mb-1.5"
                     >
-                      DNI / Correo o Teléfono
+                      Número de DNI (8 dígitos)
                     </label>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
                         <User className="w-4 h-4" />
                       </div>
                       <input
-                        id="login-identifier"
+                        id="login-dni"
                         type="text"
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                        placeholder="Ej. 87654321 o socio@correo.com"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        maxLength={8}
+                        value={dni}
+                        onChange={(e) => {
+                          setDni(e.target.value.replace(/\D/g, '').slice(0, 8));
+                          if (errorMessage) setErrorMessage('');
+                        }}
+                        placeholder="Ej: 87654321"
                         required
-                        className="w-full bg-zinc-950/80 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors font-sans"
+                        className="w-full bg-zinc-950/80 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors font-mono tracking-wider"
                       />
                     </div>
                   </div>
@@ -336,7 +358,7 @@ export default function LoginModal({
                         type={showPassword ? 'text' : 'password'}
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••"
+                        placeholder="Tu DNI si es tu primer ingreso"
                         required
                         className="w-full bg-zinc-950/80 border border-white/10 rounded-xl pl-10 pr-10 py-3 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors font-sans"
                       />
@@ -349,6 +371,9 @@ export default function LoginModal({
                         {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                       </button>
                     </div>
+                    <p className="text-[11px] text-amber-400/90 font-mono mt-1.5 flex items-center gap-1.5">
+                      <span>💡 ¿Primer ingreso? Tu contraseña inicial es tu mismo número de DNI.</span>
+                    </p>
                   </div>
 
                   {/* Remember Me */}
@@ -419,7 +444,7 @@ export default function LoginModal({
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-zinc-400 font-mono">Usuario conectado:</span>
                     <span className="text-white font-mono font-bold truncate max-w-[190px]">
-                      {activeUserEmail}
+                      {userDniDisplay}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-xs">

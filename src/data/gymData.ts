@@ -229,25 +229,46 @@ export const GYM_CONTACT: GymContactInfo = {
 
 export const MEMBERSHIP_PLANS: PlanTier[] = [
   {
-    id: 'estudiante',
-    name: 'Plan Estudiante',
-    tagline: 'Tarifa preferencial para universitarios y escolares con carné vigente',
-    monthlyPrice: 70,
-    quarterlyPrice: 180,    // S/. 60.0 / mes · Ahorras S/. 30
-    semiannualPrice: 310,   // S/. 51.6 / mes · Ahorras S/. 110
-    annualPrice: 400,       // S/. 33.3 / mes · Ahorras S/. 440
+    id: 'escolar',
+    name: 'Plan Escolar (14 a 17 años)',
+    tagline: 'Tarifa preferencial para escolares presentando su DNI (14 a 17 años)',
+    monthlyPrice: 50,
+    quarterlyPrice: 150,    // S/. 50.0 / mes · Tarifa mensual escolar plana
+    semiannualPrice: 280,   // S/. 46.6 / mes · Ahorro S/. 20
+    annualPrice: 500,       // S/. 41.6 / mes · Ahorro S/. 100
     isPopular: false,
-    badge: 'TARIFA ESTUDIANTE',
+    badge: 'TARIFA ESCOLAR · S/. 50',
     includesFreeEntry: true,
-    description: 'Diseñado para que mantengas tu energía y salud física activa junto a tus estudios. Presenta tu carné y accede con total comodidad a nuestras instalaciones.',
+    description: 'Diseñado especialmente para adolescentes de 14 a 17 años que inician su desarrollo físico y deportivo. Presenta tu DNI en recepción o súbelo online para activar tu tarifa preferencial.',
     highlights: [
-      'Acceso completo a sala de pesas, mancuernas y máquinas',
-      'Horario libre de lunes a domingo para adaptarse a tus clases',
-      'Rutina personalizada y orientación constante de los profesores',
-      'Vestidores limpios, casilleros diarios y duchas con agua caliente',
-      'Área de cardio para calentamiento y salud aeróbica',
+      'Requisito: DNI acreditando edad entre 14 y 17 años (online o en mostrador)',
+      'Acceso completo a sala de pesas, mancuernas y máquinas guiadas',
+      'Supervisión y corrección técnica permanente por instructores de sala',
+      'Rutina personalizada inicial enfocada en postura y técnica segura',
+      'Vestidores limpios, casilleros seguros y duchas con agua caliente',
     ],
-    ctaText: 'ELEGIR PLAN ESTUDIANTE',
+    ctaText: 'ELEGIR PLAN ESCOLAR',
+  },
+  {
+    id: 'universitario',
+    name: 'Plan Universitario / Instituto',
+    tagline: 'Tarifa preferencial para universitarios y estudiantes de institutos superiores',
+    monthlyPrice: 60,
+    quarterlyPrice: 150,    // S/. 50.0 / mes · Promoción Oficial Trimestral S/. 150 (Ahorras S/. 30)
+    semiannualPrice: 290,   // S/. 48.3 / mes · Ahorras S/. 70
+    annualPrice: 520,       // S/. 43.3 / mes · Ahorras S/. 200
+    isPopular: false,
+    badge: 'UNIVERSITARIO · S/. 60',
+    includesFreeEntry: true,
+    description: 'Tarifa preferencial pensada para estudiantes de universidades (UNSCH, UAP, etc.) e institutos. ¡Aprovecha la promoción de 3 meses por solo S/. 150 (a S/. 50/mes)!',
+    highlights: [
+      'Requisito: Carnet universitario o de instituto vigente / constancia de matrícula',
+      'Promoción trimestral oficial: 3 meses x S/. 150 (equivale a S/. 50/mes)',
+      'Acceso completo a sala de musculación, barras olímpicas y poleas',
+      'Horarios flexibles adaptados a tus turnos de clases universitarias',
+      'Rutina personalizada y acompañamiento constante de los profesores',
+    ],
+    ctaText: 'ELEGIR PLAN UNIVERSITARIO',
   },
   {
     id: 'general',
@@ -273,14 +294,14 @@ export const MEMBERSHIP_PLANS: PlanTier[] = [
   },
   {
     id: 'combo_boxeo',
-    name: 'Plan Gym + Boxeo',
+    name: 'Plan Gym + Escuela de Boxeo',
     tagline: 'Fuerza muscular completa + Escuela de Boxeo dirigida',
-    monthlyPrice: 130,
-    quarterlyPrice: 320,    // S/. 106.6 / mes · Ahorras S/. 70
-    semiannualPrice: 580,   // S/. 96.6 / mes · Ahorras S/. 200
-    annualPrice: 950,       // S/. 79.1 / mes · Ahorras S/. 610
+    monthlyPrice: 120,      // Actualizado a S/. 120 según instrucción oficial de Marisol Flores
+    quarterlyPrice: 300,    // S/. 100.0 / mes · Ahorras S/. 60
+    semiannualPrice: 540,   // S/. 90.0 / mes · Ahorras S/. 180
+    annualPrice: 900,       // S/. 75.0 / mes · Ahorras S/. 540
     isPopular: false,
-    badge: 'COMBO COMPLETO',
+    badge: 'COMBO 2 EN 1',
     includesFreeEntry: true,
     includesBoxing: true,
     description: 'La experiencia deportiva más completa: entrena en el gimnasio a tu ritmo y perfecciona tu golpeo, reflejos y cardio en las clases dirigidas de boxeo.',
@@ -705,8 +726,13 @@ export const MEMBERSHIP_FAQS: FaqItem[] = [
     category: 'Boxeo',
   },
   {
-    question: '¿Cómo accedo al Plan Estudiante?',
-    answer: 'Es muy fácil: solo muestra tu carné universitario, de instituto o constancia de estudios al registrarte en recepción para acceder a la tarifa preferencial en soles.',
+    question: '¿Cómo accedo al Plan Escolar o Plan Universitario?',
+    answer: 'Para el Plan Escolar (S/. 50.00/mes para edades de 14 a 17 años), solo necesitas presentar tu DNI. Para el Plan Universitario / Instituto (S/. 60.00/mes o 3 meses x S/. 150.00), presenta tu carnet vigente de universidad/instituto o constancia de matrícula. Puedes subir la foto de tu documento desde la web al registrarte o validarlo físicamente en el mostrador de recepción.',
+    category: 'Planes',
+  },
+  {
+    question: '¿Cómo funciona la validación de documentos (DNI escolar / Carnet universitario)?',
+    answer: 'Tienes dos modalidades: 1) Online: Puedes subir una foto nítida de tu documento desde el portal web al elegir tu plan; nuestro equipo lo revisa y valida de inmediato. 2) Presencial: Si te inscribes en el local, el recepcionista verifica tu documento físico en el mostrador y activa tu tarifa especial al instante.',
     category: 'Planes',
   },
   {

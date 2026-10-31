@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
   User,
@@ -13,6 +14,7 @@ import {
   Package,
   Plus,
   Edit,
+  UserPlus,
   RefreshCw,
   Sun,
   Sunset,
@@ -27,10 +29,25 @@ import {
   QrCode,
   Smartphone,
   X,
+  Tag,
+  RotateCcw,
+  Check,
+  Trash2,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import { UserRole } from '../../types/roles';
-import { GymMember, getStoredMembers, saveStoredMembers } from '../../data/gymStore';
+import {
+  GymMember,
+  getStoredMembers,
+  saveStoredMembers,
+  GymPlanTier,
+  AddonRates,
+  getStoredMembershipPlans,
+  saveStoredMembershipPlans,
+  getStoredAddonRates,
+  saveStoredAddonRates,
+  resetMembershipPlansToDefault,
+} from '../../data/gymStore';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
   ResumenAdmin,
@@ -43,6 +60,9 @@ import {
   updateMemberProfile,
   payMemberBalance,
   ProductoPOS,
+  fetchSociosParaAdmin,
+  validarDocumentoSocio,
+  registerGymMember,
 } from '../../lib/supabaseDb';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
@@ -60,6 +80,8 @@ interface MemberRecord {
   status: 'active' | 'expiring' | 'inactive';
   expiresIn: string;
   lastVisit: string;
+  documentStatus?: 'sin_documento' | 'pendiente' | 'verificado' | 'rechazado';
+  documentUrl?: string | null;
 }
 
 const COACHES_BY_SHIFT_OPTIONS = [
@@ -70,8 +92,51 @@ const COACHES_BY_SHIFT_OPTIONS = [
 ];
 
 export default function AdminDashboard() {
-  // Pestañas principales
-  const [activeTab, setActiveTab] = useState<'kpis' | 'inventario' | 'padron'>('kpis');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryTab = searchParams.get('tab');
+  const validTabs: Array<'kpis' | 'inventario' | 'padron' | 'planes'> = ['kpis', 'inventario', 'padron', 'planes'];
+
+  // Pestañas principales (con soporte para enlace directo /admin?tab=planes)
+  const [activeTab, setActiveTab] = useState<'kpis' | 'inventario' | 'padron' | 'planes'>(() => {
+    if (queryTab && validTabs.includes(queryTab as any)) {
+      return queryTab as any;
+    }
+    return 'kpis';
+  });
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && validTabs.includes(t as any)) {
+      setActiveTab(t as any);
+    }
+  }, [searchParams]);
+
+  const handleSelectTab = (tab: 'kpis' | 'inventario' | 'padron' | 'planes') => {
+    setActiveTab(tab);
+    setSearchParams({ tab });
+  };
+
+  // Gestión de Planes y Tarifas en Vivo
+  const [storedPlans, setStoredPlans] = useState<GymPlanTier[]>(getStoredMembershipPlans);
+  const [addonRates, setAddonRates] = useState<AddonRates>(getStoredAddonRates);
+  const [editingPlan, setEditingPlan] = useState<GymPlanTier | null>(null);
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [quickPlanPrices, setQuickPlanPrices] = useState<
+    Record<string, { monthly: number; quarterly: number; semiannual: number; annual: number }>
+  >({});
+
+  useEffect(() => {
+    const map: Record<string, { monthly: number; quarterly: number; semiannual: number; annual: number }> = {};
+    storedPlans.forEach((p) => {
+      map[p.id] = {
+        monthly: p.monthlyPrice,
+        quarterly: p.quarterlyPrice,
+        semiannual: p.semiannualPrice,
+        annual: p.annualPrice,
+      };
+    });
+    setQuickPlanPrices(map);
+  }, [storedPlans]);
 
   // Filtro de rango de fecha para arqueo (Hora de Perú) - Por defecto Mes Actual (Octubre)
   const [dateRange, setDateRange] = useState<'mes' | 'hoy' | '7dias' | 'anual' | string>('mes');
@@ -96,6 +161,7 @@ export default function AdminDashboard() {
 
   // Modales de Gestión de Perfil y Cobros
   const [profileModalMember, setProfileModalMember] = useState<GymMember | null>(null);
+  const [isNewMemberModal, setIsNewMemberModal] = useState(false);
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
   const [customAbonoAmount, setCustomAbonoAmount] = useState<number>(0);
   const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
@@ -151,9 +217,10 @@ export default function AdminDashboard() {
   const tarjetaMembers = useMemo(() => membersEnRango.filter(m => (m.paymentMethod || '').toLowerCase() === 'tarjeta').reduce((sum, m) => sum + (m.advancePaid || 0), 0), [membersEnRango]);
   const totalDeudasMembers = useMemo(() => members.reduce((sum, m) => sum + (m.balanceDue || 0), 0), [members]);
 
-  // 1. CARGA INICIAL DE DATOS LIGEROS
+  // 1. CARGA INICIAL DE DATOS EN TIEMPO REAL DESDE SUPABASE
   const cargarSociosEnMemoria = useCallback(async () => {
-    const rawMembers = getStoredMembers();
+    // Consulta en vivo a la nube con fallback local
+    const rawMembers = await fetchSociosParaAdmin();
     let profilesRoleMap: Record<string, UserRole> = {};
 
     if (isSupabaseConfigured()) {
@@ -187,6 +254,8 @@ export default function AdminDashboard() {
         status: m.membershipStatus,
         expiresIn: m.expiresAt,
         lastVisit: 'Reciente',
+        documentStatus: m.documentStatus,
+        documentUrl: m.documentUrl,
       };
     });
     setMembers(mapped);
@@ -309,7 +378,164 @@ export default function AdminDashboard() {
     setTimeout(() => setActionSuccess(null), 3500);
   };
 
-  // 7. EXPORTACIÓN CONSOLIDADA 100% CLIENT-SIDE (CSV CON BOM UTF-8 PARA EXCEL WINDOWS)
+  // 7. INSCRIBIR NUEVO SOCIO DESDE ADMINISTRACIÓN
+  const handleOpenNewMember = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const expiryDate = new Date();
+    expiryDate.setDate(expiryDate.getDate() + 30);
+    const expiry = expiryDate.toISOString().split('T')[0];
+
+    const newMember: GymMember = {
+      id: `MEM-00${members.length + 1}`,
+      name: '',
+      dni: '',
+      email: '',
+      phone: '',
+      plan: '1 Mes · Musculación Libre',
+      planPrice: 80,
+      paymentType: 'full',
+      advancePaid: 80,
+      balanceDue: 0,
+      paymentDueDate: today,
+      paymentMethod: 'efectivo',
+      receiptNumber: `B001-${String(Math.floor(Math.random() * 900000) + 100000)}`,
+      membershipStatus: 'active',
+      registeredAt: today,
+      expiresAt: expiry,
+      coachName: 'Coach Marcos Rivas (Mañana)',
+      shift: 'manana',
+      observations: 'Inscripción directa por Administración',
+      documentStatus: 'verificado',
+      documentType: null,
+    };
+    setIsNewMemberModal(true);
+    setProfileModalMember(newMember);
+  };
+
+  // 8. GESTIÓN DE PLANES Y TARIFAS EN VIVO POR ADMINISTRACIÓN
+  const handleSaveQuickPlanPrices = (planId: string) => {
+    const edits = quickPlanPrices[planId];
+    if (!edits) return;
+
+    const next = storedPlans.map((p) => {
+      if (p.id === planId) {
+        return {
+          ...p,
+          monthlyPrice: Number(edits.monthly) || 0,
+          quarterlyPrice: Number(edits.quarterly) || 0,
+          semiannualPrice: Number(edits.semiannual) || 0,
+          annualPrice: Number(edits.annual) || 0,
+        };
+      }
+      return p;
+    });
+
+    setStoredPlans(next);
+    saveStoredMembershipPlans(next);
+    const targetName = storedPlans.find((p) => p.id === planId)?.name || 'Plan';
+    setActionSuccess(`¡Precios de "${targetName}" actualizados en vivo!`);
+    setTimeout(() => setActionSuccess(null), 3500);
+  };
+
+  const handleTogglePlanActive = (planId: string) => {
+    const next = storedPlans.map((p) => {
+      if (p.id === planId) {
+        const nextState = p.isActive === false;
+        return { ...p, isActive: nextState };
+      }
+      return p;
+    });
+    setStoredPlans(next);
+    saveStoredMembershipPlans(next);
+    setActionSuccess('Estado del plan actualizado en el portal web y caja.');
+    setTimeout(() => setActionSuccess(null), 3000);
+  };
+
+  const handleResetPlans = () => {
+    if (
+      window.confirm(
+        '¿Deseas restablecer los planes a las tarifas oficiales recomendadas (Escolar S/. 50, Universitario S/. 60, General S/. 80, Boxeo S/. 120)?'
+      )
+    ) {
+      const defs = resetMembershipPlansToDefault();
+      setStoredPlans(defs);
+      setAddonRates(getStoredAddonRates());
+      setActionSuccess('¡Tarifas oficiales de Trankilandia Gym restauradas con éxito!');
+      setTimeout(() => setActionSuccess(null), 4000);
+    }
+  };
+
+  const handleOpenCreatePlan = () => {
+    const newPlan: GymPlanTier = {
+      id: `plan-${Date.now()}`,
+      name: 'Nuevo Plan de Entrenamiento',
+      tagline: 'Descripción atractiva del nuevo plan',
+      monthlyPrice: 90,
+      quarterlyPrice: 240,
+      semiannualPrice: 420,
+      annualPrice: 700,
+      isPopular: false,
+      badge: 'NUEVA TARIFA',
+      description: 'Detalles y accesos incluidos en este plan de entrenamiento.',
+      highlights: [
+        'Acceso completo a sala de pesas y máquinas',
+        'Asesoría técnica permanente por instructores de sala',
+        'Casilleros seguros y duchas con agua caliente',
+      ],
+      ctaText: 'ELEGIR PLAN',
+      includesFreeEntry: true,
+      isActive: true,
+      requiresDocument: null,
+    };
+    setIsCreatingPlan(true);
+    setEditingPlan(newPlan);
+  };
+
+  const handleOpenEditPlan = (plan: GymPlanTier) => {
+    setIsCreatingPlan(false);
+    setEditingPlan({ ...plan });
+  };
+
+  const handleSaveFullPlanModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPlan) return;
+
+    let next: GymPlanTier[];
+    if (isCreatingPlan) {
+      next = [...storedPlans, editingPlan];
+    } else {
+      next = storedPlans.map((p) => (p.id === editingPlan.id ? editingPlan : p));
+    }
+
+    setStoredPlans(next);
+    saveStoredMembershipPlans(next);
+    setEditingPlan(null);
+    setIsCreatingPlan(false);
+    setActionSuccess(`¡Plan "${editingPlan.name}" guardado exitosamente!`);
+    setTimeout(() => setActionSuccess(null), 3500);
+  };
+
+  const handleDeletePlan = (planId: string) => {
+    if (['escolar', 'universitario', 'general', 'combo_boxeo'].includes(planId)) {
+      alert('Los planes oficiales base del gimnasio no se pueden eliminar. Puedes pausarlos si no deseas ofrecerlos.');
+      return;
+    }
+    if (window.confirm('¿Seguro que deseas eliminar este plan personalizado?')) {
+      const next = storedPlans.filter((p) => p.id !== planId);
+      setStoredPlans(next);
+      saveStoredMembershipPlans(next);
+      setActionSuccess('Plan eliminado correctamente.');
+      setTimeout(() => setActionSuccess(null), 3000);
+    }
+  };
+
+  const handleSaveAddonRates = () => {
+    saveStoredAddonRates(addonRates);
+    setActionSuccess('¡Tarifas especiales y Pase Diario guardados con éxito!');
+    setTimeout(() => setActionSuccess(null), 3500);
+  };
+
+  // 9. EXPORTACIÓN CONSOLIDADA 100% CLIENT-SIDE (CSV CON BOM UTF-8 PARA EXCEL WINDOWS)
   const handleExportConsolidadoCSV = () => {
     const BOM = '\uFEFF';
     const headers = [
@@ -414,7 +640,7 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
             <button
               type="button"
-              onClick={() => setActiveTab('kpis')}
+              onClick={() => handleSelectTab('kpis')}
               className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'kpis'
                   ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
@@ -427,7 +653,7 @@ export default function AdminDashboard() {
 
             <button
               type="button"
-              onClick={() => setActiveTab('inventario')}
+              onClick={() => handleSelectTab('inventario')}
               className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'inventario'
                   ? 'bg-emerald-400 text-black shadow-lg shadow-emerald-400/20'
@@ -445,7 +671,7 @@ export default function AdminDashboard() {
 
             <button
               type="button"
-              onClick={() => setActiveTab('padron')}
+              onClick={() => handleSelectTab('padron')}
               className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
                 activeTab === 'padron'
                   ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
@@ -455,9 +681,30 @@ export default function AdminDashboard() {
               <Users className="w-4 h-4" />
               <span>Padrón de Socios ({members.length})</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectTab('planes')}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                activeTab === 'planes'
+                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+              }`}
+            >
+              <Tag className="w-4 h-4" />
+              <span>Planes & Tarifas ({storedPlans.length})</span>
+            </button>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+            <button
+              type="button"
+              onClick={handleOpenNewMember}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-mono font-bold transition-all shadow-lg shadow-amber-400/20 cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>+ Inscribir Socio</span>
+            </button>
             <button
               type="button"
               onClick={handleExportConsolidadoCSV}
@@ -1038,6 +1285,15 @@ export default function AdminDashboard() {
                   <option value="con_deuda">Con Saldo Deudor</option>
                   <option value="al_dia">100% Al Día</option>
                 </select>
+
+                <button
+                  type="button"
+                  onClick={handleOpenNewMember}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-mono font-bold transition-all shadow-md shadow-amber-400/20 cursor-pointer ml-auto"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>+ Inscribir Socio</span>
+                </button>
               </div>
             </div>
 
@@ -1074,6 +1330,7 @@ export default function AdminDashboard() {
                     <th className="py-3 px-4">Turno Oficial</th>
                     <th className="py-3 px-4">Coach Asignado</th>
                     <th className="py-3 px-4">Plan & Saldo</th>
+                    <th className="py-3 px-4">Documento</th>
                     <th className="py-3 px-4 text-right">Acciones</th>
                   </tr>
                 </thead>
@@ -1148,12 +1405,79 @@ export default function AdminDashboard() {
                           )}
                         </td>
 
+                        <td className="py-3 px-4 font-mono text-xs">
+                          {m.plan.toLowerCase().includes('escolar') || m.plan.toLowerCase().includes('universit') ? (
+                            m.documentStatus === 'verificado' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                                Verificado
+                              </span>
+                            ) : m.documentStatus === 'pendiente' ? (
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
+                                  🟡 Pendiente
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={async () => {
+                                    await validarDocumentoSocio(m.id, 'verificado', 'Aprobado en padrón por Admin');
+                                    await cargarSociosEnMemoria();
+                                    setActionSuccess(`¡Documento de ${m.name} verificado y aprobado!`);
+                                    setTimeout(() => setActionSuccess(null), 3500);
+                                  }}
+                                  className="text-[10px] text-amber-400 hover:text-white underline cursor-pointer"
+                                >
+                                  Aprobar
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await validarDocumentoSocio(m.id, 'verificado', 'Verificado en mostrador por Admin');
+                                  await cargarSociosEnMemoria();
+                                  setActionSuccess(`¡Documento de ${m.name} marcado como verificado!`);
+                                  setTimeout(() => setActionSuccess(null), 3500);
+                                }}
+                                className="text-[10px] text-zinc-400 hover:text-amber-400 border border-white/10 px-2 py-0.5 rounded-md hover:border-amber-400/40 cursor-pointer"
+                              >
+                                + Validar
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-zinc-600 text-[11px]">—</span>
+                          )}
+                        </td>
+
                         <td className="py-3 px-4 text-right">
                           <button
                             type="button"
                             onClick={() => {
                               const fullMember = getStoredMembers().find((sm) => sm.id === m.id);
-                              if (fullMember) setProfileModalMember(fullMember);
+                              if (fullMember) {
+                                setProfileModalMember(fullMember);
+                              } else {
+                                const fallbackMember: GymMember = {
+                                  id: m.id,
+                                  name: m.name,
+                                  dni: m.dni,
+                                  plan: m.plan,
+                                  planPrice: 80,
+                                  paymentType: m.balanceDue === 0 ? 'full' : 'advance',
+                                  advancePaid: m.advancePaid,
+                                  balanceDue: m.balanceDue,
+                                  paymentMethod: (m.paymentMethod as any) || 'efectivo',
+                                  receiptNumber: `B001-${m.id}`,
+                                  membershipStatus: m.status,
+                                  expiresAt: m.expiresIn,
+                                  coachName: m.coachName,
+                                  registeredAt: new Date().toISOString().split('T')[0],
+                                  shift: m.shift,
+                                  documentStatus: m.documentStatus,
+                                  documentUrl: m.documentUrl,
+                                };
+                                setProfileModalMember(fallbackMember);
+                              }
                             }}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono border border-white/10 transition-colors cursor-pointer"
                           >
@@ -1197,6 +1521,373 @@ export default function AdminDashboard() {
                   <span>Siguiente</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* =========================================================================
+            PESTAÑA 4: GESTIÓN DE PLANES & TARIFAS EN VIVO
+           ========================================================================= */}
+        {activeTab === 'planes' && (
+          <div className="space-y-6">
+            {/* Banner Superior & Controles */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-zinc-900 to-zinc-900 border border-amber-500/30 rounded-3xl p-6 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-amber-400 font-mono text-xs uppercase font-bold tracking-wider mb-1">
+                  <Tag className="w-4 h-4" />
+                  <span>Configuración Comercial · Precios en Tiempo Real</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white font-display uppercase tracking-tight">
+                  Planes de Membresía & Tarifas Oficiales
+                </h3>
+                <p className="text-zinc-400 text-xs sm:text-sm font-sans mt-1 max-w-2xl">
+                  Modifica las tarifas en soles para 1 mes, 3 meses, 6 meses y 1 año. Los cambios se actualizan <strong className="text-white">en vivo</strong> en el portal público, recepción de caja y perfiles de socios.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap shrink-0">
+                <button
+                  type="button"
+                  onClick={handleOpenCreatePlan}
+                  className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-400/20"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Crear Nuevo Plan</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleResetPlans}
+                  className="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-xs transition-colors flex items-center gap-1.5 border border-white/10 cursor-pointer"
+                  title="Restablecer tarifas recomendadas de Trankilandia Gym"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Restaurar Oficiales</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Grid de Planes */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {storedPlans.map((plan) => {
+                const edits = quickPlanPrices[plan.id] || {
+                  monthly: plan.monthlyPrice,
+                  quarterly: plan.quarterlyPrice,
+                  semiannual: plan.semiannualPrice,
+                  annual: plan.annualPrice,
+                };
+                const hasEdits =
+                  edits.monthly !== plan.monthlyPrice ||
+                  edits.quarterly !== plan.quarterlyPrice ||
+                  edits.semiannual !== plan.semiannualPrice ||
+                  edits.annual !== plan.annualPrice;
+
+                return (
+                  <div
+                    key={plan.id}
+                    className={`bg-zinc-900/80 border rounded-3xl p-6 shadow-xl flex flex-col justify-between transition-all ${
+                      plan.isActive === false
+                        ? 'border-white/5 opacity-60 bg-zinc-950/60'
+                        : plan.isPopular
+                        ? 'border-amber-400/50 shadow-amber-400/5'
+                        : 'border-white/10'
+                    }`}
+                  >
+                    <div>
+                      {/* Cabecera del Plan */}
+                      <div className="flex items-start justify-between gap-3 pb-3 border-b border-white/10">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-lg font-black text-white font-display uppercase tracking-tight">
+                              {plan.name}
+                            </h4>
+                            {plan.badge && (
+                              <span className="px-2.5 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-300 text-[10px] font-mono font-bold uppercase">
+                                {plan.badge}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-zinc-400 text-xs font-sans mt-0.5">
+                            {plan.tagline}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleTogglePlanActive(plan.id)}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold uppercase transition-colors cursor-pointer ${
+                              plan.isActive !== false
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-zinc-800 text-zinc-400 border border-white/10'
+                            }`}
+                          >
+                            {plan.isActive !== false ? '● Activo' : '○ Pausado'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Requisito de Documento */}
+                      <div className="py-2.5">
+                        {plan.requiresDocument === 'dni_escolar' && (
+                          <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-mono flex items-center gap-2">
+                            <span>🎒</span>
+                            <span>Requiere DNI escolar (14 a 17 años) acreditado en mostrador o web.</span>
+                          </div>
+                        )}
+                        {plan.requiresDocument === 'carnet_estudiante' && (
+                          <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-mono flex items-center gap-2">
+                            <span>🎓</span>
+                            <span>Requiere Carnet de Universidad / Instituto vigente o constancia.</span>
+                          </div>
+                        )}
+                        {!plan.requiresDocument && (
+                          <div className="p-2 rounded-xl bg-zinc-950/60 border border-white/5 text-zinc-400 text-xs font-mono flex items-center gap-2">
+                            <span>✓</span>
+                            <span>Ingreso Libre sin requisito de documento estudiantil.</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Matriz de Precios Editable en Vivo */}
+                      <div className="bg-zinc-950/80 border border-white/10 rounded-2xl p-4 my-2 space-y-3 font-mono">
+                        <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                          <span>Tarifas por Periodo (Soles):</span>
+                          {hasEdits && (
+                            <span className="text-amber-400 text-[10px] font-bold animate-pulse">
+                              ● Cambios sin guardar
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                          {/* 1 Mes */}
+                          <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/10">
+                            <span className="block text-[10px] text-zinc-400 uppercase font-bold">1 Mes</span>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-amber-400 text-xs font-bold">S/.</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step="1"
+                                value={edits.monthly}
+                                onChange={(e) =>
+                                  setQuickPlanPrices((prev) => ({
+                                    ...prev,
+                                    [plan.id]: { ...edits, monthly: Number(e.target.value) || 0 },
+                                  }))
+                                }
+                                className="w-full bg-zinc-950 border border-white/10 rounded px-1.5 py-0.5 text-sm font-bold text-white text-right focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+                          </div>
+
+                          {/* 3 Meses */}
+                          <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/10">
+                            <span className="block text-[10px] text-zinc-400 uppercase font-bold">3 Meses</span>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-amber-400 text-xs font-bold">S/.</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step="1"
+                                value={edits.quarterly}
+                                onChange={(e) =>
+                                  setQuickPlanPrices((prev) => ({
+                                    ...prev,
+                                    [plan.id]: { ...edits, quarterly: Number(e.target.value) || 0 },
+                                  }))
+                                }
+                                className="w-full bg-zinc-950 border border-white/10 rounded px-1.5 py-0.5 text-sm font-bold text-white text-right focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+                          </div>
+
+                          {/* 6 Meses */}
+                          <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/10">
+                            <span className="block text-[10px] text-zinc-400 uppercase font-bold">6 Meses</span>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-amber-400 text-xs font-bold">S/.</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step="1"
+                                value={edits.semiannual}
+                                onChange={(e) =>
+                                  setQuickPlanPrices((prev) => ({
+                                    ...prev,
+                                    [plan.id]: { ...edits, semiannual: Number(e.target.value) || 0 },
+                                  }))
+                                }
+                                className="w-full bg-zinc-950 border border-white/10 rounded px-1.5 py-0.5 text-sm font-bold text-white text-right focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+                          </div>
+
+                          {/* 1 Año */}
+                          <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/10">
+                            <span className="block text-[10px] text-zinc-400 uppercase font-bold">1 Año</span>
+                            <div className="flex items-center gap-1 mt-1">
+                              <span className="text-amber-400 text-xs font-bold">S/.</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step="1"
+                                value={edits.annual}
+                                onChange={(e) =>
+                                  setQuickPlanPrices((prev) => ({
+                                    ...prev,
+                                    [plan.id]: { ...edits, annual: Number(e.target.value) || 0 },
+                                  }))
+                                }
+                                className="w-full bg-zinc-950 border border-white/10 rounded px-1.5 py-0.5 text-sm font-bold text-white text-right focus:outline-none focus:border-amber-400"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Equivalencia mensual del trimestral */}
+                        {edits.quarterly > 0 && (
+                          <div className="text-[11px] text-emerald-400 flex items-center justify-between pt-1 border-t border-white/5">
+                            <span>Promoción Trimestral equivale a:</span>
+                            <strong>S/. {(edits.quarterly / 3).toFixed(1)} / mes</strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Botones de Acción de Tarjeta */}
+                    <div className="pt-3 border-t border-white/10 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveQuickPlanPrices(plan.id)}
+                          className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            hasEdits
+                              ? 'bg-amber-400 hover:bg-amber-300 text-black shadow-lg shadow-amber-400/20'
+                              : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-white/10'
+                          }`}
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Guardar Precios</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditPlan(plan)}
+                          className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-xs border border-white/10 transition-colors flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Edit className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Editar Todo</span>
+                        </button>
+                      </div>
+
+                      {!['escolar', 'universitario', 'general', 'combo_boxeo'].includes(plan.id) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeletePlan(plan.id)}
+                          className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 transition-colors cursor-pointer"
+                          title="Eliminar plan personalizado"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* SECCIÓN DE TARIFAS ESPECIALES & PASES RÁPIDOS */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-3xl p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-white/10 flex-wrap gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400">
+                    <DollarSign className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-base font-bold text-white font-display uppercase tracking-tight">
+                      Tarifas Especiales, Pases Diarios & Talleres
+                    </h4>
+                    <p className="text-xs text-zinc-400 font-sans">
+                      Tarifas secundarias utilizadas en recepción rápida y addons adicionales.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSaveAddonRates}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/20"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Guardar Tarifas Especiales</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 font-mono text-xs">
+                {/* Pase Diario */}
+                <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-2">
+                  <span className="block text-zinc-400 uppercase font-bold">Pase Diario (Entrenamiento por día)</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-emerald-400 font-bold text-sm">S/.</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={addonRates.paseDiario}
+                      onChange={(e) =>
+                        setAddonRates((prev) => ({ ...prev, paseDiario: Number(e.target.value) || 0 }))
+                      }
+                      className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white font-bold text-sm focus:outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                  <p className="text-[11px] text-zinc-500 font-sans">
+                    Cobro por sesión individual en el punto de venta de caja.
+                  </p>
+                </div>
+
+                {/* 2 Meses Musculación */}
+                <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-2">
+                  <span className="block text-zinc-400 uppercase font-bold">2 Meses · Musculación Libre</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-amber-400 font-bold text-sm">S/.</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={addonRates.mesLibre2M}
+                      onChange={(e) =>
+                        setAddonRates((prev) => ({ ...prev, mesLibre2M: Number(e.target.value) || 0 }))
+                      }
+                      className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white font-bold text-sm focus:outline-none focus:border-amber-400"
+                    />
+                  </div>
+                  <p className="text-[11px] text-zinc-500 font-sans">
+                    Opción intermedia en recepción (60 días continuos).
+                  </p>
+                </div>
+
+                {/* Taller Boxeo */}
+                <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-2">
+                  <span className="block text-zinc-400 uppercase font-bold">Taller Independiente Boxeo (Mes)</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-red-400 font-bold text-sm">S/.</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="1"
+                      value={addonRates.boxeoAddon}
+                      onChange={(e) =>
+                        setAddonRates((prev) => ({ ...prev, boxeoAddon: Number(e.target.value) || 0 }))
+                      }
+                      className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white font-bold text-sm focus:outline-none focus:border-red-400"
+                    />
+                  </div>
+                  <p className="text-[11px] text-zinc-500 font-sans">
+                    Tarifa de solo boxeo o adición a membresía existente.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
@@ -1370,18 +2061,29 @@ export default function AdminDashboard() {
       {profileModalMember && (
         <MemberProfileModal
           isOpen={!!profileModalMember}
-          onClose={() => setProfileModalMember(null)}
+          onClose={() => {
+            setProfileModalMember(null);
+            setIsNewMemberModal(false);
+          }}
           member={profileModalMember}
           onSave={async (updated) => {
-            const next = await updateMemberProfile(updated.id, updated);
-            saveStoredMembers(next);
-            cargarSociosEnMemoria();
+            if (isNewMemberModal) {
+              await registerGymMember(updated);
+              await cargarSociosEnMemoria();
+              setActionSuccess(`¡Socio ${updated.name || 'nuevo'} inscrito con éxito en el sistema!`);
+            } else {
+              const next = await updateMemberProfile(updated.id, updated);
+              saveStoredMembers(next);
+              await cargarSociosEnMemoria();
+              setActionSuccess(`¡Perfil de ${updated.name} actualizado con éxito!`);
+            }
+            setIsNewMemberModal(false);
             setProfileModalMember(null);
-            setActionSuccess(`¡Perfil de ${updated.name} actualizado con éxito!`);
             setTimeout(() => setActionSuccess(null), 4000);
           }}
           onOpenPaymentModal={(m) => {
             setProfileModalMember(null);
+            setIsNewMemberModal(false);
             setLiquidatingMember(m);
             setCustomAbonoAmount(m.balanceDue);
           }}
@@ -1557,6 +2259,203 @@ export default function AdminDashboard() {
                 CONFIRMAR COBRO
               </button>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* MODAL PARA CREAR O EDITAR PLAN COMPLETO */}
+      {editingPlan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-xl bg-zinc-900 border border-amber-400/40 rounded-3xl p-6 shadow-2xl space-y-4 font-mono text-xs max-h-[92vh] overflow-y-auto"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Tag className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-bold text-white font-display uppercase tracking-tight">
+                  {isCreatingPlan ? 'Crear Nuevo Plan de Membresía' : `Editar ${editingPlan.name}`}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingPlan(null)}
+                className="text-zinc-400 hover:text-white cursor-pointer p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveFullPlanModal} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 uppercase font-bold mb-1">Nombre del Plan</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingPlan.name}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, name: e.target.value })}
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 uppercase font-bold mb-1">Badge Promocional</label>
+                  <input
+                    type="text"
+                    value={editingPlan.badge || ''}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, badge: e.target.value })}
+                    placeholder="Ej. TARIFA ESCOLAR · S/. 50"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-amber-300 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 uppercase font-bold mb-1">Subtítulo / Tagline Corto</label>
+                <input
+                  type="text"
+                  required
+                  value={editingPlan.tagline}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, tagline: e.target.value })}
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-xs"
+                />
+              </div>
+
+              {/* Matriz de Precios */}
+              <div className="p-3 rounded-2xl bg-zinc-950 border border-white/10 space-y-2">
+                <span className="block text-zinc-400 uppercase font-bold text-[11px]">Tarifas Oficiales (Soles):</span>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">1 Mes</label>
+                    <input
+                      type="number"
+                      min={0}
+                      required
+                      value={editingPlan.monthlyPrice}
+                      onChange={(e) =>
+                        setEditingPlan({ ...editingPlan, monthlyPrice: Number(e.target.value) || 0 })
+                      }
+                      className="w-full bg-zinc-900 border border-white/10 rounded-lg px-2 py-1 text-white font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">3 Meses (Trimestral)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editingPlan.quarterlyPrice}
+                      onChange={(e) =>
+                        setEditingPlan({ ...editingPlan, quarterlyPrice: Number(e.target.value) || 0 })
+                      }
+                      className="w-full bg-zinc-900 border border-white/10 rounded-lg px-2 py-1 text-white font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">6 Meses (Semestral)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editingPlan.semiannualPrice}
+                      onChange={(e) =>
+                        setEditingPlan({ ...editingPlan, semiannualPrice: Number(e.target.value) || 0 })
+                      }
+                      className="w-full bg-zinc-900 border border-white/10 rounded-lg px-2 py-1 text-white font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-zinc-400 mb-1">1 Año (Anual)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={editingPlan.annualPrice}
+                      onChange={(e) =>
+                        setEditingPlan({ ...editingPlan, annualPrice: Number(e.target.value) || 0 })
+                      }
+                      className="w-full bg-zinc-900 border border-white/10 rounded-lg px-2 py-1 text-white font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Requisito de Documento */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 uppercase font-bold mb-1">Requisito de Documento</label>
+                  <select
+                    value={editingPlan.requiresDocument || 'none'}
+                    onChange={(e) =>
+                      setEditingPlan({
+                        ...editingPlan,
+                        requiresDocument: e.target.value === 'none' ? null : (e.target.value as any),
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-zinc-200 cursor-pointer"
+                  >
+                    <option value="none">Sin Requisito (Público General)</option>
+                    <option value="dni_escolar">DNI Escolar (14 a 17 años)</option>
+                    <option value="carnet_estudiante">Carnet Universitario / Instituto</option>
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 pt-6">
+                  <input
+                    type="checkbox"
+                    id="is-popular"
+                    checked={editingPlan.isPopular}
+                    onChange={(e) => setEditingPlan({ ...editingPlan, isPopular: e.target.checked })}
+                    className="w-4 h-4 rounded border-amber-400 text-amber-400 focus:ring-amber-400 cursor-pointer"
+                  />
+                  <label htmlFor="is-popular" className="cursor-pointer text-zinc-200 font-bold">
+                    Destacar como "Plan Más Popular"
+                  </label>
+                </div>
+              </div>
+
+              {/* Descripción & Highlights */}
+              <div>
+                <label className="block text-zinc-400 uppercase font-bold mb-1">Descripción del Plan</label>
+                <textarea
+                  rows={2}
+                  value={editingPlan.description}
+                  onChange={(e) => setEditingPlan({ ...editingPlan, description: e.target.value })}
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 uppercase font-bold mb-1">
+                  Beneficios Incluidos (Uno por línea)
+                </label>
+                <textarea
+                  rows={3}
+                  value={(editingPlan.highlights || []).join('\n')}
+                  onChange={(e) =>
+                    setEditingPlan({
+                      ...editingPlan,
+                      highlights: e.target.value.split('\n').filter((h) => h.trim().length > 0),
+                    })
+                  }
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-white font-sans text-xs"
+                />
+              </div>
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingPlan(null)}
+                  className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-3 rounded-xl font-bold cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-amber-400 hover:bg-amber-300 text-black py-3 rounded-xl font-black cursor-pointer shadow-lg shadow-amber-400/20"
+                >
+                  GUARDAR PLAN EN VIVO
+                </button>
+              </div>
+            </form>
           </motion.div>
         </div>
       )}

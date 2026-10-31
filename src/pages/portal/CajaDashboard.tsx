@@ -27,10 +27,13 @@ import {
   ShieldAlert,
   User,
   UserPlus,
+  UserCheck,
   CalendarClock,
   MessageCircle,
   ChevronLeft,
   ChevronRight,
+  ShieldCheck,
+  X,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
@@ -38,6 +41,8 @@ import {
   GymMember,
   getStoredMembers,
   saveStoredMembers,
+  getStoredCatalogPlans,
+  CatalogPlanOption,
 } from '../../data/gymStore';
 import {
   SocioRecepcion,
@@ -54,20 +59,13 @@ import {
   registerGymMember,
   payMemberBalance,
   updateMemberProfile,
+  asignarDniYActivarCuenta,
+  validarDocumentoSocio,
 } from '../../lib/supabaseDb';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
-const PLANS_CATALOG = [
-  { name: '1 Mes · Musculación Libre', price: 80 },
-  { name: '2 Meses · Musculación Libre', price: 130 },
-  { name: '3 Meses · Musculación Libre', price: 190 },
-  { name: '4 Meses · Musculación Libre', price: 200 },
-  { name: '6 Meses · Musculación Libre', price: 330 },
-  { name: '8 Meses · Musculación Libre', price: 330 },
-  { name: '1 Año · Musculación Libre', price: 430 },
-  { name: '1 Mes · Combo Musculación + Boxeo', price: 130 },
-  { name: 'Pase Diario de Entrenamiento', price: 15 },
-];
+const DEFAULT_PLANS_CATALOG = getStoredCatalogPlans();
 
 const COACHES_BY_SHIFT = {
   manana: 'Coach Marcos Rivas (Mañana)',
@@ -145,10 +143,17 @@ export default function CajaDashboard() {
   // Estado general de socios
   const [members, setMembers] = useState<GymMember[]>(getStoredMembers());
   const [sociosMap, setSociosMap] = useState<Map<string, SocioRecepcion>>(new Map());
+  const [listaSociosRecepcion, setListaSociosRecepcion] = useState<SocioRecepcion[]>([]);
   const [asistenciasActivas, setAsistenciasActivas] = useState<AsistenciaActiva[]>([]);
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
   const [offlinePendingCount, setOfflinePendingCount] = useState<number>(0);
   const [isLoadingSocios, setIsLoadingSocios] = useState<boolean>(true);
+
+  // Asignación de DNI a atletas sin DNI
+  const [socioParaAsignarDni, setSocioParaAsignarDni] = useState<SocioRecepcion | null>(null);
+  const [nuevoDniInput, setNuevoDniInput] = useState('');
+  const [isSubmittingDni, setIsSubmittingDni] = useState(false);
+  const [errorAsignarDni, setErrorAsignarDni] = useState<string | null>(null);
 
   // Escáner manual e interactivo
   const [scannedDniInput, setScannedDniInput] = useState('');
@@ -180,8 +185,21 @@ export default function CajaDashboard() {
   // Contador de refresco local de 60 segundos (Cero polling Supabase)
   const [, setTimerTick] = useState(0);
 
-  // Formulario de Nueva Inscripción
-  const [selectedPlan, setSelectedPlan] = useState(PLANS_CATALOG[1]);
+  // Formulario de Nueva Inscripción con Catálogo Dinámico en Vivo
+  const [plansCatalog, setPlansCatalog] = useState<CatalogPlanOption[]>(DEFAULT_PLANS_CATALOG);
+  const [selectedPlan, setSelectedPlan] = useState<CatalogPlanOption>(
+    () => DEFAULT_PLANS_CATALOG[1] || DEFAULT_PLANS_CATALOG[0] || { name: '1 Mes · Musculación Libre', price: 80, months: 1, category: 'general' }
+  );
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      const fresh = getStoredCatalogPlans();
+      setPlansCatalog(fresh);
+      setSelectedPlan((prev) => fresh.find((p) => p.name === prev.name) || fresh[0]);
+    };
+    window.addEventListener('gym-plans-updated', handleUpdate);
+    return () => window.removeEventListener('gym-plans-updated', handleUpdate);
+  }, []);
   const [clientName, setClientName] = useState('');
   const [clientDni, setClientDni] = useState('');
   const [clientEmail, setClientEmail] = useState('');
@@ -190,6 +208,7 @@ export default function CajaDashboard() {
   const [advanceAmount, setAdvanceAmount] = useState<number>(50);
   const [dueDateDays, setDueDateDays] = useState<number>(10);
   const [paymentMethod, setPaymentMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
+  const [docVerifiedInPerson, setDocVerifiedInPerson] = useState(true);
 
   // Modales
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
@@ -241,8 +260,13 @@ export default function CajaDashboard() {
     try {
       // Cargar socios ligeros
       const socios = await fetchSociosParaRecepcion();
+      setListaSociosRecepcion(socios);
       const newMap = new Map<string, SocioRecepcion>();
-      socios.forEach((s) => newMap.set(s.dni, s));
+      socios.forEach((s) => {
+        if (s.dni) {
+          newMap.set(s.dni, s);
+        }
+      });
       setSociosMap(newMap);
 
       // Cargar asistencias de los últimos 90 min
@@ -372,7 +396,21 @@ export default function CajaDashboard() {
       setClienteNombrePOS(socio.nombre);
       setClienteDniPOS(socio.dni);
 
-      // C) Membresía Vencida o Sin Membresía Activa
+      // C) Membresía Congelada (Pausa médica o viaje)
+      const isFrozen = socio.observaciones?.includes('[MEMBRESÍA CONGELADA]') || (socio as any).membership_status === 'congelado';
+      if (isFrozen) {
+        playTone('error');
+        setLastScanResult({
+          status: 'vencido',
+          socio,
+          dni: targetDni,
+          message: `ACCESO PAUSADO · MEMBRESÍA CONGELADA (VIAJE O SALUD)`,
+          timestamp: now,
+        });
+        return;
+      }
+
+      // D) Membresía Vencida o Sin Membresía Activa
       if (
         socio.estado_calculado === 'vencido' ||
         socio.plan === 'Sin Membresía Activa' ||
@@ -463,6 +501,79 @@ export default function CajaDashboard() {
     },
     [asistenciasActivas, sociosMap]
   );
+
+  // Búsqueda en vivo de atletas por Nombre o DNI parcial (incluye atletas sin DNI)
+  const resultadosBusqueda = useMemo(() => {
+    const q = scannedDniInput.trim().toLowerCase();
+    if (!q || q.length < 2) return [];
+
+    return listaSociosRecepcion
+      .filter((s) => {
+        const matchName = s.nombre && s.nombre.toLowerCase().includes(q);
+        const matchDni = s.dni && s.dni.includes(q);
+        return matchName || matchDni;
+      })
+      .slice(0, 6);
+  }, [scannedDniInput, listaSociosRecepcion]);
+
+  // Asignar DNI y Activar Cuenta de atleta
+  const handleGuardarNuevoDni = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!socioParaAsignarDni) return;
+
+    const cleanDni = nuevoDniInput.trim().replace(/\D/g, '');
+    if (cleanDni.length !== 8) {
+      setErrorAsignarDni('El DNI debe contener exactamente 8 dígitos.');
+      return;
+    }
+
+    setIsSubmittingDni(true);
+    setErrorAsignarDni(null);
+
+    try {
+      const res = await asignarDniYActivarCuenta(socioParaAsignarDni.id, cleanDni);
+      setIsSubmittingDni(false);
+
+      if (res.success && res.socioActualizado) {
+        const updatedSocio = res.socioActualizado;
+
+        // 1. Actualizar lista en memoria
+        setListaSociosRecepcion((prev) =>
+          prev.map((s) => (s.id === updatedSocio.id ? updatedSocio : s))
+        );
+
+        // 2. Actualizar mapa por DNI
+        setSociosMap((prev) => {
+          const next = new Map(prev);
+          next.set(cleanDni, updatedSocio);
+          return next;
+        });
+
+        // 3. Actualizar members general si existe
+        setMembers((prev) =>
+          prev.map((m) => (m.id === updatedSocio.id ? { ...m, dni: cleanDni } : m))
+        );
+
+        // 4. Cerrar modal y limpiar
+        setSocioParaAsignarDni(null);
+        setNuevoDniInput('');
+        setScannedDniInput('');
+
+        // 5. Alerta de éxito y procesar asistencia
+        setSuccessMessage(
+          `🎉 ¡DNI ${cleanDni} asignado a ${updatedSocio.nombre}! Cuenta activada con éxito.`
+        );
+        setTimeout(() => setSuccessMessage(null), 5000);
+
+        procesarIngresoPorDni(cleanDni);
+      } else {
+        setErrorAsignarDni(res.message);
+      }
+    } catch (err: unknown) {
+      setIsSubmittingDni(false);
+      setErrorAsignarDni(err instanceof Error ? err.message : 'Error al asignar DNI');
+    }
+  };
 
   // 4. LISTENER GLOBAL DE TECLADO PARA LECTOR 1D (ANTI-COLISIÓN POR VELOCIDAD < 35MS)
   useEffect(() => {
@@ -555,16 +666,28 @@ export default function CajaDashboard() {
 
     let durationDays = 30;
     if (selectedPlan.name.includes('2 Mes')) durationDays = 60;
-    else if (selectedPlan.name.includes('3 Mes')) durationDays = 90;
+    else if (selectedPlan.name.includes('3 Mes') || selectedPlan.name.includes('Trimestral')) durationDays = 90;
     else if (selectedPlan.name.includes('4 Mes')) durationDays = 120;
     else if (selectedPlan.name.includes('6 Mes')) durationDays = 180;
     else if (selectedPlan.name.includes('8 Mes')) durationDays = 240;
     else if (selectedPlan.name.includes('1 Año')) durationDays = 365;
     else if (selectedPlan.name.includes('Diario')) durationDays = 1;
 
-    const expDate = new Date();
-    expDate.setDate(expDate.getDate() + durationDays);
-    const expDateISO = expDate.toISOString().slice(0, 10);
+    const isEscolar = selectedPlan.name.toLowerCase().includes('escolar');
+    const isUniv = selectedPlan.name.toLowerCase().includes('universit');
+    const docStatus = (isEscolar || isUniv)
+      ? (docVerifiedInPerson ? 'verificado' : 'pendiente')
+      : undefined;
+
+    const cleanDni = clientDni.trim().replace(/\D/g, '');
+    const existingMember = members.find((m) => m.dni && m.dni.trim() === cleanDni);
+
+    // Calcular fecha de vencimiento: si ya tiene membresía vigente, extender desde esa fecha
+    const baseDate = existingMember && existingMember.expiresAt && new Date(existingMember.expiresAt) > new Date()
+      ? new Date(existingMember.expiresAt)
+      : new Date();
+    baseDate.setDate(baseDate.getDate() + durationDays);
+    const expDateISO = baseDate.toISOString().slice(0, 10);
 
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + dueDateDays);
@@ -575,49 +698,102 @@ export default function CajaDashboard() {
     });
 
     const nextNumber = members.length + 510;
-    const newMember: GymMember = {
-      id: `MEM-00${members.length + 1}`,
-      name: clientName.trim(),
-      dni: clientDni.trim(),
-      email: clientEmail.trim() || `${clientDni.trim()}@cliente.trankilandia.pe`,
-      phone: clientEmail.includes('@') ? '' : clientEmail.trim(),
-      plan: selectedPlan.name,
-      planPrice: price,
-      paymentType: isAdvancePayment ? 'advance' : 'full',
-      advancePaid: paid,
-      balanceDue: balance,
-      paymentDueDate: isAdvancePayment ? dueDateFormatted : undefined,
-      paymentMethod,
-      receiptNumber: `B001-000${nextNumber}`,
-      membershipStatus: 'active',
-      expiresAt: expDateISO,
-      coachName: COACHES_BY_SHIFT[clientShift],
-      shift: clientShift,
-      registeredAt: new Date().toISOString().slice(0, 10),
-    };
+    let memberToSave: GymMember;
 
-    const updated = [newMember, ...members];
-    setMembers(updated);
-    saveStoredMembers(updated);
+    if (existingMember) {
+      // MODO RENOVACIÓN DE SOCIO EXISTENTE (EVITA DUPLICAR DNI)
+      memberToSave = {
+        ...existingMember,
+        name: clientName.trim() || existingMember.name,
+        dni: cleanDni,
+        phone: clientEmail.includes('@') ? existingMember.phone : (clientEmail.trim() || existingMember.phone),
+        email: clientEmail.includes('@') ? clientEmail.trim() : existingMember.email,
+        plan: selectedPlan.name,
+        planPrice: price,
+        paymentType: isAdvancePayment ? 'advance' : 'full',
+        advancePaid: paid,
+        balanceDue: balance,
+        paymentDueDate: isAdvancePayment ? dueDateFormatted : undefined,
+        paymentMethod,
+        receiptNumber: `B001-000${nextNumber}`,
+        membershipStatus: 'active',
+        expiresAt: expDateISO,
+        coachName: COACHES_BY_SHIFT[clientShift],
+        shift: clientShift,
+        registeredAt: new Date().toISOString().slice(0, 10),
+        documentStatus: docStatus || existingMember.documentStatus,
+        documentType: (isEscolar ? 'dni_escolar' : isUniv ? 'carnet_estudiante' : null) || existingMember.documentType,
+        documentNotes: docVerifiedInPerson ? 'Verificado físicamente en mostrador de recepción' : existingMember.documentNotes,
+      };
+
+      const updated = members.map((m) => (m.id === existingMember.id ? memberToSave : m));
+      setMembers(updated);
+      saveStoredMembers(updated);
+
+      await updateMemberProfile(existingMember.id, memberToSave);
+
+      if (paid > 0 && isSupabaseConfigured()) {
+        try {
+          await supabase.from('ingresos').insert({
+            key_socio: existingMember.id,
+            monto: paid,
+            metodo_pago: paymentMethod,
+            tipo: isAdvancePayment ? 'Renovación con Adelanto' : 'Renovación de Membresía',
+            observacion: `Renovación boleta ${memberToSave.receiptNumber} (${memberToSave.plan})`,
+          });
+        } catch {}
+      }
+    } else {
+      // MODO NUEVA INSCRIPCIÓN
+      memberToSave = {
+        id: `MEM-00${members.length + 1}`,
+        name: clientName.trim(),
+        dni: cleanDni,
+        email: clientEmail.trim() || `${cleanDni}@cliente.trankilandia.pe`,
+        phone: clientEmail.includes('@') ? '' : clientEmail.trim(),
+        plan: selectedPlan.name,
+        planPrice: price,
+        paymentType: isAdvancePayment ? 'advance' : 'full',
+        advancePaid: paid,
+        balanceDue: balance,
+        paymentDueDate: isAdvancePayment ? dueDateFormatted : undefined,
+        paymentMethod,
+        receiptNumber: `B001-000${nextNumber}`,
+        membershipStatus: 'active',
+        expiresAt: expDateISO,
+        coachName: COACHES_BY_SHIFT[clientShift],
+        shift: clientShift,
+        registeredAt: new Date().toISOString().slice(0, 10),
+        documentStatus: docStatus,
+        documentType: isEscolar ? 'dni_escolar' : isUniv ? 'carnet_estudiante' : null,
+        documentNotes: docVerifiedInPerson ? 'Verificado físicamente en mostrador de recepción' : undefined,
+      };
+
+      const updated = [memberToSave, ...members];
+      setMembers(updated);
+      saveStoredMembers(updated);
+
+      await registerGymMember(memberToSave);
+    }
 
     // Actualizar índice en memoria de recepción
     const nuevoSocioRecepcion: SocioRecepcion = {
-      id: newMember.id,
-      dni: newMember.dni || '',
-      nombre: newMember.name,
-      plan: newMember.plan,
-      precio_plan: newMember.planPrice,
-      tipo_pago: newMember.paymentType,
-      adelanto_pagado: newMember.advancePaid,
-      saldo_pendiente: newMember.balanceDue,
-      fecha_limite_pago: newMember.paymentDueDate || null,
+      id: memberToSave.id,
+      dni: memberToSave.dni || cleanDni,
+      nombre: memberToSave.name,
+      plan: memberToSave.plan,
+      precio_plan: memberToSave.planPrice,
+      tipo_pago: memberToSave.paymentType,
+      adelanto_pagado: memberToSave.advancePaid,
+      saldo_pendiente: memberToSave.balanceDue,
+      fecha_limite_pago: memberToSave.paymentDueDate || null,
       fecha_fin: expDateISO,
       turno: clientShift,
-      coach_asignado: newMember.coachName || COACHES_BY_SHIFT[clientShift],
+      coach_asignado: memberToSave.coachName || COACHES_BY_SHIFT[clientShift],
       dias_restantes: durationDays,
       estado_calculado: 'activo',
       tiene_deuda_activa: balance > 0,
-      numero_boleta: newMember.receiptNumber,
+      numero_boleta: memberToSave.receiptNumber,
     };
 
     setSociosMap((prev) => {
@@ -626,22 +802,21 @@ export default function CajaDashboard() {
       return next;
     });
 
-    // Guardar en Supabase asíncrono
-    await registerGymMember(newMember);
-
     // Abrir comprobante
     setReceiptModal({
       isOpen: true,
-      member: newMember,
+      member: memberToSave,
       amount: paid,
       type: isAdvancePayment ? 'Adelanto de Membresía' : 'Membresía Completa',
       method: paymentMethod,
     });
 
     setSuccessMessage(
-      isAdvancePayment
-        ? `Inscripción registrada con éxito. Cobrado adelanto de S/. ${paid}.00 a ${newMember.name}. Saldo pendiente: S/. ${balance}.00.`
-        : `Membresía cancelada al 100% (S/. ${price}.00) para ${newMember.name}. Turno: ${clientShift.toUpperCase()}.`
+      existingMember
+        ? `¡Membresía de ${memberToSave.name} renovada con éxito! Vence el ${expDateISO}.`
+        : isAdvancePayment
+        ? `Inscripción registrada con éxito. Cobrado adelanto de S/. ${paid}.00 a ${memberToSave.name}. Saldo pendiente: S/. ${balance}.00.`
+        : `Membresía cancelada al 100% (S/. ${price}.00) para ${memberToSave.name}. Turno: ${clientShift.toUpperCase()}.`
     );
 
     // Resetear formulario
@@ -670,7 +845,7 @@ export default function CajaDashboard() {
       estadoMsg = `tu membresía de ${member.plan} vence HOY ${member.expiresAt}`;
     }
 
-    const msg = `¡Hola ${member.name}! 👋 Te saludamos de Trankilandia Gym 💪🏋️\n\nTe recordamos que ${estadoMsg}.\n\nPara que continúes entrenando sin interrupciones con tu coach ${member.coachName || 'oficial'}, acércate a recepción o responde este mensaje para renovar tu suscripción.\n\n¡Te esperamos en el gym! 🔥`;
+    const msg = `¡Hola ${member.name}! 👋 Te saludamos de Trankilandia Gym 💪🏋️\n\nTe recordamos que ${estadoMsg}.\n\n💳 Puedes renovar fácilmente por Yape o Plin al número oficial: 999 787 489 (Trankilandia Gym) enviando tu comprobante por aquí, o en el mostrador del gimnasio.\n\n¡Te esperamos para seguir entrenando con tu coach ${member.coachName || 'oficial'}! 🔥`;
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -683,7 +858,7 @@ export default function CajaDashboard() {
       return;
     }
     const cleanPhone = phone.length === 9 ? `51${phone}` : phone;
-    const msg = `¡Hola ${member.name}! 👋 Te saludamos de Trankilandia Gym 💪\n\nTe recordamos que mantienes un saldo pendiente de S/. ${member.balanceDue}.00 de tu membresía ${member.plan} (Adelantaste: S/. ${member.advancePaid}.00).\n\nPlazo límite acordado: ${member.paymentDueDate || 'Esta semana'}.\n\nPuedes cancelar tu saldo por Yape, Plin o en la recepción del gimnasio. ¡Gracias por entrenar con nosotros! 🔥`;
+    const msg = `¡Hola ${member.name}! 👋 Te saludamos de Trankilandia Gym 💪\n\nTe recordamos que mantienes un saldo pendiente de S/. ${member.balanceDue}.00 de tu membresía "${member.plan}" (Adelantaste: S/. ${member.advancePaid}.00).\n\n📅 Plazo límite acordado: ${member.paymentDueDate || 'Esta semana'}.\n\n💳 Puedes yapear o plinear directamente al: 999 787 489 (Trankilandia Gym) y enviarnos tu captura por aquí, o cancelar en recepción en efectivo/tarjeta.\n\n¡Gracias por tu preferencia y a seguir entrenando con todo! 🔥`;
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, '_blank');
   };
@@ -694,7 +869,7 @@ export default function CajaDashboard() {
     setClientName(member.name);
     if (member.phone) setClientEmail(member.phone);
     if (member.shift) setClientShift(member.shift);
-    const matchedPlan = PLANS_CATALOG.find((p) => p.name.toLowerCase().includes((member.plan || '').toLowerCase())) || PLANS_CATALOG[1];
+    const matchedPlan = plansCatalog.find((p) => p.name.toLowerCase().includes((member.plan || '').toLowerCase())) || plansCatalog[0];
     setSelectedPlan(matchedPlan);
     setActiveTab('inscripcion');
   };
@@ -1171,14 +1346,31 @@ export default function CajaDashboard() {
                 </div>
               </div>
 
-              {/* Input Manual de DNI */}
-              <div className="mt-6">
+              {/* Input Manual de DNI o Búsqueda por Nombre */}
+              <div className="mt-6 relative">
                 <form
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (scannedDniInput.trim()) {
-                      procesarIngresoPorDni(scannedDniInput.trim());
+                    const trimmed = scannedDniInput.trim();
+                    if (!trimmed) return;
+
+                    const isPureDni = /^\d{8}$/.test(trimmed);
+                    if (isPureDni) {
+                      procesarIngresoPorDni(trimmed);
                       setScannedDniInput('');
+                      return;
+                    }
+
+                    if (resultadosBusqueda.length === 1) {
+                      const match = resultadosBusqueda[0];
+                      if (match.dni) {
+                        procesarIngresoPorDni(match.dni);
+                        setScannedDniInput('');
+                      } else {
+                        setSocioParaAsignarDni(match);
+                        setNuevoDniInput('');
+                        setErrorAsignarDni(null);
+                      }
                     }
                   }}
                   className="flex flex-col sm:flex-row gap-3"
@@ -1187,12 +1379,21 @@ export default function CajaDashboard() {
                     <Search className="w-5 h-5 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
-                      maxLength={12}
                       value={scannedDniInput}
-                      onChange={(e) => setScannedDniInput(e.target.value.replace(/[^\d]/g, ''))}
-                      placeholder="Dispara con el lector 1D o escribe el DNI manual..."
-                      className="w-full pl-12 pr-4 py-3.5 bg-zinc-950 border border-white/20 rounded-2xl text-base font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors shadow-inner"
+                      onChange={(e) => setScannedDniInput(e.target.value)}
+                      placeholder="Dispara lector 1D, tipea DNI o busca por nombre del atleta..."
+                      className="w-full pl-12 pr-10 py-3.5 bg-zinc-950 border border-white/20 rounded-2xl text-base font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors shadow-inner"
                     />
+                    {scannedDniInput && (
+                      <button
+                        type="button"
+                        onClick={() => setScannedDniInput('')}
+                        aria-label="Limpiar búsqueda"
+                        className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
 
                   <button
@@ -1203,6 +1404,84 @@ export default function CajaDashboard() {
                     <span>REGISTRAR INGRESO</span>
                   </button>
                 </form>
+
+                {/* RESULTADOS EN VIVO DE BÚSQUEDA (Por Nombre o DNI Parcial) */}
+                {resultadosBusqueda.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/95 border-2 border-amber-400/40 rounded-2xl shadow-2xl z-30 p-2 space-y-1 backdrop-blur-xl max-h-80 overflow-y-auto">
+                    <div className="px-3 py-1.5 text-[11px] font-mono text-zinc-400 font-bold uppercase tracking-wider flex items-center justify-between border-b border-white/10 pb-2">
+                      <span className="text-white flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Atletas encontrados ({resultadosBusqueda.length}):</span>
+                      </span>
+                      <span className="text-[10px] text-amber-400 font-mono">Búsqueda rápida</span>
+                    </div>
+
+                    {resultadosBusqueda.map((s) => (
+                      <div
+                        key={s.id}
+                        className="p-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800/90 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-400 font-bold flex items-center justify-center text-sm font-mono shrink-0">
+                            {(s.nombre[0] || 'A').toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-white font-display flex items-center gap-2">
+                              <span>{s.nombre}</span>
+                              {!s.dni ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                  ⚠️ Sin DNI
+                                </span>
+                              ) : (
+                                <span className="text-xs text-zinc-400 font-mono">DNI: {s.dni}</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-zinc-400 font-sans mt-0.5 flex items-center gap-2 flex-wrap">
+                              <span>{s.plan}</span>
+                              <span>·</span>
+                              <span className="uppercase text-[11px] font-mono text-zinc-300">Turno {s.turno}</span>
+                              {s.saldo_pendiente > 0 && (
+                                <>
+                                  <span>·</span>
+                                  <span className="text-red-400 font-bold font-mono">Debe S/. {s.saldo_pendiente.toFixed(2)}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                          {s.dni ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                procesarIngresoPorDni(s.dni);
+                                setScannedDniInput('');
+                              }}
+                              className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-md flex items-center gap-1.5 transition-all"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Marcar Ingreso</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSocioParaAsignarDni(s);
+                                setNuevoDniInput('');
+                                setErrorAsignarDni(null);
+                              }}
+                              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-lg shadow-amber-400/20 flex items-center gap-1.5 transition-all animate-pulse"
+                            >
+                              <UserCheck className="w-3.5 h-3.5" />
+                              <span>+ Asignar DNI &amp; Activar</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* SEMÁFORO VISUAL INTERACTIVO */}
@@ -1265,6 +1544,43 @@ export default function CajaDashboard() {
                                 <span>•</span>
                                 <span>Vence en: <strong className="text-emerald-400">{lastScanResult.socio.dias_restantes} días</strong></span>
                               </div>
+
+                              {/* Verificación de Documento para Planes con Descuento (Escolar / Universitario) */}
+                              {(lastScanResult.socio.plan.toLowerCase().includes('escolar') || lastScanResult.socio.plan.toLowerCase().includes('universit')) && (() => {
+                                const foundM = members.find((m) => m.dni === lastScanResult.socio?.dni);
+                                const isDocOk = foundM?.documentStatus === 'verificado';
+                                return (
+                                  <div className="mt-3 pt-2.5 border-t border-emerald-500/20 flex items-center gap-3 flex-wrap text-xs font-mono">
+                                    <span className="text-zinc-300 font-bold">Doc. Descuento:</span>
+                                    {isDocOk ? (
+                                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                                        ✓ Verificado en Mostrador
+                                      </span>
+                                    ) : (
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse">
+                                          🟡 Doc. Pendiente
+                                        </span>
+                                        {foundM && (
+                                          <button
+                                            type="button"
+                                            onClick={async () => {
+                                              await validarDocumentoSocio(foundM.id, 'verificado', 'Verificado en mostrador por recepción');
+                                              const updated = getStoredMembers();
+                                              setMembers(updated);
+                                              setSuccessMessage(`¡Documento de ${foundM.name} validado físicamente en mostrador!`);
+                                              setTimeout(() => setSuccessMessage(null), 3500);
+                                            }}
+                                            className="px-2.5 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-black font-black text-[11px] cursor-pointer shadow"
+                                          >
+                                            ✓ Validar en Mostrador
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -1802,18 +2118,48 @@ export default function CajaDashboard() {
                   <select
                     value={selectedPlan.name}
                     onChange={(e) => {
-                      const plan = PLANS_CATALOG.find((p) => p.name === e.target.value);
+                      const plan = plansCatalog.find((p) => p.name === e.target.value);
                       if (plan) setSelectedPlan(plan);
                     }}
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-3 text-zinc-200 focus:outline-none focus:border-amber-400 cursor-pointer font-bold text-sm"
                   >
-                    {PLANS_CATALOG.map((p) => (
+                    {plansCatalog.map((p) => (
                       <option key={p.name} value={p.name}>
                         {p.name} — S/. {p.price}.00
                       </option>
                     ))}
                   </select>
                 </div>
+
+                {/* Verificación de Documento para Planes con Descuento (Escolar / Universitario) */}
+                {(selectedPlan.name.toLowerCase().includes('escolar') || selectedPlan.name.toLowerCase().includes('universit')) && (
+                  <div className="p-3.5 rounded-xl bg-amber-400/10 border border-amber-400/30 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span className="text-xs font-bold text-amber-300 uppercase">
+                        {selectedPlan.name.toLowerCase().includes('escolar')
+                          ? 'Requisito: DNI Escolar (14 a 17 años)'
+                          : 'Requisito: Carnet Universitario / Instituto Vigente'}
+                      </span>
+                    </div>
+                    <label className="flex items-center gap-2.5 text-xs text-white cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={docVerifiedInPerson}
+                        onChange={(e) => setDocVerifiedInPerson(e.target.checked)}
+                        className="w-4 h-4 rounded text-amber-400 focus:ring-amber-400 border-white/20 bg-zinc-900 cursor-pointer"
+                      />
+                      <span className="font-semibold text-zinc-200">
+                        [✓] Documento verificado físicamente en mostrador
+                      </span>
+                    </label>
+                    <p className="text-[11px] text-zinc-400">
+                      {docVerifiedInPerson
+                        ? '🟢 El carnet se registrará con estado "Verificado".'
+                        : '🟡 Se registrará como "Pendiente" hasta validar el documento físico o digital.'}
+                    </p>
+                  </div>
+                )}
 
                 {/* Selector de Turno */}
                 <div>
@@ -1861,10 +2207,35 @@ export default function CajaDashboard() {
                       maxLength={8}
                       required
                       value={clientDni}
-                      onChange={(e) => setClientDni(e.target.value.replace(/\D/g, ''))}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+                        setClientDni(val);
+                        if (val.length === 8) {
+                          const existing = members.find((m) => m.dni && m.dni.trim() === val);
+                          if (existing) {
+                            setClientName(existing.name);
+                            if (existing.phone) setClientEmail(existing.phone);
+                            if (existing.shift) setClientShift(existing.shift);
+                          }
+                        }
+                      }}
                       placeholder="87654321"
                       className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 font-mono tracking-widest text-sm"
                     />
+                    {clientDni.length === 8 && (() => {
+                      const existing = members.find((m) => m.dni && m.dni.trim() === clientDni);
+                      if (existing) {
+                        return (
+                          <div className="mt-1.5 text-[11px] text-emerald-400 font-bold flex items-center gap-1.5 flex-wrap">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>Socio existente:</span>
+                            <strong className="text-white">{existing.name}</strong>
+                            <span className="text-zinc-400 font-normal">({existing.plan}) · Modo Renovación</span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   </div>
                   <div>
                     <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
@@ -2495,16 +2866,49 @@ export default function CajaDashboard() {
                                 </button>
                               )}
 
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setActiveTab('acceso');
-                                  if (m.dni) procesarIngresoPorDni(m.dni);
-                                }}
-                                className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono transition-colors cursor-pointer"
-                              >
-                                Escanear 1D
-                              </button>
+                              {m.dni ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveTab('acceso');
+                                    procesarIngresoPorDni(m.dni!);
+                                  }}
+                                  className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono transition-colors cursor-pointer"
+                                >
+                                  Escanear 1D
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const socioEncontrado = listaSociosRecepcion.find((s) => s.id === m.id) || {
+                                      id: m.id,
+                                      dni: '',
+                                      nombre: m.name,
+                                      plan: m.plan,
+                                      precio_plan: m.planPrice || 80,
+                                      tipo_pago: m.paymentType || 'full',
+                                      adelanto_pagado: m.advancePaid || 0,
+                                      saldo_pendiente: m.balanceDue || 0,
+                                      fecha_limite_pago: m.paymentDueDate || null,
+                                      fecha_fin: m.expiresAt || '',
+                                      turno: m.shift || 'manana',
+                                      coach_asignado: m.coachName || 'Coach Marcos Rivas',
+                                      dias_restantes: 0,
+                                      estado_calculado: 'activo' as const,
+                                      tiene_deuda_activa: true,
+                                      numero_boleta: m.receiptNumber || 'B001-000000',
+                                    };
+                                    setSocioParaAsignarDni(socioEncontrado);
+                                    setNuevoDniInput('');
+                                    setErrorAsignarDni(null);
+                                  }}
+                                  className="px-3 py-2 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 text-xs font-mono transition-colors cursor-pointer flex items-center gap-1 font-bold"
+                                >
+                                  <UserCheck className="w-3.5 h-3.5" />
+                                  <span>+ Asignar DNI</span>
+                                </button>
+                              )}
 
                               <button
                                 type="button"
@@ -2791,6 +3195,122 @@ export default function CajaDashboard() {
                 Cerrar
               </button>
             </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* MODAL PARA ASIGNAR DNI Y ACTIVAR CUENTA */}
+      {socioParaAsignarDni && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="w-full max-w-md bg-zinc-900 border-2 border-amber-400/40 rounded-3xl p-6 sm:p-7 shadow-2xl relative overflow-hidden"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-amber-400 text-black">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black uppercase text-white font-display">
+                    Asignar DNI &amp; Activar Cuenta
+                  </h3>
+                  <p className="text-xs text-zinc-400 font-mono">
+                    Habilitar acceso y credenciales de socio
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSocioParaAsignarDni(null);
+                  setNuevoDniInput('');
+                  setErrorAsignarDni(null);
+                }}
+                className="p-1.5 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Atleta Info */}
+            <div className="mt-4 p-3.5 rounded-2xl bg-zinc-950 border border-white/5 space-y-1.5">
+              <div className="text-xs font-mono text-zinc-400 uppercase">Atleta Titular:</div>
+              <div className="text-base font-black text-amber-400 font-display">
+                {socioParaAsignarDni.nombre}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-zinc-400 font-sans pt-1">
+                <span>Plan: <strong className="text-white">{socioParaAsignarDni.plan}</strong></span>
+                <span>·</span>
+                <span className="uppercase font-mono">Turno {socioParaAsignarDni.turno}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-zinc-300 font-sans mt-3 leading-relaxed">
+              Ingresa el DNI de 8 dígitos del atleta. Este número se guardará en su ficha, activará su cuenta en Supabase para que pueda iniciar sesión desde su teléfono con su DNI como usuario y contraseña, y registrará su asistencia de hoy.
+            </p>
+
+            {errorAsignarDni && (
+              <div className="mt-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs font-mono">
+                {errorAsignarDni}
+              </div>
+            )}
+
+            <form onSubmit={handleGuardarNuevoDni} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1.5">
+                  Número de DNI (8 dígitos)
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={nuevoDniInput}
+                  onChange={(e) => {
+                    setNuevoDniInput(e.target.value.replace(/\D/g, '').slice(0, 8));
+                    if (errorAsignarDni) setErrorAsignarDni(null);
+                  }}
+                  placeholder="Ej: 87654321"
+                  required
+                  className="w-full bg-zinc-950 border border-white/20 focus:border-amber-400 rounded-xl px-4 py-3 text-lg font-mono text-white tracking-widest outline-none transition-colors"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSocioParaAsignarDni(null);
+                    setNuevoDniInput('');
+                    setErrorAsignarDni(null);
+                  }}
+                  className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDni || nuevoDniInput.length !== 8}
+                  className="flex-1 px-4 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black font-black text-xs font-mono uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-400/20 flex items-center justify-center gap-1.5"
+                >
+                  {isSubmittingDni ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Guardar &amp; Activar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </motion.div>
         </div>
       )}

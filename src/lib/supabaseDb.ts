@@ -36,6 +36,7 @@ export interface SocioRecepcion {
   estado_calculado: 'activo' | 'por_vencer' | 'vencido';
   tiene_deuda_activa: boolean;
   numero_boleta: string;
+  observaciones?: string | null;
 }
 
 export interface AsistenciaActiva {
@@ -123,6 +124,7 @@ export async function fetchSociosParaRecepcion(): Promise<SocioRecepcion[]> {
           estado_calculado: (d.estado_calculado as 'activo' | 'por_vencer' | 'vencido') || 'activo',
           tiene_deuda_activa: Boolean(d.tiene_deuda_activa),
           numero_boleta: d.numero_boleta || 'B001-000000',
+          observaciones: d.observaciones || null,
         }));
       }
     } catch {
@@ -132,9 +134,31 @@ export async function fetchSociosParaRecepcion(): Promise<SocioRecepcion[]> {
 
   // Fallback con datos locales
   const stored = getStoredMembers();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   return stored.map((m) => {
-    const hasDebt = m.balanceDue > 0;
+    const hasDebt = (m.balanceDue || 0) > 0;
     const isInactive = m.membershipStatus === 'inactive';
+
+    // Calcular días restantes reales basados en m.expiresAt
+    let diasRestantes = 0;
+    const fechaFin = m.expiresAt || '';
+    if (m.expiresAt) {
+      const expDate = new Date(m.expiresAt);
+      if (!isNaN(expDate.getTime())) {
+        expDate.setHours(0, 0, 0, 0);
+        diasRestantes = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      }
+    }
+
+    const estadoCalculado: 'activo' | 'por_vencer' | 'vencido' =
+      isInactive || diasRestantes < 0
+        ? 'vencido'
+        : diasRestantes <= 5
+        ? 'por_vencer'
+        : 'activo';
+
     return {
       id: m.id,
       dni: m.dni || '',
@@ -145,13 +169,14 @@ export async function fetchSociosParaRecepcion(): Promise<SocioRecepcion[]> {
       adelanto_pagado: m.advancePaid,
       saldo_pendiente: m.balanceDue,
       fecha_limite_pago: m.paymentDueDate || null,
-      fecha_fin: '2026-11-30',
+      fecha_fin: fechaFin || '2026-11-30',
       turno: (m.shift as 'manana' | 'tarde' | 'noche') || 'manana',
       coach_asignado: m.coachName || 'Coach Marcos Rivas',
-      dias_restantes: isInactive ? -5 : 25,
-      estado_calculado: isInactive ? 'vencido' : 'activo',
+      dias_restantes: diasRestantes,
+      estado_calculado: estadoCalculado,
       tiene_deuda_activa: hasDebt,
       numero_boleta: m.receiptNumber || 'B001-000000',
+      observaciones: m.observations || null,
     };
   });
 }
@@ -464,6 +489,86 @@ export async function updateMemberShift(
 }
 
 /**
+ * Consultar si el usuario autenticado ya tiene un socio vinculado en Supabase
+ * (Sincronización multi-dispositivo y sesiones móviles).
+ */
+export async function obtenerSocioPorUserId(userId: string): Promise<GymMember | null> {
+  if (!userId) return null;
+
+  if (isSupabaseConfigured()) {
+    try {
+      // 1. Buscar socio por user_id directo
+      let { data: socio, error } = await supabase
+        .from('socios')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      // 2. Si no se encontró por user_id, buscar DNI en su perfil de Supabase
+      if (!socio || error) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('dni')
+          .eq('id', userId)
+          .maybeSingle();
+
+        if (profile?.dni) {
+          const { data: socioByDni } = await supabase
+            .from('socios')
+            .select('*')
+            .eq('dni', profile.dni)
+            .maybeSingle();
+          socio = socioByDni;
+        }
+      }
+
+      if (socio) {
+        const isExpired = socio.fecha_fin
+          ? socio.fecha_fin < new Date().toISOString().split('T')[0]
+          : false;
+
+        const mapped: GymMember = {
+          id: socio.id,
+          name: socio.nombre,
+          dni: socio.dni,
+          email: socio.email || '',
+          phone: socio.celular || '',
+          plan: socio.plan,
+          planPrice: Number(socio.precio_plan) || 80,
+          paymentType: socio.tipo_pago || 'full',
+          advancePaid: Number(socio.adelanto_pagado) || 0,
+          balanceDue: Number(socio.saldo_pendiente) || 0,
+          paymentDueDate: socio.fecha_limite_pago || undefined,
+          paymentMethod: socio.metodo_pago || 'efectivo',
+          receiptNumber: socio.numero_boleta || 'B001-000000',
+          membershipStatus: isExpired ? 'inactive' : 'active',
+          expiresAt: socio.fecha_fin ? `${socio.fecha_fin}` : '30 Nov 2026',
+          coachName: socio.coach_asignado || 'Coach Marcos Rivas',
+          registeredAt: socio.created_at
+            ? new Date(socio.created_at).toLocaleDateString('es-PE')
+            : 'Oct 2026',
+          observations: socio.observaciones || undefined,
+          age: socio.edad || undefined,
+          gender: socio.sexo || undefined,
+          shift: (socio.turno as 'manana' | 'tarde' | 'noche') || 'manana',
+        };
+
+        // Cachear en localStorage para disponibilidad local
+        const current = getStoredMembers();
+        const updated = current.some((m) => m.id === mapped.id || (mapped.dni && m.dni === mapped.dni))
+          ? current.map((m) => (m.id === mapped.id || (mapped.dni && m.dni === mapped.dni) ? mapped : m))
+          : [mapped, ...current];
+        saveStoredMembers(updated);
+
+        return mapped;
+      }
+    } catch {}
+  }
+
+  return null;
+}
+
+/**
  * Vincular el DNI ingresado por el cliente con su cuenta de Auth personal.
  * Si el DNI ya existe en el padrón, vincula su membresía histórica y activa su carnet.
  * Si el DNI es nuevo (cliente sin membresía previa), crea su cuenta con carnet digital
@@ -487,8 +592,57 @@ export async function vincularDniCliente(
       .replace(/[._]/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase());
 
-  // 1. Si Supabase está configurado, consultar base de datos
+  // 1. Si Supabase está configurado, intentar vincular vía RPC seguro (evita bloqueo RLS)
   if (isSupabaseConfigured()) {
+    try {
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('vincular_socio_por_dni', {
+        p_dni: cleanDni,
+        p_nombre: cleanName,
+        p_email: userEmail,
+      });
+
+      if (!rpcErr && rpcRes && rpcRes.success && rpcRes.socio) {
+        const s = rpcRes.socio;
+        const isExpired = s.fecha_fin ? s.fecha_fin < new Date().toISOString().split('T')[0] : false;
+        const mapped: GymMember = {
+          id: s.id,
+          name: s.nombre,
+          dni: s.dni,
+          email: userEmail,
+          phone: s.celular || '',
+          plan: s.plan,
+          planPrice: Number(s.precio_plan) || 80,
+          paymentType: s.tipo_pago || 'full',
+          advancePaid: Number(s.adelanto_pagado) || 0,
+          balanceDue: Number(s.saldo_pendiente) || 0,
+          paymentDueDate: s.fecha_limite_pago || undefined,
+          paymentMethod: s.metodo_pago || 'efectivo',
+          receiptNumber: s.numero_boleta || 'B001-000000',
+          membershipStatus: isExpired ? 'inactive' : 'active',
+          expiresAt: s.fecha_fin ? `${s.fecha_fin}` : '30 Nov 2026',
+          coachName: s.coach_asignado || 'Coach Marcos Rivas',
+          registeredAt: s.created_at ? new Date(s.created_at).toLocaleDateString('es-PE') : 'Oct 2026',
+          observations: s.observaciones || undefined,
+          age: s.edad || undefined,
+          gender: s.sexo || undefined,
+          shift: (s.turno as 'manana' | 'tarde' | 'noche') || 'manana',
+        };
+
+        const current = getStoredMembers();
+        const updated = current.some((m) => m.dni === cleanDni || m.id === mapped.id)
+          ? current.map((m) => (m.dni === cleanDni || m.id === mapped.id ? mapped : m))
+          : [mapped, ...current];
+        saveStoredMembers(updated);
+
+        return {
+          success: true,
+          message: rpcRes.message || `¡Membresía vinculada con éxito a nombre de ${s.nombre}!`,
+          member: mapped,
+        };
+      }
+    } catch {}
+
+    // Respaldo directo a tablas en caso el RPC no esté instalado aún
     try {
       const { data: socio, error } = await supabase
         .from('socios')
@@ -567,7 +721,7 @@ export async function vincularDniCliente(
         .update({
           dni: cleanDni,
           full_name: cleanName,
-          membership_status: 'inactive',
+          membership_status: 'vencido',
           plan: 'Sin Membresía Activa',
           updated_at: new Date().toISOString(),
         })
@@ -680,6 +834,162 @@ export async function vincularDniCliente(
 }
 
 /**
+ * Asigna un número de DNI (8 dígitos) a un socio que no lo tenía registrado
+ * (ej. socios importados sin DNI desde Excel/cuaderno).
+ * 1. Valida unicidad del DNI.
+ * 2. Actualiza la tabla public.socios en Supabase.
+ * 3. Aprovisiona/activa de inmediato su cuenta Supabase Auth:
+ *    - Correo canónico: [cleanDni]@socio.trankilandia.pe
+ *    - Contraseña inicial: cleanDni
+ * 4. Actualiza los registros en almacenamiento local.
+ * 5. Devuelve el socio actualizado para recepción.
+ */
+export async function asignarDniYActivarCuenta(
+  memberId: string,
+  nuevoDni: string
+): Promise<{ success: boolean; message: string; socioActualizado?: SocioRecepcion; member?: GymMember }> {
+  const cleanDni = nuevoDni.trim().replace(/\D/g, '');
+  if (cleanDni.length !== 8) {
+    return { success: false, message: 'El DNI debe contener exactamente 8 dígitos numéricos.' };
+  }
+
+  // 1. Validar que otro socio no tenga ya este DNI en memoria local
+  const localMembers = getStoredMembers();
+  const existingLocal = localMembers.find((m) => m.id !== memberId && m.dni && m.dni.trim() === cleanDni);
+  if (existingLocal) {
+    return {
+      success: false,
+      message: `El DNI ${cleanDni} ya está registrado para el socio ${existingLocal.name}.`,
+    };
+  }
+
+  // 2. Si Supabase está conectado, verificar unicidad y actualizar en BD
+  if (isSupabaseConfigured()) {
+    try {
+      // Verificar unicidad en public.socios
+      const { data: duplicate } = await supabase
+        .from('socios')
+        .select('id, nombre')
+        .eq('dni', cleanDni)
+        .neq('id', memberId)
+        .maybeSingle();
+
+      if (duplicate) {
+        return {
+          success: false,
+          message: `El DNI ${cleanDni} ya está registrado para el socio ${duplicate.nombre} en la base de datos.`,
+        };
+      }
+
+      // Actualizar public.socios
+      const { error: updateErr } = await supabase
+        .from('socios')
+        .update({
+          dni: cleanDni,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', memberId);
+
+      if (updateErr) {
+        console.warn('Error actualizando DNI en public.socios:', updateErr);
+      }
+
+      // Aprovisionar cuenta en Supabase Auth con credenciales canónicas
+      const canonicalEmail = `${cleanDni}@socio.trankilandia.pe`;
+      let createdAuthUserId: string | null = null;
+      try {
+        const signUpRes = await supabase.auth.signUp({
+          email: canonicalEmail,
+          password: cleanDni,
+          options: {
+            data: {
+              dni: cleanDni,
+              role: 'cliente',
+            },
+          },
+        });
+        if (signUpRes.data?.user?.id) {
+          createdAuthUserId = signUpRes.data.user.id;
+        }
+      } catch (authErr) {
+        console.warn('Auto-signup DNI notice:', authErr);
+      }
+
+      // Asegurar perfil en public.profiles y vincular con socios.user_id
+      if (createdAuthUserId) {
+        try {
+          await supabase.from('profiles').upsert({
+            id: createdAuthUserId,
+            email: canonicalEmail,
+            dni: cleanDni,
+            role: 'cliente',
+            membership_status: 'activo',
+            updated_at: new Date().toISOString(),
+          });
+          await supabase.from('socios').update({ user_id: createdAuthUserId }).eq('id', memberId);
+        } catch {}
+      }
+    } catch (err: any) {
+      console.warn('Error en proceso Supabase asignarDniYActivarCuenta:', err);
+    }
+  }
+
+  // 3. Actualizar en almacenamiento local
+  let updatedMember: GymMember | undefined;
+  const updatedMembers = localMembers.map((m) => {
+    if (m.id === memberId) {
+      updatedMember = { ...m, dni: cleanDni };
+      return updatedMember;
+    }
+    return m;
+  });
+  saveStoredMembers(updatedMembers);
+
+  // 4. Preparar SocioRecepcion para actualización reactiva en CajaDashboard
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let diasRestantes = 0;
+  if (updatedMember?.expiresAt) {
+    const expDate = new Date(updatedMember.expiresAt);
+    if (!isNaN(expDate.getTime())) {
+      expDate.setHours(0, 0, 0, 0);
+      diasRestantes = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    }
+  }
+
+  const socioRecepcion: SocioRecepcion = {
+    id: memberId,
+    dni: cleanDni,
+    nombre: updatedMember?.name || 'Socio Actualizado',
+    plan: updatedMember?.plan || 'Musculación Libre',
+    precio_plan: updatedMember?.planPrice || 80,
+    tipo_pago: updatedMember?.paymentType || 'full',
+    adelanto_pagado: updatedMember?.advancePaid || 0,
+    saldo_pendiente: updatedMember?.balanceDue || 0,
+    fecha_limite_pago: updatedMember?.paymentDueDate || null,
+    fecha_fin: updatedMember?.expiresAt || '',
+    turno: updatedMember?.shift || 'manana',
+    coach_asignado: updatedMember?.coachName || 'Coach Marcos Rivas',
+    dias_restantes: diasRestantes,
+    estado_calculado:
+      updatedMember?.membershipStatus === 'inactive' || diasRestantes < 0
+        ? 'vencido'
+        : diasRestantes <= 5
+        ? 'por_vencer'
+        : 'activo',
+    tiene_deuda_activa: (updatedMember?.balanceDue || 0) > 0,
+    numero_boleta: updatedMember?.receiptNumber || `B001-${cleanDni.slice(-6)}`,
+  };
+
+  return {
+    success: true,
+    message: `¡DNI ${cleanDni} asignado correctamente! La cuenta del atleta quedó activada (usuario: ${cleanDni}, contraseña: ${cleanDni}).`,
+    socioActualizado: socioRecepcion,
+    member: updatedMember,
+  };
+}
+
+/**
  * Guardar o registrar un nuevo socio (En Supabase + Local)
  */
 export async function registerGymMember(member: GymMember): Promise<void> {
@@ -692,7 +1002,7 @@ export async function registerGymMember(member: GymMember): Promise<void> {
       await supabase.from('socios').upsert({
         id: member.id,
         nombre: member.name,
-        dni: member.dni,
+        dni: member.dni ? member.dni.trim().replace(/\D/g, '').slice(0, 8) : null,
         email: member.email,
         celular: member.phone,
         plan: member.plan,
@@ -700,7 +1010,9 @@ export async function registerGymMember(member: GymMember): Promise<void> {
         tipo_pago: member.paymentType,
         adelanto_pagado: member.advancePaid,
         saldo_pendiente: member.balanceDue,
-        fecha_limite_pago: member.paymentDueDate,
+        fecha_inicio: normalizeDateToISO(member.registeredAt),
+        fecha_fin: normalizeDateToISO(member.expiresAt),
+        fecha_limite_pago: member.paymentDueDate ? normalizeDateToISO(member.paymentDueDate) : null,
         metodo_pago: member.paymentMethod,
         numero_boleta: member.receiptNumber,
         turno: member.shift || 'manana',
@@ -710,14 +1022,22 @@ export async function registerGymMember(member: GymMember): Promise<void> {
         sexo: member.gender,
       });
 
-      // Registrar también en tabla de ingresos
-      await supabase.from('ingresos').insert({
-        key_socio: member.id,
-        monto: member.advancePaid,
-        metodo_pago: member.paymentMethod,
-        tipo: member.paymentType === 'advance' ? 'Adelanto de Membresía' : 'Membresía Completa',
-        observacion: `Cobro boleta ${member.receiptNumber} (${member.plan})`,
-      });
+      // Si tiene DNI válido de 8 dígitos, activar su cuenta asociada
+      const cleanDni = member.dni ? member.dni.trim().replace(/\D/g, '') : '';
+      if (cleanDni.length === 8) {
+        await asignarDniYActivarCuenta(member.id, cleanDni);
+      }
+
+      // Registrar también en tabla de ingresos si hubo abono efectivo
+      if (member.advancePaid > 0) {
+        await supabase.from('ingresos').insert({
+          key_socio: member.id,
+          monto: member.advancePaid,
+          metodo_pago: member.paymentMethod,
+          tipo: member.paymentType === 'advance' ? 'Adelanto de Membresía' : 'Membresía Completa',
+          observacion: `Cobro boleta ${member.receiptNumber} (${member.plan})`,
+        });
+      }
     } catch {}
   }
 }
@@ -778,14 +1098,162 @@ export async function payMemberBalance(
           })
           .eq('id', memberId);
 
-        await supabase.from('ingresos').insert({
-          key_socio: memberId,
-          monto: paidAmount,
-          metodo_pago: paymentMethod,
-          tipo: remainingDebt === 0 ? 'Liquidación Total de Saldo' : 'Abono Parcial de Membresía',
-          observacion: `Abono de S/. ${paidAmount} a saldo pendiente. Saldo restante: S/. ${remainingDebt}`,
-        });
+        if (paidAmount > 0) {
+          await supabase.from('ingresos').insert({
+            key_socio: memberId,
+            monto: paidAmount,
+            metodo_pago: paymentMethod,
+            tipo: remainingDebt === 0 ? 'Liquidación Total de Saldo' : 'Abono Parcial de Membresía',
+            observacion: `Abono de S/. ${paidAmount} a saldo pendiente. Saldo restante: S/. ${remainingDebt}`,
+          });
+        }
       }
+    } catch {}
+  }
+
+  return updated;
+}
+
+/**
+ * Normaliza cualquier formato de fecha a 'YYYY-MM-DD' estricto para PostgreSQL
+ */
+export function normalizeDateToISO(dateVal?: string | null): string {
+  if (!dateVal) {
+    return new Date().toISOString().split('T')[0];
+  }
+  const trimmed = dateVal.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('/');
+    return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+  }
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime())) {
+    return parsed.toISOString().split('T')[0];
+  }
+  return new Date().toISOString().split('T')[0];
+}
+
+/**
+ * Carga el padrón en tiempo real desde Supabase para el panel gerencial / Admin.
+ * Trae los socios directamente desde public.socios y los roles desde public.profiles.
+ * Mantiene la persistencia y la sincronización con almacenamiento local.
+ */
+export async function fetchSociosParaAdmin(): Promise<GymMember[]> {
+  if (isSupabaseConfigured()) {
+    try {
+      const { data: socios, error } = await supabase
+        .from('socios')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (!error && socios && socios.length > 0) {
+        let profMap: Record<string, any> = {};
+        try {
+          const { data: profs } = await supabase.from('profiles').select('id, dni, email, role, membership_status');
+          if (profs) {
+            profs.forEach((p: any) => {
+              if (p.dni) profMap[p.dni] = p;
+              if (p.id) profMap[p.id] = p;
+            });
+          }
+        } catch {}
+
+        const mapped: GymMember[] = socios.map((s: any) => {
+          const prof = (s.dni && profMap[s.dni]) || (s.user_id && profMap[s.user_id]) || null;
+          const isExpired = s.fecha_fin ? s.fecha_fin < new Date().toISOString().split('T')[0] : false;
+          return {
+            id: s.id,
+            name: s.nombre,
+            dni: s.dni || null,
+            email: s.email || prof?.email || null,
+            phone: s.celular || null,
+            plan: s.plan,
+            planPrice: Number(s.precio_plan) || 80,
+            paymentType: s.tipo_pago || 'full',
+            advancePaid: Number(s.adelanto_pagado) || 0,
+            balanceDue: Number(s.saldo_pendiente) || 0,
+            paymentDueDate: s.fecha_limite_pago || null,
+            paymentMethod: s.metodo_pago || 'efectivo',
+            receiptNumber: s.numero_boleta || 'B001-000000',
+            membershipStatus: prof?.membership_status === 'congelado' ? 'inactive' : isExpired ? 'inactive' : 'active',
+            expiresAt: s.fecha_fin || '2026-11-30',
+            coachName: s.coach_asignado || 'Coach Marcos Rivas',
+            registeredAt: s.fecha_inicio || '2026-10-01',
+            observations: s.observaciones || null,
+            age: s.edad || null,
+            gender: s.sexo || null,
+            shift: (s.turno as 'manana' | 'tarde' | 'noche') || 'manana',
+            documentStatus: s.observaciones?.includes('[DOC VERIFICADO]') ? 'verificado' : undefined,
+          };
+        });
+
+        // Combinar preservando fotos de documentos locales si existen
+        const local = getStoredMembers();
+        const merged = mapped.map((m) => {
+          const localMatch = local.find((l) => l.id === m.id || (m.dni && l.dni === m.dni));
+          if (localMatch?.documentUrl) {
+            return {
+              ...m,
+              documentUrl: localMatch.documentUrl,
+              documentStatus: localMatch.documentStatus || m.documentStatus,
+              documentType: localMatch.documentType,
+            };
+          }
+          return m;
+        });
+
+        saveStoredMembers(merged);
+        return merged;
+      }
+    } catch (err) {
+      console.warn('fetchSociosParaAdmin fallback to local:', err);
+    }
+  }
+  return getStoredMembers();
+}
+
+/**
+ * Valida o actualiza el estado de verificación de documentos (DNI escolar o carnet de estudios)
+ */
+export async function validarDocumentoSocio(
+  memberId: string,
+  nuevoEstado: 'verificado' | 'rechazado' | 'pendiente',
+  notas?: string
+): Promise<GymMember[]> {
+  const current = getStoredMembers();
+  const updated = current.map((m) => {
+    if (m.id === memberId) {
+      return {
+        ...m,
+        documentStatus: nuevoEstado,
+        documentNotes: notas || (nuevoEstado === 'verificado' ? 'Documento verificado por administración / mostrador' : undefined),
+      };
+    }
+    return m;
+  });
+  saveStoredMembers(updated);
+
+  if (isSupabaseConfigured()) {
+    try {
+      const tag = nuevoEstado === 'verificado' ? '[DOC VERIFICADO]' : `[DOC ${nuevoEstado.toUpperCase()}]`;
+      const currentTarget = current.find((m) => m.id === memberId);
+      const cleanObs = (currentTarget?.observations || '')
+        .replace(/\[DOC VERIFICADO\]/g, '')
+        .replace(/\[DOC PENDIENTE\]/g, '')
+        .replace(/\[DOC RECHAZADO\]/g, '')
+        .trim();
+      const finalObs = `${tag} ${notas ? notas + ' · ' : ''}${cleanObs}`.trim();
+
+      await supabase
+        .from('socios')
+        .update({
+          observaciones: finalObs,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', memberId);
     } catch {}
   }
 
@@ -819,14 +1287,42 @@ export async function updateMemberProfile(
         dbPayload.saldo_pendiente = data.balanceDue;
         dbPayload.tipo_pago = data.balanceDue === 0 ? 'full' : 'advance';
       }
-      if (data.registeredAt !== undefined) dbPayload.fecha_inicio = data.registeredAt;
-      if (data.expiresAt !== undefined) dbPayload.fecha_fin = data.expiresAt;
+      if (data.registeredAt !== undefined) {
+        dbPayload.fecha_inicio = normalizeDateToISO(data.registeredAt);
+      }
+      if (data.expiresAt !== undefined) {
+        dbPayload.fecha_fin = normalizeDateToISO(data.expiresAt);
+      }
       if (data.age !== undefined) dbPayload.edad = data.age;
       if (data.gender !== undefined) dbPayload.sexo = data.gender;
       dbPayload.updated_at = new Date().toISOString();
 
       await supabase.from('socios').update(dbPayload).eq('id', memberId);
-    } catch {}
+
+      // Sincronizar en public.profiles si el socio tiene DNI
+      const targetMember = updated.find((m) => m.id === memberId);
+      if (targetMember?.dni) {
+        let profStatus: 'activo' | 'vencido' | 'congelado' = 'activo';
+        if (targetMember.membershipStatus === 'inactive') {
+          profStatus = 'vencido';
+        }
+        if (targetMember.observations?.toLowerCase().includes('congelad')) {
+          profStatus = 'congelado';
+        }
+
+        await supabase
+          .from('profiles')
+          .update({
+            full_name: targetMember.name,
+            membership_status: profStatus,
+            plan: targetMember.plan,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('dni', targetMember.dni);
+      }
+    } catch (err) {
+      console.warn('Error sincronizando updateMemberProfile en Supabase:', err);
+    }
   }
 
   return updated;
@@ -910,7 +1406,7 @@ export async function saveProgressRecord(record: ProgressRecord): Promise<Progre
         press_banca_kg: record.benchPressKg,
         sentadilla_kg: record.squatKg,
         peso_muerto_kg: record.deadliftKg,
-        dominadas_reps: record.pullupsRep,
+        pullups_reps: record.pullupsRep,
         observaciones: record.notes,
       });
     } catch {}
