@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Dumbbell,
   MessageCircle,
@@ -41,9 +41,9 @@ import {
   updateMemberProfile,
 } from '../../lib/supabaseDb';
 import {
-  renderBarcodeToCanvas,
   exportCarnetDigitalPNG,
 } from '../../lib/barcode128';
+import Barcode128 from '../../components/Barcode128';
 
 // Entrenadores oficiales del gimnasio (2 mujeres y 2 varones distribuidos en los 3 turnos)
 export const OFFICIAL_COACHES = [
@@ -202,9 +202,6 @@ export default function ClientePortal() {
   const [memberRoutine, setMemberRoutine] = useState<MemberRoutine | null>(null);
   const [isLoadingRoutine, setIsLoadingRoutine] = useState(false);
   const [lastCacheSync, setLastCacheSync] = useState<string>('');
-
-  // Canvas ref para el código de barras 1D
-  const barcodeCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Estados para vinculación manual de DNI por parte del cliente
   const [inputDni, setInputDni] = useState('');
@@ -367,18 +364,6 @@ export default function ClientePortal() {
     loadRoutineWithCache(false);
   }, [loadRoutineWithCache]);
 
-  // RENDERIZAR CÓDIGO DE BARRAS 1D (CODE 128) CON QUIET ZONE >= 16PX Y FONDO BLANCO PURO
-  useEffect(() => {
-    if (barcodeCanvasRef.current && currentMember?.dni) {
-      renderBarcodeToCanvas(barcodeCanvasRef.current, currentMember.dni, {
-        moduleWidth: 2,
-        height: 60,
-        quietZone: 20,
-        includeText: true,
-        scale: 1.5,
-      });
-    }
-  }, [currentMember?.dni]);
 
   // DESCARGA DEL CARNET DIGITAL EN ALTA RESOLUCIÓN (SCALE 2.5)
   const handleDownloadCarnetPNG = () => {
@@ -759,19 +744,15 @@ export default function ClientePortal() {
                     </div>
                   </div>
 
-                  {/* CONTENEDOR FÍSICO DEL CÓDIGO DE BARRAS 1D CODE 128 */}
+                  {/* CONTENEDOR FÍSICO DEL CÓDIGO DE BARRAS 1D CODE 128 (SVG DECLARATIVO DE ALTA FIDELIDAD) */}
                   <div className="mt-5 p-4 rounded-2xl bg-white shadow-xl text-center flex flex-col items-center justify-center">
                     <div className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5">
                       ESCANEAR EN EL ACCESO AL GIMNASIO
                     </div>
 
-                    <canvas
-                      ref={barcodeCanvasRef}
-                      className="max-w-full h-auto rounded"
-                      style={{ imageRendering: 'pixelated' }}
-                    />
+                    <Barcode128 value={currentMember.dni} />
 
-                    <span className="text-[10px] font-mono text-zinc-500 mt-1">
+                    <span className="text-[10px] font-mono text-zinc-500 mt-2">
                       Pasa este código de barras frente a la pistola 1D al ingresar
                     </span>
                   </div>
