@@ -31,6 +31,7 @@ SELECT
 FROM auth.users u
 WHERE u.email ILIKE '%luisgerardolloccllasaune@gmail.com%'
    OR u.email ILIKE '%trankilandiagymperu@gmail.com%'
+   OR u.email ILIKE '%marisolflores@gmail.com%'
 ON CONFLICT (id) DO UPDATE 
 SET 
   role = 'admin',
@@ -41,7 +42,9 @@ SET
 CREATE OR REPLACE FUNCTION public.handle_new_superadmin_user()
 RETURNS trigger AS $$
 BEGIN
-  IF NEW.email ILIKE '%luisgerardolloccllasaune@gmail.com%' OR NEW.email ILIKE '%trankilandiagymperu@gmail.com%' THEN
+  IF NEW.email ILIKE '%luisgerardolloccllasaune@gmail.com%' 
+     OR NEW.email ILIKE '%trankilandiagymperu@gmail.com%'
+     OR NEW.email ILIKE '%marisolflores@gmail.com%' THEN
     INSERT INTO public.profiles (
       id,
       email,

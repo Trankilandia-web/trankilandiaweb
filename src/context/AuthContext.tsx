@@ -34,6 +34,7 @@ const ROLE_STORAGE_KEY = 'trankilandia_active_role';
 export const SUPER_ADMIN_EMAILS = [
   'luisgerardolloccllasaune@gmail.com',
   'trankilandiagymperu@gmail.com',
+  'marisolflores@gmail.com',
 ];
 
 // Helper to determine initial role fallback: EVERY user is 'cliente' by default
@@ -95,7 +96,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
             id: currentUser.id,
             email: currentUser.email,
             role: 'admin',
-            full_name: currentUser.user_metadata?.full_name || 'Luis Gerardo Lloclla Sauñe',
+            full_name:
+              currentUser.user_metadata?.full_name ||
+              (userEmail.includes('marisol') ? 'Marisol Flores' : 'Luis Gerardo Lloclla Sauñe'),
             updated_at: new Date().toISOString(),
           })
           .then(() => {});
