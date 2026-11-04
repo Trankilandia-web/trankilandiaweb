@@ -34,9 +34,11 @@ import {
   ChevronRight,
   ShieldCheck,
   X,
+  Radio,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
+import OmniScanToast from '../../components/portal/OmniScanToast';
 import {
   GymMember,
   getStoredMembers,
@@ -171,6 +173,7 @@ export default function CajaDashboard() {
     message: '',
     timestamp: 0,
   });
+  const [showOmniToast, setShowOmniToast] = useState(false);
 
   // CRM State
   const [crmSearch, setCrmSearch] = useState('');
@@ -357,7 +360,9 @@ export default function CajaDashboard() {
 
       // A) Comprobar Anti-Rebote en memoria (últimos 30 minutos)
       const ingresoReciente = asistenciasActivas.find(
-        (a) => a.dni === targetDni && now - new Date(a.fecha_ingreso).getTime() < 30 * 60 * 1000
+        (a) =>
+          (a.dni === targetDni || a.socio_id === targetDni) &&
+          now - new Date(a.fecha_ingreso).getTime() < 30 * 60 * 1000
       );
 
       if (ingresoReciente) {
@@ -366,19 +371,34 @@ export default function CajaDashboard() {
           Math.round((now - new Date(ingresoReciente.fecha_ingreso).getTime()) / 60000)
         );
         playTone('rebote');
+        const socioExistente =
+          sociosMap.get(targetDni) ||
+          listaSociosRecepcion.find(
+            (s) => (s.dni && s.dni === targetDni) || s.id.toUpperCase() === targetDni.toUpperCase()
+          ) ||
+          null;
+
         setLastScanResult({
           status: 'rebote',
-          socio: sociosMap.get(targetDni) || null,
+          socio: socioExistente,
           dni: targetDni,
           message: `YA REGISTRÓ INGRESO HACE ${diffMin} MIN (ANTI-REBOTE ACTIVO)`,
           timestamp: now,
           reboteMinutos: diffMin,
         });
+        setShowOmniToast(true);
         return;
       }
 
-      // B) Buscar socio en el índice en memoria (< 2ms)
-      const socio = sociosMap.get(targetDni);
+      // B) Buscar socio en el índice en memoria (< 2ms) o por ID (MEM-XXX)
+      let socio = sociosMap.get(targetDni);
+      if (!socio) {
+        socio = listaSociosRecepcion.find(
+          (s) =>
+            (s.dni && s.dni.trim() === targetDni) ||
+            (s.id && s.id.toUpperCase() === targetDni.toUpperCase())
+        );
+      }
 
       if (!socio) {
         playTone('error');
@@ -389,6 +409,7 @@ export default function CajaDashboard() {
           message: `DNI ${targetDni} NO REGISTRADO`,
           timestamp: now,
         });
+        setShowOmniToast(true);
         return;
       }
 
@@ -407,6 +428,7 @@ export default function CajaDashboard() {
           message: `ACCESO PAUSADO · MEMBRESÍA CONGELADA (VIAJE O SALUD)`,
           timestamp: now,
         });
+        setShowOmniToast(true);
         return;
       }
 
@@ -427,6 +449,7 @@ export default function CajaDashboard() {
             : `MEMBRESÍA VENCIDA HACE ${Math.abs(socio.dias_restantes)} DÍAS`,
           timestamp: now,
         });
+        setShowOmniToast(true);
         return;
       }
 
@@ -464,6 +487,7 @@ export default function CajaDashboard() {
           message: `INGRESO CON ADELANTO · DEUDA PENDIENTE: S/. ${socio.saldo_pendiente.toFixed(2)}`,
           timestamp: now,
         });
+        setShowOmniToast(true);
         return;
       }
 
@@ -498,8 +522,9 @@ export default function CajaDashboard() {
         message: `ACCESO AUTORIZADO · PLAN ${socio.plan.toUpperCase()}`,
         timestamp: now,
       });
+      setShowOmniToast(true);
     },
-    [asistenciasActivas, sociosMap]
+    [asistenciasActivas, sociosMap, listaSociosRecepcion]
   );
 
   // Búsqueda en vivo de atletas por Nombre o DNI parcial (incluye atletas sin DNI)
@@ -575,82 +600,7 @@ export default function CajaDashboard() {
     }
   };
 
-  // 4. LISTENER GLOBAL DE TECLADO PARA LECTOR 1D (ANTI-COLISIÓN POR VELOCIDAD < 35MS)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const now = Date.now();
-      const buf = scannerBufferRef.current;
-
-      if (e.key === 'Enter') {
-        if (buf.chars.length >= 8) {
-          // Medir el delta promedio
-          const totalDuration = now - buf.timestamps[0];
-          const avgDelta = totalDuration / (buf.chars.length - 1);
-
-          if (avgDelta < 40) {
-            // Es una ráfaga del lector de códigos de barras 1D
-            e.preventDefault();
-            e.stopPropagation();
-
-            const scannedBarcode = buf.chars.join('');
-
-            // Si el foco estaba en un input, revertir para no ensuciarlo
-            const activeEl = document.activeElement;
-            if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
-              activeEl.value = buf.startValue;
-            }
-
-            // Procesar el DNI o código escaneado
-            procesarIngresoPorDni(scannedBarcode);
-
-            // Limpiar buffer
-            buf.chars = [];
-            buf.timestamps = [];
-            buf.startValue = '';
-            return;
-          }
-        }
-        // No fue ráfaga de escáner; resetear buffer
-        buf.chars = [];
-        buf.timestamps = [];
-        buf.startValue = '';
-        return;
-      }
-
-      // Capturar caracteres imprimibles (alfanuméricos)
-      if (e.key.length === 1) {
-        if (buf.chars.length > 0) {
-          const delta = now - buf.timestamps[buf.timestamps.length - 1];
-          if (delta > 55) {
-            // Demasiado lento: fue pulsación humana manual
-            const activeEl = document.activeElement;
-            buf.chars = [e.key];
-            buf.timestamps = [now];
-            buf.startValue =
-              activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement
-                ? activeEl.value
-                : '';
-            return;
-          }
-        } else {
-          // Primer caracter de una posible ráfaga
-          const activeEl = document.activeElement;
-          buf.startValue =
-            activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement
-              ? activeEl.value
-              : '';
-        }
-
-        buf.chars.push(e.key);
-        buf.timestamps.push(now);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [procesarIngresoPorDni]);
+  // (El listener omnidireccional 1D/2D se encuentra activo globalmente abajo con integración al inventario POS)
 
   // 5. REGISTRAR NUEVA INSCRIPCIÓN / RENOVACIÓN CON TURNO
   const handleProcessRegistration = async (e: React.FormEvent) => {
@@ -1057,6 +1007,131 @@ export default function CajaDashboard() {
     });
   }, [productos, categoriaSeleccionada, filtroProducto]);
 
+  // 8. MOTOR DEL LECTOR OMNIDIRECCIONAL 2D / 1D (SIEMPRE ACTIVO Y AUTO-CLASIFICADO)
+  const procesarEntradaEscaner = useCallback(
+    (scannedText: string) => {
+      let code = scannedText.trim();
+      if (!code) return;
+
+      // A) Si estamos en la pestaña POS, o el código coincide con un producto del inventario
+      const prod = productos.find(
+        (p) => (p.codigo_barras && p.codigo_barras === code) || p.id.toUpperCase() === code.toUpperCase()
+      );
+
+      if (activeTab === 'pos' && prod) {
+        agregarAlCarrito(prod);
+        playTone('success');
+        setSuccessMessage(`🛒 Producto agregado al carrito: ${prod.nombre} (S/. ${prod.precio_venta.toFixed(2)})`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+        return;
+      }
+
+      // B) Si el lector 2D leyó un QR con estructura JSON (ej: {"dni":"73456789"} o {"id":"MEM-001"})
+      if (code.startsWith('{') && code.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(code);
+          if (parsed.dni) code = String(parsed.dni).trim();
+          else if (parsed.d) code = String(parsed.d).trim();
+          else if (parsed.id) code = String(parsed.id).trim();
+        } catch {}
+      }
+
+      // C) Si contiene una URL o parámetro DNI (ej: https://.../cliente?dni=73456789)
+      const dniMatch = code.match(/[?&]dni=(\d{8})/);
+      if (dniMatch) {
+        code = dniMatch[1];
+      }
+
+      // D) Si es un código de producto escaneado fuera de POS, avisar al cajero
+      if (prod && activeTab !== 'pos') {
+        playTone('warning');
+        setSuccessMessage(`ℹ️ Código de producto detectado (${prod.nombre}). Cambia a la pestaña POS para agregarlo.`);
+        setTimeout(() => setSuccessMessage(null), 4000);
+        return;
+      }
+
+      // E) Procesar el ingreso del atleta (con notificación flotante inmediata en cualquier pestaña)
+      procesarIngresoPorDni(code);
+    },
+    [activeTab, productos, agregarAlCarrito, procesarIngresoPorDni]
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const now = Date.now();
+      const buf = scannerBufferRef.current;
+
+      if (e.key === 'Enter') {
+        if (buf.chars.length >= 4) {
+          // Medir el delta promedio de tecleo
+          const totalDuration = now - buf.timestamps[0];
+          const avgDelta = totalDuration / (buf.chars.length - 1);
+
+          if (avgDelta < 50) {
+            // Ráfaga comprobada de lector omnidireccional 2D o pistola 1D (< 50ms)
+            e.preventDefault();
+            e.stopPropagation();
+
+            const scannedRaw = buf.chars.join('');
+
+            // Restaurar input si el foco estaba en un campo de texto
+            const activeEl = document.activeElement;
+            if (activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement) {
+              activeEl.value = buf.startValue;
+            }
+
+            // Limpiar buffer
+            buf.chars = [];
+            buf.timestamps = [];
+            buf.startValue = '';
+
+            // Procesar con el motor inteligente
+            procesarEntradaEscaner(scannedRaw);
+            return;
+          }
+        }
+        // No fue ráfaga de escáner; resetear buffer
+        buf.chars = [];
+        buf.timestamps = [];
+        buf.startValue = '';
+        return;
+      }
+
+      // Capturar caracteres imprimibles (alfanuméricos y signos de JSON)
+      if (e.key.length === 1) {
+        if (buf.chars.length > 0) {
+          const delta = now - buf.timestamps[buf.timestamps.length - 1];
+          if (delta > 60) {
+            // Tecleo manual humano lento: reiniciar captura
+            const activeEl = document.activeElement;
+            buf.chars = [e.key];
+            buf.timestamps = [now];
+            buf.startValue =
+              activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement
+                ? activeEl.value
+                : '';
+            return;
+          }
+        } else {
+          // Primer caracter de una posible ráfaga del escáner
+          const activeEl = document.activeElement;
+          buf.startValue =
+            activeEl instanceof HTMLInputElement || activeEl instanceof HTMLTextAreaElement
+              ? activeEl.value
+              : '';
+        }
+
+        buf.chars.push(e.key);
+        buf.timestamps.push(now);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [procesarEntradaEscaner]);
+
   // Socios con deuda
   const membersWithDebt = useMemo(() => members.filter((m) => m.balanceDue > 0), [members]);
   const totalDebts = useMemo(() => membersWithDebt.reduce((sum, m) => sum + m.balanceDue, 0), [membersWithDebt]);
@@ -1156,11 +1231,68 @@ export default function CajaDashboard() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        {/* BARRA PERSISTENTE DEL LECTOR OMNIDIRECCIONAL 2D (SIEMPRE ACTIVO EN TODAS LAS PESTAÑAS) */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-zinc-900 via-zinc-900 to-black border border-amber-400/30 rounded-3xl p-4 sm:px-6 shadow-xl relative overflow-hidden backdrop-blur-md">
+          <div className="flex items-center gap-3">
+            <div className="relative flex items-center justify-center">
+              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping absolute" />
+              <span className="w-3 h-3 rounded-full bg-emerald-400 relative" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+                  <Radio className="w-4 h-4 text-amber-400" />
+                  <span>Lector Omnidireccional 2D:</span>
+                  <span className="text-emerald-400">SIEMPRE ACTIVO</span>
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-[10px] font-mono font-bold">
+                  Auto-Checkin 360°
+                </span>
+              </div>
+              <p className="text-[11px] font-mono text-zinc-400 mt-0.5">
+                Escaneo manos libres permanente (DNI, carnet físico 1D o QR móvil 2D) desde cualquier pestaña.
+              </p>
+            </div>
+          </div>
+
+          {lastScanResult.status && lastScanResult.socio && (
+            <button
+              type="button"
+              onClick={() => setShowOmniToast(true)}
+              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-zinc-800/90 hover:bg-zinc-800 border border-white/10 text-xs font-mono transition-all cursor-pointer shadow-md self-start sm:self-auto"
+              title="Abrir detalles completos del último atleta escaneado"
+            >
+              <span className="text-zinc-400">Último:</span>
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  lastScanResult.status === 'al_dia'
+                    ? 'bg-emerald-400'
+                    : lastScanResult.status === 'con_deuda'
+                    ? 'bg-amber-400 animate-pulse'
+                    : lastScanResult.status === 'vencido'
+                    ? 'bg-red-400'
+                    : 'bg-blue-400'
+                }`}
+              />
+              <span className="font-bold text-white max-w-[160px] truncate">
+                {lastScanResult.socio.nombre}
+              </span>
+              <span className="text-[10px] font-mono text-amber-400">
+                {lastScanResult.status === 'con_deuda'
+                  ? '⚠️ Con Deuda'
+                  : lastScanResult.status === 'vencido'
+                  ? '🔴 Vencido'
+                  : '🟢 Al Día'}
+              </span>
+            </button>
+          )}
+        </div>
+
         {/* BARRA SUPERIOR DE ESTADO Y PESTAÑAS (ORDENADA POR PRIORIDAD OFICIAL) */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-zinc-900/80 border border-white/10 rounded-3xl p-4 sm:p-5 backdrop-blur-md">
           {/* Navegación por Pestañas */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
-            {/* 1. Prioridad: Control Acceso 1D */}
+            {/* 1. Prioridad: Control Acceso 1D / 2D */}
             <button
               type="button"
               onClick={() => setActiveTab('acceso')}
@@ -1170,8 +1302,8 @@ export default function CajaDashboard() {
                   : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
               }`}
             >
-              <Barcode className="w-4 h-4" />
-              <span>Control Acceso 1D</span>
+              <QrCode className="w-4 h-4 text-amber-400" />
+              <span>Control Acceso 1D/2D</span>
               {isLoadingSocios && <RefreshCw className="w-3 h-3 animate-spin text-zinc-400" />}
             </button>
 
@@ -3324,6 +3456,34 @@ export default function CajaDashboard() {
         paymentTypeTitle={receiptModal.type}
         paymentMethod={receiptModal.method}
       />
+
+      {/* NOTIFICACIÓN FLOTANTE GLOBAL DEL LECTOR OMNIDIRECCIONAL 2D (ACTIVA EN TODAS LAS PESTAÑAS) */}
+      {showOmniToast && lastScanResult.status && (
+        <OmniScanToast
+          scanResult={lastScanResult}
+          onClose={() => setShowOmniToast(false)}
+          onCobrarDeuda={(targetDni) => {
+            setActiveTab('cobros');
+            const found = members.find((m) => m.dni === targetDni);
+            if (found) {
+              setLiquidatingMember(found);
+              setCustomAbonoAmount(found.balanceDue);
+            }
+          }}
+          onRenovarPlan={(targetDni) => {
+            const found = members.find((m) => m.dni === targetDni);
+            if (found) setProfileModalMember(found);
+          }}
+          onInscribirDni={(unregisteredDni) => {
+            setActiveTab('inscripcion');
+            setClientDni(unregisteredDni);
+          }}
+          onVerPerfil={(targetDni) => {
+            const found = members.find((m) => m.dni === targetDni);
+            if (found) setProfileModalMember(found);
+          }}
+        />
+      )}
     </div>
   );
 }

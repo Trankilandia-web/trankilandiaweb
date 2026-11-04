@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole, ROLES_CONFIG } from '../../types/roles';
-import { ShieldAlert, ArrowLeft, Sparkles } from 'lucide-react';
+import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 interface ProtectedRouteProps {
   allowedRoles: UserRole[];
@@ -13,10 +13,10 @@ interface ProtectedRouteProps {
  * Route Guard para proteger rutas de administración, caja, entrenador y cliente.
  * - Si no está autenticado, redirige a la página de inicio.
  * - Si es Super Administrador (actualRole === 'admin' o role === 'admin'), tiene acceso maestro a todos los módulos.
- * - Si el rol del usuario no tiene permisos, muestra una pantalla con opción de volver o desbloquear modo administrador.
+ * - Si el rol del usuario no tiene permisos, muestra una pantalla de acceso denegado con opción de volver a su portal.
  */
 export default function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) {
-  const { user, actualRole, role, isLoading, getRedirectPath, switchRole } = useAuth();
+  const { user, actualRole, role, isLoading, getRedirectPath } = useAuth();
 
   // 1. Estado de carga de sesión
   if (isLoading) {
@@ -70,21 +70,12 @@ export default function ProtectedRoute({ allowedRoles, children }: ProtectedRout
           </div>
 
           <div className="pt-2 space-y-2.5">
-            <button
-              type="button"
-              onClick={() => switchRole('admin')}
-              className="w-full py-3.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-400/20"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span>Desbloquear Modo Administrador (Acceso Total)</span>
-            </button>
-
             <a
               href={getRedirectPath()}
-              className="w-full py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-xs font-bold transition-colors flex items-center justify-center gap-2"
+              className="w-full py-3.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-amber-400/20"
             >
               <ArrowLeft className="w-4 h-4" />
-              <span>Volver a Mi Portal Actual</span>
+              <span>Volver a Mi Portal Asignado</span>
             </a>
           </div>
         </div>

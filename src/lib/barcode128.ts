@@ -1,12 +1,15 @@
 // ==============================================================================
-// TRANKILANDIA GYM · GENERADOR CLIENT-SIDE DE CÓDIGO DE BARRAS CODE 128 (1D)
+// TRANKILANDIA GYM · GENERADOR CLIENT-SIDE DE CÓDIGOS DE ACCESO (1D & 2D)
 // ==============================================================================
 // - Implementación estándar oficial Code 128 B (sin dependencias externas).
+// - Generación dual 1D (Code 128) + 2D (Código QR) para lectores omnidireccionales.
 // - Cumple con especificación física industrial:
 //     * Quiet Zone >= 16px a los lados (margen blanco obligatorio para pistolas 1D).
 //     * Barras negras puras (#000000) sobre fondo blanco puro (#FFFFFF).
 //     * Ancho mínimo de módulo: 2px para lectura confiable en celular y papel.
 // ==============================================================================
+
+import QRCode from 'qrcode';
 
 // Tabla oficial de 107 patrones Code 128 (anchuras alternadas de barra / espacio)
 const CODE128_PATTERNS: number[][] = [
@@ -158,10 +161,10 @@ export interface CarnetDigitalData {
 }
 
 /**
- * Genera y descarga el Carnet Digital completo en formato PNG de Alta Resolución (Scale: 2 o 3)
- * para que el socio lo guarde en su galería móvil y pueda ingresar 100% offline.
+ * Genera y descarga el Carnet Digital oficial en PNG de Alta Resolución
+ * Formato Dual: Código 1D Code 128 + Código QR 2D Omnidireccional
  */
-export function exportCarnetDigitalPNG(data: CarnetDigitalData, scale: number = 2): void {
+export async function exportCarnetDigitalPNG(data: CarnetDigitalData, scale: number = 2): Promise<void> {
   const width = 640;
   const height = 400;
 
@@ -244,7 +247,7 @@ export function exportCarnetDigitalPNG(data: CarnetDigitalData, scale: number = 
   ctx.font = '11px sans-serif';
   ctx.fillText(`Válido hasta: ${data.vencimiento}`, 32, 234);
 
-  // 5. CAJA BLANCA OBLIGATORIA PARA CÓDIGO DE BARRAS 1D (QUIET ZONE >= 16PX)
+  // 5. CAJA BLANCA OBLIGATORIA CON FORMATO DUAL (1D BARRAS + 2D QR OMNIDIRECCIONAL)
   const barcodeBoxX = 32;
   const barcodeBoxY = 255;
   const barcodeBoxW = width - 64;
@@ -256,11 +259,12 @@ export function exportCarnetDigitalPNG(data: CarnetDigitalData, scale: number = 
   ctx.lineWidth = 1;
   ctx.strokeRect(barcodeBoxX, barcodeBoxY, barcodeBoxW, barcodeBoxH);
 
-  // Renderizar las barras dentro de la caja blanca
+  // 5.1 SECCIÓN IZQUIERDA: Código 1D Code 128
+  const section1DW = barcodeBoxW - 120; // Deja 120px para el código QR 2D
   const modules = encodeCode128B(data.dni);
   const totalUnits = modules.reduce((s, m) => s + m.width, 0);
-  const moduleW = Math.max(2, Math.floor((barcodeBoxW - 48) / totalUnits));
-  const quietZoneOffset = Math.floor((barcodeBoxW - totalUnits * moduleW) / 2);
+  const moduleW = Math.max(2, Math.floor((section1DW - 40) / totalUnits));
+  const quietZoneOffset = Math.floor((section1DW - totalUnits * moduleW) / 2);
 
   let barX = barcodeBoxX + quietZoneOffset;
   const barY = barcodeBoxY + 12;
@@ -275,11 +279,42 @@ export function exportCarnetDigitalPNG(data: CarnetDigitalData, scale: number = 
     barX += w;
   });
 
-  // DNI en texto plano debajo del código
+  // DNI en texto plano debajo del código 1D
   ctx.fillStyle = '#000000';
   ctx.font = 'bold 15px "Courier New", monospace';
   ctx.textAlign = 'center';
-  ctx.fillText(`* ${data.dni} *`, barcodeBoxX + barcodeBoxW / 2, barcodeBoxY + 98);
+  ctx.fillText(`* ${data.dni} *`, barcodeBoxX + section1DW / 2, barcodeBoxY + 98);
+
+  // 5.2 SEPARADOR VERTICAL
+  ctx.strokeStyle = '#E4E4E7';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(barcodeBoxX + section1DW, barcodeBoxY + 10);
+  ctx.lineTo(barcodeBoxX + section1DW, barcodeBoxY + barcodeBoxH - 10);
+  ctx.stroke();
+
+  // 5.3 SECCIÓN DERECHA: Código QR 2D Omnidireccional
+  try {
+    const qrCanvas = document.createElement('canvas');
+    await QRCode.toCanvas(qrCanvas, data.dni, {
+      width: 85,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: {
+        dark: '#000000',
+        light: '#FFFFFF',
+      },
+    });
+
+    ctx.drawImage(qrCanvas, barcodeBoxX + section1DW + 16, barcodeBoxY + 8);
+
+    ctx.fillStyle = '#71717A';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('LECTOR 2D', barcodeBoxX + section1DW + 58, barcodeBoxY + 104);
+  } catch {
+    // Si la generación QR falla, continúa con la descarga del código 1D
+  }
 
   // 6. Disparar descarga en el navegador
   const link = document.createElement('a');

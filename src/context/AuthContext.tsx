@@ -103,9 +103,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           })
           .then(() => {});
       }
-    } else if (savedRole && ROLES_CONFIG[savedRole]) {
-      // Priorizar selección explícita del usuario para demostración o sesión administrativa
-      dbRole = savedRole;
     } else if (isConfigured) {
       try {
         const { data, error } = await supabase
@@ -125,8 +122,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
 
     setActualRole(dbRole);
-    setRoleState(dbRole);
-    localStorage.setItem(ROLE_STORAGE_KEY, dbRole);
+
+    // Si es administrador, permitir conmutar vista mediante savedRole previamente seleccionado
+    if (dbRole === 'admin' && savedRole && ROLES_CONFIG[savedRole]) {
+      setRoleState(savedRole);
+    } else {
+      setRoleState(dbRole);
+      localStorage.setItem(ROLE_STORAGE_KEY, dbRole);
+    }
   };
 
   useEffect(() => {
@@ -165,9 +168,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const switchRole = async (newRole: UserRole) => {
     if (!ROLES_CONFIG[newRole]) return;
 
-    // Permite al usuario/presentador alternar dinámicamente entre los 4 módulos
+    // Solo un administrador verificado puede alternar entre módulos
+    if (actualRole !== 'admin') {
+      console.warn('Acceso denegado: solo usuarios con rol admin pueden conmutar de módulo.');
+      return;
+    }
+
     setRoleState(newRole);
-    setActualRole(newRole);
     localStorage.setItem(ROLE_STORAGE_KEY, newRole);
   };
 

@@ -20,6 +20,8 @@ import {
   X,
   Upload,
   ShieldCheck,
+  QrCode,
+  Barcode,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
@@ -44,6 +46,7 @@ import {
   exportCarnetDigitalPNG,
 } from '../../lib/barcode128';
 import Barcode128 from '../../components/Barcode128';
+import QRCode2D from '../../components/QRCode2D';
 
 // Entrenadores oficiales del gimnasio (2 mujeres y 2 varones distribuidos en los 3 turnos)
 export const OFFICIAL_COACHES = [
@@ -212,6 +215,7 @@ export default function ClientePortal() {
   const [plansCatalogList, setPlansCatalogList] = useState(getClientePlansCatalog);
   const [selectedPlanForSub, setSelectedPlanForSub] = useState<string>('1 mes · Musculación Libre');
   const [isLoadingSocioOnline, setIsLoadingSocioOnline] = useState(false);
+  const [codeFormat, setCodeFormat] = useState<'qr' | 'barcode'>('qr');
 
   useEffect(() => {
     const handleUpdate = () => setPlansCatalogList(getClientePlansCatalog());
@@ -744,17 +748,57 @@ export default function ClientePortal() {
                     </div>
                   </div>
 
-                  {/* CONTENEDOR FÍSICO DEL CÓDIGO DE BARRAS 1D CODE 128 (SVG DECLARATIVO DE ALTA FIDELIDAD) */}
-                  <div className="mt-5 p-4 rounded-2xl bg-white shadow-xl text-center flex flex-col items-center justify-center">
+                  {/* SELECTOR DE FORMATO DE CÓDIGO (QR 2D OMNIDIRECCIONAL / BARRAS 1D) */}
+                  <div className="mt-5 p-1 bg-zinc-950/80 rounded-2xl border border-white/10 flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setCodeFormat('qr')}
+                      className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        codeFormat === 'qr'
+                          ? 'bg-amber-400 text-black shadow-md'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>QR 2D (Omni)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCodeFormat('barcode')}
+                      className={`flex-1 py-2 px-3 rounded-xl text-[11px] font-mono font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        codeFormat === 'barcode'
+                          ? 'bg-amber-400 text-black shadow-md'
+                          : 'text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <Barcode className="w-3.5 h-3.5" />
+                      <span>Barras 1D</span>
+                    </button>
+                  </div>
+
+                  {/* CONTENEDOR FÍSICO DE ACCESO AL GIMNASIO */}
+                  <div className="mt-3 p-4 rounded-2xl bg-white shadow-xl text-center flex flex-col items-center justify-center min-h-[170px]">
                     <div className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5">
-                      ESCANEAR EN EL ACCESO AL GIMNASIO
+                      {codeFormat === 'qr'
+                        ? 'ESCANEAR EN EL LECTOR OMNIDIRECCIONAL 2D'
+                        : 'ESCANEAR EN EL ACCESO AL GIMNASIO'}
                     </div>
 
-                    <Barcode128 value={currentMember.dni} />
-
-                    <span className="text-[10px] font-mono text-zinc-500 mt-2">
-                      Pasa este código de barras frente a la pistola 1D al ingresar
-                    </span>
+                    {codeFormat === 'qr' ? (
+                      <div className="flex flex-col items-center py-1">
+                        <QRCode2D value={currentMember.dni || ''} size={140} />
+                        <span className="text-[10px] font-mono text-zinc-600 mt-2 font-bold">
+                          Lectura instantánea en cualquier ángulo desde el móvil
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center w-full">
+                        <Barcode128 value={currentMember.dni || ''} />
+                        <span className="text-[10px] font-mono text-zinc-500 mt-2">
+                          Pasa este código de barras frente a la pistola 1D al ingresar
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Datos del Plan & Turno */}
