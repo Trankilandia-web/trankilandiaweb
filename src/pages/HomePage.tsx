@@ -49,7 +49,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
   };
 
   return (
-    <div className="flex flex-col min-h-screen selection:bg-amber-400 selection:text-black">
+    <div className="flex flex-col min-h-screen w-full max-w-full overflow-x-hidden selection:bg-amber-400 selection:text-black">
       {/* 1. Hero */}
       <Hero onOpenTourModal={onOpenTourModal} />
 

@@ -187,14 +187,14 @@ export default function PlansPage({
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-display pt-28 pb-24 relative overflow-hidden selection:bg-amber-400 selection:text-black">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
       {/* Luces ambientales cinemáticas */}
       <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[450px] bg-amber-400/10 blur-[150px] rounded-full pointer-events-none"
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[90vw] max-w-[800px] h-[450px] bg-amber-400/10 blur-[150px] rounded-full pointer-events-none overflow-hidden"
         aria-hidden="true"
       />
       <div
-        className="absolute top-[800px] right-0 w-[500px] h-[500px] bg-amber-400/5 blur-[160px] rounded-full pointer-events-none"
+        className="absolute top-[800px] right-0 w-[50vw] max-w-[500px] h-[500px] bg-amber-400/5 blur-[160px] rounded-full pointer-events-none overflow-hidden"
         aria-hidden="true"
       />
 

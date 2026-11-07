@@ -1495,7 +1495,7 @@ export default function ClientePortal() {
                     </span>
                   </div>
                   <p className="text-zinc-400 text-[11px]">
-                    Acércate a la sede de Trankilandia Gym en Huamanga, Ayacucho:
+                    Acércate a la Sede Emadi de Trankilandia Gym (José Olaya N° 640):
                   </p>
                   <ul className="text-[11px] text-zinc-400 space-y-1 list-disc list-inside">
                     <li>Muestra tu carnet digital con código de barras desde el celular.</li>

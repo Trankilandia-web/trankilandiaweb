@@ -21,7 +21,7 @@ const ICON_MAP: Record<IconName, ElementType> = {
 
 export default function ProgramsSection() {
   return (
-    <section id="programas" className="py-24 bg-zinc-950 relative">
+    <section id="programas" className="py-24 bg-zinc-950 relative overflow-hidden">
       {/* Subtle ambient lighting */}
       <div
         className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-amber-400/5 blur-[120px] rounded-full pointer-events-none"

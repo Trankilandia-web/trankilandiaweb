@@ -41,7 +41,7 @@ function AppContent() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-zinc-950 text-white font-display antialiased selection:bg-amber-400 selection:text-black">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-zinc-950 text-white font-display antialiased selection:bg-amber-400 selection:text-black">
       <ScrollToTop />
 
       {/* Public Navbar only on public website routes */}
@@ -52,7 +52,7 @@ function AppContent() {
         />
       )}
 
-      <main className="flex-1">
+      <main className="flex-1 w-full max-w-full overflow-x-hidden">
         <Suspense
           fallback={
             <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">

@@ -33,3 +33,7 @@ backups/
 *.sln
 *.sw?
 
+
+.vercel
+audit_screenshots/
+supabase/.temp/

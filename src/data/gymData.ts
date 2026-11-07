@@ -188,7 +188,7 @@ export const ABOUT_DATA: AboutData = {
   imageUrl: 'https://images.unsplash.com/photo-1540497077202-7c8a3999166f?auto=format&fit=crop&w=1200&q=80',
   stats: [
     { value: '4', label: 'Entrenadores (2 mujeres · 2 varones)' },
-    { value: '2', label: 'Sedes en Huamanga' },
+    { value: '1', label: 'Sede en Huamanga' },
     { value: '10', label: 'Beneficios Completos' },
   ],
   ctaText: 'ESCRÍBENOS POR WHATSAPP',
@@ -196,7 +196,7 @@ export const ABOUT_DATA: AboutData = {
 };
 
 export const GYM_CONTACT: GymContactInfo = {
-  address: 'Segunda sede Emadi: José Olaya N° 640 / Sede Pueblo Libre: Vía Libertadores',
+  address: 'José Olaya N° 640 (Frente al Hotel Internacional) - Sede Emadi, Huamanga',
   phone: '+51999787489',
   phoneDisplay: '+51 999 787 489',
   email: 'trankilandiagymperu@gmail.com',
@@ -211,17 +211,10 @@ export const GYM_CONTACT: GymContactInfo = {
   ],
   sedes: [
     {
-      id: 'sede-pueblo-libre',
-      name: 'Sede Vía Libertadores - Pueblo Libre',
-      address: 'Vía Libertadores - Pueblo Libre',
-      reference: 'Ref. Reservorio, bajar en la entrada Ruta 3',
-      zone: 'Huamanga, Ayacucho',
-    },
-    {
       id: 'sede-emadi',
-      name: 'Segunda Sede Emadi',
+      name: 'Sede Emadi',
       address: 'José Olaya N° 640',
-      reference: 'Al frente del Hotel Internacional',
+      reference: 'Frente al Hotel Internacional',
       zone: 'Huamanga, Ayacucho',
     },
   ],
@@ -742,7 +735,7 @@ export const MEMBERSHIP_FAQS: FaqItem[] = [
   },
   {
     question: '¿Dónde están ubicados y cómo llegar?',
-    answer: 'Estamos ubicados en Huamanga, Ayacucho, Perú. Escríbenos directamente por WhatsApp al +51 999 787 489 para compartirte la ubicación exacta en el mapa y darte la bienvenida al club.',
+    answer: 'Nuestra sede está ubicada en José Olaya N° 640 (al frente del Hotel Internacional) - Sede Emadi, Huamanga, Ayacucho. Escríbenos directamente por WhatsApp al +51 999 787 489 para cualquier consulta o visita.',
     category: 'Ubicación',
   },
 ];

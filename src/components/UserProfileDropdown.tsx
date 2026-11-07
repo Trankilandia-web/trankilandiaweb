@@ -197,7 +197,7 @@ export default function UserProfileDropdown() {
                 <p className="text-[11px] text-zinc-400 font-mono truncate">{displayEmail}</p>
                 <div className="mt-1 flex items-center gap-1 text-[10px] text-zinc-500 font-mono">
                   <MapPin className="w-3 h-3 text-amber-400" />
-                  <span>Sede Huamanga · Ayacucho</span>
+                  <span>Sede Emadi · Huamanga</span>
                 </div>
               </div>
             </div>

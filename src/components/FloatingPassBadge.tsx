@@ -42,7 +42,7 @@ export default function FloatingPassBadge({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: 20, scale: 0.95 }}
           transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-          className="fixed bottom-6 right-6 z-40 max-w-sm select-none"
+          className="fixed bottom-4 sm:bottom-6 right-4 sm:right-6 z-40 max-w-[calc(100vw-2rem)] sm:max-w-sm select-none"
         >
           <motion.div
             whileHover={{ y: -3, scale: 1.02 }}

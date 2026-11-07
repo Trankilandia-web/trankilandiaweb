@@ -197,7 +197,7 @@ export async function exportCarnetDigitalPNG(data: CarnetDigitalData, scale: num
 
   ctx.fillStyle = '#A1A1AA';
   ctx.font = '10px "Courier New", monospace';
-  ctx.fillText('MÁS QUE UN GIMNASIO · SEDE HUAMANGA, AYACUCHO', 32, 62);
+  ctx.fillText('MÁS QUE UN GIMNASIO · SEDE EMADI, HUAMANGA', 32, 62);
 
   // Badge de Estado
   const badgeText = data.tieneDeuda ? 'ADELANTO PENDIENTE' : 'SOCIO ACTIVO';

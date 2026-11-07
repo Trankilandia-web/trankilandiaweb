@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export interface ScanResultData {
-  status: 'al_dia' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | null;
+  status: 'al_dia' | 'por_vencer' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | null;
   socio: {
     id: string;
     dni: string;
@@ -84,6 +84,15 @@ export default function OmniScanToast({
       title: 'ACCESO AUTORIZADO',
       icon: CheckCircle2,
       iconColor: 'text-emerald-400',
+    },
+    por_vencer: {
+      border: 'border-yellow-400/80',
+      bg: 'bg-zinc-950/95',
+      glow: 'shadow-[0_0_40px_rgba(250,204,21,0.35)]',
+      badgeBg: 'bg-yellow-400/20 text-yellow-300 border-yellow-400/50',
+      title: 'MEMBRESÍA POR VENCER',
+      icon: Clock,
+      iconColor: 'text-yellow-400',
     },
     con_deuda: {
       border: 'border-amber-500/70',
@@ -249,17 +258,21 @@ export default function OmniScanToast({
               </button>
             )}
 
-            {status === 'vencido' && onRenovarPlan && socio && (
+            {(status === 'vencido' || status === 'por_vencer') && onRenovarPlan && socio && (
               <button
                 type="button"
                 onClick={() => {
                   onRenovarPlan(socio.dni);
                   onClose();
                 }}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-red-500 hover:bg-red-400 text-white font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md ${
+                  status === 'por_vencer'
+                    ? 'bg-yellow-400 hover:bg-yellow-300 text-black'
+                    : 'bg-red-500 hover:bg-red-400 text-white'
+                }`}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>Renovar Membresía</span>
+                <span>{status === 'por_vencer' ? 'Renovar con Anticipación' : 'Renovar Membresía'}</span>
               </button>
             )}
 

@@ -54,7 +54,7 @@ export default function ReceiptModal({
       (member.balanceDue > 0
         ? `⚠️ *Saldo Pendiente:* S/. ${member.balanceDue}.00 (Fecha límite: ${member.paymentDueDate})\n`
         : `✅ *Estado:* Membresía cancelada al 100%\n`) +
-      `📍 *Sede:* Huamanga, Ayacucho\n\n` +
+      `📍 *Sede:* Emadi (José Olaya N° 640, Huamanga)\n\n` +
       `¡A darle con todo al entrenamiento!`
   );
 

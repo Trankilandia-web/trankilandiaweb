@@ -866,7 +866,7 @@ export default function AdminDashboard() {
                     : `${resumen ? resumen.socios.total_socios : membersEnRango.length} inscritos en este periodo`}
                 </p>
                 <div className="text-[10px] text-zinc-500 font-mono mt-1">
-                  Sede Central Huamanga · Total: 393
+                  Sede Emadi (Huamanga) · Total: 393
                 </div>
               </div>
 

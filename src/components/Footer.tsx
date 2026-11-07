@@ -259,25 +259,19 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
             </ul>
           </div>
 
-          {/* Col 4: Concierge & Sedes (lg:col-span-2) */}
+          {/* Col 4: Concierge & Sede (lg:col-span-2) */}
           <div className="lg:col-span-2">
             <h4 className="text-xs font-mono font-bold uppercase tracking-widest text-amber-400 mb-4 flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-              <span>CONCIERGE &amp; SEDES</span>
+              <span>CONCIERGE &amp; SEDE</span>
             </h4>
             <ul className="space-y-3 text-xs leading-relaxed text-zinc-400">
               <li className="flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                 <div>
-                  <strong className="text-white block font-sans">Sede 1: Pueblo Libre</strong>
-                  <span>Vía Libertadores (Ref. Reservorio, Ruta 3)</span>
-                </div>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <MapPin className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <strong className="text-white block font-sans">Sede 2: Emadi</strong>
+                  <strong className="text-white block font-sans">Sede Emadi</strong>
                   <span>José Olaya N° 640 (Frente al Hotel Internacional)</span>
+                  <span className="text-zinc-500 block text-[11px]">Huamanga, Ayacucho</span>
                 </div>
               </li>
               <li className="flex items-center gap-2.5">

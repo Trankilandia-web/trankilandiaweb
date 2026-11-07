@@ -35,10 +35,20 @@ import {
   ShieldCheck,
   X,
   Radio,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
 import OmniScanToast from '../../components/portal/OmniScanToast';
+import {
+  speakGymAnnouncement,
+  playAccessAlert,
+  broadcastLiveScan,
+  subscribeToLiveScans,
+  isVoiceAlertsEnabled,
+  setVoiceAlertsEnabled,
+} from '../../lib/audioVoiceAlerts';
 import {
   GymMember,
   getStoredMembers,
@@ -75,65 +85,9 @@ const COACHES_BY_SHIFT = {
   noche: 'Coach Daniel Quispe (Noche)',
 };
 
-// Generador de audio Web Audio API (0 dependencias externas, 0 latencia)
+// Generador de audio Web Audio API y vibración háptica móvil
 function playTone(type: 'success' | 'warning' | 'error' | 'rebote') {
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return;
-    const ctx = new AudioContextClass();
-
-    if (type === 'success') {
-      // Beep agudo ascendente (Acceso concedido)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.14);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
-    } else if (type === 'warning') {
-      // Tono de atención dual (Deuda de adelanto)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.setValueAtTime(587, ctx.currentTime);
-      osc.frequency.setValueAtTime(440, ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.25, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.22);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.23);
-    } else if (type === 'rebote') {
-      // Tono informativo suave (Anti-rebote de 30 min)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(660, ctx.currentTime);
-      gain.gain.setValueAtTime(0.12, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.1);
-    } else {
-      // Tono grave de error (Vencido o No encontrado)
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(180, ctx.currentTime);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.3);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.32);
-    }
-  } catch {}
+  playAccessAlert(type);
 }
 
 export type CajaTab = 'acceso' | 'inscripcion' | 'crm' | 'cobros' | 'pos';
@@ -159,8 +113,9 @@ export default function CajaDashboard() {
 
   // Escáner manual e interactivo
   const [scannedDniInput, setScannedDniInput] = useState('');
+  const [voiceEnabled, setVoiceEnabled] = useState(isVoiceAlertsEnabled);
   const [lastScanResult, setLastScanResult] = useState<{
-    status: 'al_dia' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | null;
+    status: 'al_dia' | 'por_vencer' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | null;
     socio: SocioRecepcion | null;
     dni: string;
     message: string;
@@ -319,6 +274,32 @@ export default function CajaDashboard() {
     };
   }, []);
 
+  // Escuchar escaneos remotos en vivo (para cuando Marisol está limpiando con su móvil)
+  useEffect(() => {
+    const unsubscribe = subscribeToLiveScans((event) => {
+      if (Date.now() - event.timestamp > 8000) return;
+
+      setLastScanResult({
+        status: event.status,
+        socio: {
+          id: event.id,
+          dni: event.dni,
+          nombre: event.athleteName,
+          plan: event.plan,
+          turno: event.shift,
+          saldo_pendiente: event.balanceDue || 0,
+          dias_restantes: event.daysRemaining,
+        } as SocioRecepcion,
+        dni: event.dni,
+        message: event.alertTitle,
+        timestamp: event.timestamp,
+      });
+      setShowOmniToast(true);
+    });
+
+    return unsubscribe;
+  }, []);
+
   // Intervalo local de 60s para refrescar aforo y limpiar asistencias expiradas
   useEffect(() => {
     const interval = setInterval(() => {
@@ -350,7 +331,7 @@ export default function CajaDashboard() {
     };
   }, [asistenciasActivas]);
 
-  // 3. PROCESAMIENTO RÁPIDO DE INGRESO CON SEMÁFORO Y ANTI-REBOTE (30 MIN)
+  // 3. PROCESAMIENTO RÁPIDO DE INGRESO CON DETECCIÓN INTELIGENTE (VENCIDA, POR VENCER, AL DÍA, DEUDA)
   const procesarIngresoPorDni = useCallback(
     async (dniInput: string) => {
       const targetDni = dniInput.trim();
@@ -378,6 +359,9 @@ export default function CajaDashboard() {
           ) ||
           null;
 
+        const spokenText = `${socioExistente?.nombre || 'Socio'}, ya registraste ingreso hace ${diffMin} minutos.`;
+        speakGymAnnouncement(spokenText);
+
         setLastScanResult({
           status: 'rebote',
           socio: socioExistente,
@@ -402,6 +386,20 @@ export default function CajaDashboard() {
 
       if (!socio) {
         playTone('error');
+        const spokenText = `Alerta: DNI ${targetDni} no registrado en el sistema.`;
+        speakGymAnnouncement(spokenText);
+
+        broadcastLiveScan({
+          id: `unreg-${now}`,
+          timestamp: now,
+          status: 'no_encontrado',
+          athleteName: `DNI ${targetDni}`,
+          dni: targetDni,
+          plan: 'No Registrado',
+          spokenText,
+          alertTitle: 'DNI No Registrado',
+        });
+
         setLastScanResult({
           status: 'no_encontrado',
           socio: null,
@@ -421,6 +419,20 @@ export default function CajaDashboard() {
       const isFrozen = socio.observaciones?.includes('[MEMBRESÍA CONGELADA]') || (socio as any).membership_status === 'congelado';
       if (isFrozen) {
         playTone('error');
+        const spokenText = `Atención: ${socio.nombre}, membresía congelada temporalmente.`;
+        speakGymAnnouncement(spokenText);
+
+        broadcastLiveScan({
+          id: socio.id,
+          timestamp: now,
+          status: 'vencido',
+          athleteName: socio.nombre,
+          dni: targetDni,
+          plan: socio.plan,
+          spokenText,
+          alertTitle: 'Membresía Congelada',
+        });
+
         setLastScanResult({
           status: 'vencido',
           socio,
@@ -433,29 +445,53 @@ export default function CajaDashboard() {
       }
 
       // D) Membresía Vencida o Sin Membresía Activa
-      if (
-        socio.estado_calculado === 'vencido' ||
-        socio.plan === 'Sin Membresía Activa' ||
-        socio.precio_plan === 0
-      ) {
+      const isSinPlan = socio.plan === 'Sin Membresía Activa' || socio.precio_plan === 0;
+      const isExpired = socio.estado_calculado === 'vencido' || socio.dias_restantes < 0 || isSinPlan;
+
+      if (isExpired) {
         playTone('error');
-        const isSinPlan = socio.plan === 'Sin Membresía Activa' || socio.precio_plan === 0;
+        const message = isSinPlan
+          ? `ACCESO DENEGADO · SOCIO SIN MEMBRESÍA ACTIVA`
+          : `MEMBRESÍA VENCIDA HACE ${Math.abs(socio.dias_restantes)} DÍAS`;
+        const spokenText = `Atención: ${socio.nombre}, membresía vencida.`;
+        speakGymAnnouncement(spokenText);
+
+        broadcastLiveScan({
+          id: socio.id,
+          timestamp: now,
+          status: 'vencido',
+          athleteName: socio.nombre,
+          dni: targetDni,
+          plan: socio.plan,
+          daysRemaining: socio.dias_restantes,
+          balanceDue: socio.saldo_pendiente,
+          shift: socio.turno,
+          spokenText,
+          alertTitle: 'Membresía Vencida',
+        });
+
         setLastScanResult({
           status: 'vencido',
           socio,
           dni: targetDni,
-          message: isSinPlan
-            ? `ACCESO DENEGADO · SOCIO SIN MEMBRESÍA ACTIVA`
-            : `MEMBRESÍA VENCIDA HACE ${Math.abs(socio.dias_restantes)} DÍAS`,
+          message,
           timestamp: now,
         });
         setShowOmniToast(true);
         return;
       }
 
-      // D) Membresía Activa con Adelanto / Deuda Pendiente
-      if (socio.saldo_pendiente > 0) {
+      // E) Membresía POR VENCER (Entre 0 y 5 días restantes)
+      if (socio.dias_restantes >= 0 && socio.dias_restantes <= 5) {
         playTone('warning');
+        const message = socio.dias_restantes === 0
+          ? `¡MEMBRESÍA VENCE HOY! · PLAN ${socio.plan.toUpperCase()}`
+          : `MEMBRESÍA POR VENCER (EN ${socio.dias_restantes} DÍA${socio.dias_restantes > 1 ? 'S' : ''}) · PLAN ${socio.plan.toUpperCase()}`;
+        const spokenText = socio.dias_restantes === 0
+          ? `Atención: ${socio.nombre}, tu membresía vence hoy.`
+          : `Atención: ${socio.nombre}, tu membresía vence en ${socio.dias_restantes} días.`;
+        speakGymAnnouncement(spokenText);
+
         const nuevaAsistencia: AsistenciaActiva = {
           id: `local-${now}`,
           socio_id: socio.id,
@@ -465,10 +501,8 @@ export default function CajaDashboard() {
           fecha_ingreso: new Date().toISOString(),
         };
 
-        // Agregar localmente para aforo inmediato
         setAsistenciasActivas((prev) => [nuevaAsistencia, ...prev]);
 
-        // Registrar asíncrono en Supabase
         registrarAsistencia({
           socio_id: socio.id,
           dni: socio.dni,
@@ -480,19 +514,91 @@ export default function CajaDashboard() {
           }
         });
 
+        broadcastLiveScan({
+          id: socio.id,
+          timestamp: now,
+          status: 'por_vencer',
+          athleteName: socio.nombre,
+          dni: targetDni,
+          plan: socio.plan,
+          daysRemaining: socio.dias_restantes,
+          balanceDue: socio.saldo_pendiente,
+          shift: socio.turno,
+          spokenText,
+          alertTitle: socio.dias_restantes === 0 ? 'Membresía Vence Hoy' : `Por Vencer (${socio.dias_restantes} días)`,
+        });
+
         setLastScanResult({
-          status: 'con_deuda',
+          status: 'por_vencer',
           socio,
           dni: targetDni,
-          message: `INGRESO CON ADELANTO · DEUDA PENDIENTE: S/. ${socio.saldo_pendiente.toFixed(2)}`,
+          message,
           timestamp: now,
         });
         setShowOmniToast(true);
         return;
       }
 
-      // E) Membresía 100% Activa y al Día
+      // F) Membresía Activa con Adelanto / Deuda Pendiente
+      if (socio.saldo_pendiente > 0) {
+        playTone('warning');
+        const message = `INGRESO CON ADELANTO · DEUDA PENDIENTE: S/. ${socio.saldo_pendiente.toFixed(2)}`;
+        const spokenText = `Atención: ${socio.nombre}, saldo pendiente de ${Math.round(socio.saldo_pendiente)} soles.`;
+        speakGymAnnouncement(spokenText);
+
+        const nuevaAsistencia: AsistenciaActiva = {
+          id: `local-${now}`,
+          socio_id: socio.id,
+          dni: socio.dni,
+          nombre: socio.nombre,
+          turno: socio.turno,
+          fecha_ingreso: new Date().toISOString(),
+        };
+
+        setAsistenciasActivas((prev) => [nuevaAsistencia, ...prev]);
+
+        registrarAsistencia({
+          socio_id: socio.id,
+          dni: socio.dni,
+          nombre: socio.nombre,
+          turno: socio.turno,
+        }).then((res) => {
+          if (res.offlineQueued) {
+            setOfflinePendingCount((c) => c + 1);
+          }
+        });
+
+        broadcastLiveScan({
+          id: socio.id,
+          timestamp: now,
+          status: 'con_deuda',
+          athleteName: socio.nombre,
+          dni: targetDni,
+          plan: socio.plan,
+          daysRemaining: socio.dias_restantes,
+          balanceDue: socio.saldo_pendiente,
+          shift: socio.turno,
+          spokenText,
+          alertTitle: 'Saldo Pendiente',
+        });
+
+        setLastScanResult({
+          status: 'con_deuda',
+          socio,
+          dni: targetDni,
+          message,
+          timestamp: now,
+        });
+        setShowOmniToast(true);
+        return;
+      }
+
+      // G) Membresía 100% Activa y al Día
       playTone('success');
+      const message = `ACCESO AUTORIZADO · PLAN ${socio.plan.toUpperCase()}`;
+      const spokenText = `Bienvenido ${socio.nombre}, acceso autorizado.`;
+      speakGymAnnouncement(spokenText);
+
       const nuevaAsistencia: AsistenciaActiva = {
         id: `local-${now}`,
         socio_id: socio.id,
@@ -515,11 +621,25 @@ export default function CajaDashboard() {
         }
       });
 
+      broadcastLiveScan({
+        id: socio.id,
+        timestamp: now,
+        status: 'al_dia',
+        athleteName: socio.nombre,
+        dni: targetDni,
+        plan: socio.plan,
+        daysRemaining: socio.dias_restantes,
+        balanceDue: 0,
+        shift: socio.turno,
+        spokenText,
+        alertTitle: 'Acceso Autorizado',
+      });
+
       setLastScanResult({
         status: 'al_dia',
         socio,
         dni: targetDni,
-        message: `ACCESO AUTORIZADO · PLAN ${socio.plan.toUpperCase()}`,
+        message,
         timestamp: now,
       });
       setShowOmniToast(true);
@@ -1462,19 +1582,46 @@ export default function CajaDashboard() {
                   </div>
                   <div>
                     <h2 className="text-xl sm:text-2xl font-black uppercase text-white font-display tracking-tight flex items-center gap-2">
-                      <span>Lector de Código de Barras 1D</span>
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Control de Acceso (Escáner QR 2D / 1D &amp; DNI)</span>
                     </h2>
                     <p className="text-xs text-zinc-400 font-sans mt-0.5">
-                      Pasa el lector por la tarjeta física/digital o tipea el DNI. Detección automática en &lt; 5ms con protección anti-rebote.
+                      Pasa el carnet físico o digital por el lector omnidireccional o escribe el DNI. Detección automática en &lt; 5ms.
                     </p>
                   </div>
                 </div>
 
-                {/* Estado del Sensor */}
-                <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-950/90 border border-emerald-500/30 text-emerald-400 font-mono text-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span className="font-bold uppercase tracking-wider">Lector 1D Listo</span>
+                {/* Controles: Botón de Anuncios por Voz & Estado del Escáner */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Botón de Voz para Marisol */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !voiceEnabled;
+                      setVoiceAlertsEnabled(next);
+                      setVoiceEnabled(next);
+                      if (next) {
+                        speakGymAnnouncement('Alertas de voz activas en el gimnasio.');
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all border cursor-pointer ${
+                      voiceEnabled
+                        ? 'bg-amber-400/15 border-amber-400/50 text-amber-300 shadow-md shadow-amber-400/10'
+                        : 'bg-zinc-950/80 border-white/10 text-zinc-400 hover:text-white'
+                    }`}
+                    title="Anuncia por voz en el teléfono o parlantes quién ingresa y el estado de su membresía mientras limpias"
+                  >
+                    {voiceEnabled ? <Volume2 className="w-4 h-4 text-amber-400 animate-pulse" /> : <VolumeX className="w-4 h-4" />}
+                    <span>{voiceEnabled ? 'VOZ: ACTIVADA' : 'VOZ: EN SILENCIO'}</span>
+                  </button>
+
+                  {/* Estado del Modo Escáner */}
+                  <div
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-950/90 border border-emerald-500/30 text-emerald-400 font-mono text-xs"
+                    title="Los lectores USB operan como teclado de entrada automática. No requieren controladores."
+                  >
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-bold uppercase tracking-wider">Modo Escáner Activo</span>
+                  </div>
                 </div>
               </div>
 
@@ -1513,7 +1660,7 @@ export default function CajaDashboard() {
                       type="text"
                       value={scannedDniInput}
                       onChange={(e) => setScannedDniInput(e.target.value)}
-                      placeholder="Dispara lector 1D, tipea DNI o busca por nombre del atleta..."
+                      placeholder="Pasa el carnet por el lector 2D/1D, escribe DNI o busca por nombre..."
                       className="w-full pl-12 pr-10 py-3.5 bg-zinc-950 border border-white/20 rounded-2xl text-base font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors shadow-inner"
                     />
                     {scannedDniInput && (

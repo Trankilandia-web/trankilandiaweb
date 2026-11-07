@@ -135,14 +135,14 @@ export default function SchedulePage({
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-display pt-28 pb-24 relative overflow-hidden selection:bg-amber-400 selection:text-black">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
       {/* Ambient background glow */}
       <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[450px] bg-amber-400/10 blur-[150px] rounded-full pointer-events-none"
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[90vw] max-w-[800px] h-[450px] bg-amber-400/10 blur-[150px] rounded-full pointer-events-none overflow-hidden"
         aria-hidden="true"
       />
       <div
-        className="absolute top-[700px] right-0 w-[500px] h-[500px] bg-amber-400/5 blur-[160px] rounded-full pointer-events-none"
+        className="absolute top-[700px] right-0 w-[50vw] max-w-[500px] h-[500px] bg-amber-400/5 blur-[160px] rounded-full pointer-events-none overflow-hidden"
         aria-hidden="true"
       />
 
@@ -187,8 +187,8 @@ export default function SchedulePage({
         {/* ========================================================= */}
         {/* 2. BARRA SELECTORA DE DÍAS CON SLIDING INDICATOR */}
         {/* ========================================================= */}
-        <nav aria-label="Selector de días de la semana" className="mb-8">
-          <div className="flex items-center justify-start md:justify-center gap-2 sm:gap-3 overflow-x-auto pb-3 pt-1 px-1 scrollbar-none">
+        <nav aria-label="Selector de días de la semana" className="mb-8 w-full max-w-full overflow-hidden">
+          <div className="flex items-center justify-start md:justify-center gap-2 sm:gap-3 overflow-x-auto pb-3 pt-1 px-1 scrollbar-none max-w-full">
             {SCHEDULE_DAYS.map((day) => {
               const isSelected = selectedDay === day;
               const countForDay = SCHEDULE_CLASSES.filter((c) => c.day === day).length;

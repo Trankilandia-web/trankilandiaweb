@@ -91,10 +91,10 @@ export default function FacilitiesPage({
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-display pt-28 pb-24 relative overflow-hidden selection:bg-amber-400 selection:text-black">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
       {/* Luces ambientales */}
       <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] bg-amber-400/10 blur-[160px] rounded-full pointer-events-none"
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[90vw] max-w-[900px] h-[500px] bg-amber-400/10 blur-[160px] rounded-full pointer-events-none overflow-hidden"
         aria-hidden="true"
       />
 
@@ -119,16 +119,12 @@ export default function FacilitiesPage({
             {/* Ficha técnica resumida */}
             <div className="lg:col-span-4 bg-zinc-900/80 border border-white/10 p-5 rounded-2xl">
               <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-3 font-bold flex items-center justify-between">
-                <span>2 SEDES EN AYACUCHO</span>
+                <span>SEDE HUAMANGA, AYACUCHO</span>
                 <span className="text-zinc-500 font-mono">TRANKILANDIA</span>
               </div>
               <ul className="space-y-2.5 text-xs text-zinc-300 font-sans">
                 <li className="flex flex-col border-b border-white/5 pb-2">
-                  <span className="text-amber-400 font-bold font-mono text-[11px]">SEDE 1: PUEBLO LIBRE</span>
-                  <span className="text-white text-[11px]">Vía Libertadores (Ref. Reservorio, Ruta 3)</span>
-                </li>
-                <li className="flex flex-col border-b border-white/5 pb-2">
-                  <span className="text-amber-400 font-bold font-mono text-[11px]">SEDE 2: EMADI</span>
+                  <span className="text-amber-400 font-bold font-mono text-[11px]">SEDE EMADI</span>
                   <span className="text-white text-[11px]">José Olaya N° 640 (Frente al Hotel Internacional)</span>
                 </li>
                 <li className="flex items-center justify-between border-b border-white/5 pb-2">

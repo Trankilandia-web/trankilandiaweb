@@ -147,57 +147,49 @@ export default function OfficialBenefitsSection() {
           </div>
         </motion.div>
 
-        {/* Official Sedes Cards (Flyer: 2 Sedes en Huamanga, Ayacucho) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-6 rounded-3xl bg-zinc-900/80 border border-white/10 flex flex-col justify-between space-y-4">
-            <div className="flex items-start gap-3.5">
-              <div className="p-2.5 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0">
-                <MapPin className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold block">
-                  SEDE PRINCIPAL · PUEBLO LIBRE
-                </span>
-                <h4 className="text-base font-bold text-white font-display uppercase tracking-tight mt-0.5">
-                  Vía Libertadores - Pueblo Libre
-                </h4>
-                <p className="text-xs text-zinc-400 font-sans mt-1">
-                  Referencia: Reservorio, bajar en la entrada Ruta 3.
-                </p>
-              </div>
+        {/* Official Sede Card */}
+        <div className="p-6 sm:p-8 rounded-3xl bg-zinc-900/80 border border-amber-400/30 flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl shadow-amber-400/5">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="p-3.5 rounded-2xl bg-amber-400 text-black shrink-0 font-black shadow-lg shadow-amber-400/20">
+              <MapPin className="w-6 h-6" />
             </div>
-
-            <div className="flex items-center justify-between text-xs font-mono text-zinc-400 pt-3 border-t border-white/10">
-              <span>Huamanga, Ayacucho</span>
-              <span className="text-emerald-400 font-bold">ABIERTO DESDE 6:00 AM</span>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] sm:text-xs font-mono uppercase tracking-wider text-amber-400 font-bold">
+                  SEDE OFICIAL · EMADI
+                </span>
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span className="text-[10px] font-mono text-emerald-400 font-bold uppercase tracking-wide">
+                  SEDE ACTIVA
+                </span>
+              </div>
+              <h4 className="text-base sm:text-xl font-bold text-white font-display uppercase tracking-tight mt-1">
+                José Olaya N° 640 (Frente al Hotel Internacional)
+              </h4>
+              <p className="text-xs sm:text-sm text-zinc-400 font-sans mt-1">
+                Huamanga, Ayacucho · Máquinas modernas de musculación, aeróbicos, baile, spinning y funcional.
+              </p>
             </div>
           </div>
 
-          <div className="p-6 rounded-3xl bg-zinc-900/80 border border-amber-400/30 flex flex-col justify-between space-y-4 shadow-lg shadow-amber-400/5">
-            <div className="flex items-start gap-3.5">
-              <div className="p-2.5 rounded-xl bg-amber-400 text-black shrink-0 font-black">
-                <MapPin className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold block">
-                  SEGUNDA SEDE · EMADI
-                </span>
-                <h4 className="text-base font-bold text-white font-display uppercase tracking-tight mt-0.5">
-                  Al frente del Hotel Internacional - José Olaya N° 640
-                </h4>
-                <p className="text-xs text-zinc-400 font-sans mt-1">
-                  Máquinas modernas de musculación, aeróbicos, baile, spinning y funcional.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between text-xs font-mono text-zinc-400 pt-3 border-t border-white/10">
-              <span className="flex items-center gap-1.5 text-white">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-white/10 shrink-0">
+            <div className="text-xs font-mono text-zinc-400 space-y-1">
+              <div className="flex items-center gap-1.5 text-white font-bold">
                 <Phone className="w-3.5 h-3.5 text-amber-400" />
                 <span>Central: 999-787-489</span>
-              </span>
-              <span className="text-emerald-400 font-bold">SEGUNDA SEDE ACTIVA</span>
+              </div>
+              <div className="text-emerald-400 font-semibold">
+                ABIERTO DESDE 6:00 AM
+              </div>
             </div>
+            <a
+              href="https://wa.me/51999787489?text=Hola%20Trankilandia%20Gym,%20deseo%20visitar%20la%20Sede%20Emadi."
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-5 py-3 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs font-mono uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-400/20"
+            >
+              <span>Ver Ubicación</span>
+            </a>
           </div>
         </div>
       </div>

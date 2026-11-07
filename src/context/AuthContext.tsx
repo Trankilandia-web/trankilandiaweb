@@ -13,6 +13,7 @@ interface AuthContextType {
   isAdmin: boolean;
   switchRole: (newRole: UserRole) => Promise<void>;
   getRedirectPath: () => string;
+  loginUser: (identifier: string, name?: string) => Promise<{ success: boolean; role: UserRole; redirectPath: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -26,21 +27,24 @@ const AuthContext = createContext<AuthContextType>({
   isAdmin: false,
   switchRole: async () => {},
   getRedirectPath: () => '/cliente',
+  loginUser: async () => ({ success: false, role: 'cliente', redirectPath: '/' }),
   signOut: async () => {},
 });
 
 const ROLE_STORAGE_KEY = 'trankilandia_active_role';
+const USER_STORAGE_KEY = 'trankilandia_auth_user';
 
 export const SUPER_ADMIN_EMAILS = [
   'luisgerardolloccllasaune@gmail.com',
-  'trankilandiagymperu@gmail.com',
   'marisolflores@gmail.com',
+  'marisolflores15@gmail.com',
+  'trankilandiagymperu@gmail.com',
 ];
 
 // Helper to determine initial role fallback: EVERY user is 'cliente' by default
 function resolveDefaultRole(user: User | null): UserRole {
   const userEmail = (user?.email || '').toLowerCase().trim();
-  if (SUPER_ADMIN_EMAILS.includes(userEmail)) {
+  if (SUPER_ADMIN_EMAILS.some((admin) => admin.toLowerCase() === userEmail)) {
     return 'admin';
   }
 
@@ -70,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
   const isAdmin = (actualRole as string) === 'admin' || (role as string) === 'admin';
 
-  // Try fetching role from Supabase 'profiles' table with local fallback
+  // Sincronizar roles y validar permisos
   const syncRole = async (currentUser: User | null) => {
     if (!currentUser) {
       setActualRole('cliente');
@@ -79,16 +83,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
 
     let dbRole: UserRole = 'cliente';
-
     const userEmail = (currentUser.email || '').toLowerCase().trim();
-    const isMasterAdminEmail = SUPER_ADMIN_EMAILS.includes(userEmail);
-
-    // 1. Verificar si hay un rol activo guardado en localStorage (modo presentación / switch previo)
+    const isMasterAdminEmail = SUPER_ADMIN_EMAILS.some((admin) => admin.toLowerCase() === userEmail);
     const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
 
     if (isMasterAdminEmail) {
       dbRole = 'admin';
-      // Asegurar rol en la tabla profiles de Supabase
       if (isConfigured) {
         supabase
           .from('profiles')
@@ -132,30 +132,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
   };
 
+  // 1. Restaurar sesión local de inmediato (Local-First sin bloqueos)
   useEffect(() => {
+    try {
+      const storedUserRaw = localStorage.getItem(USER_STORAGE_KEY);
+      if (storedUserRaw) {
+        const parsedUser = JSON.parse(storedUserRaw) as User;
+        setUser(parsedUser);
+        syncRole(parsedUser);
+      }
+    } catch {}
+
     if (!isConfigured) {
       setIsLoading(false);
       return;
     }
 
-    // 1. Check current session
+    // 2. Si Supabase está configurado, sincronizar sesión remota
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ?? null);
       if (session?.user) {
+        setUser(session.user);
         syncRole(session.user);
+        try {
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(session.user));
+        } catch {}
       }
       setIsLoading(false);
     });
 
-    // 2. Listen to state changes (OAuth redirect, sign in, sign out)
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      setUser(session?.user ?? null);
       if (session?.user) {
+        setUser(session.user);
         syncRole(session.user);
+        try {
+          localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(session.user));
+        } catch {}
+      } else if (!localStorage.getItem(USER_STORAGE_KEY)) {
+        setUser(null);
+        setActualRole('cliente');
+        setRoleState('cliente');
       }
       setIsLoading(false);
     });
@@ -165,10 +184,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     };
   }, [isConfigured]);
 
+  /**
+   * Inicio de sesión universal (DNI o Correo de Administrador)
+   * Garantiza autenticación persistente inmediata en móvil y escritorio
+   */
+  const loginUser = async (
+    identifier: string,
+    name?: string
+  ): Promise<{ success: boolean; role: UserRole; redirectPath: string }> => {
+    const rawInput = identifier.trim();
+    const cleanDni = rawInput.replace(/\D/g, '');
+    const isDni = cleanDni.length === 8;
+    const isEmail = rawInput.includes('@');
+    const userEmail = isEmail ? rawInput.toLowerCase() : `${cleanDni}@socio.trankilandia.pe`;
+
+    const isMasterAdmin = SUPER_ADMIN_EMAILS.some((admin) => admin.toLowerCase() === userEmail);
+    const assignedRole: UserRole = isMasterAdmin ? 'admin' : 'cliente';
+
+    const displayName =
+      name ||
+      (isMasterAdmin
+        ? userEmail.includes('marisol')
+          ? 'Marisol Flores'
+          : 'Luis Gerardo Lloclla'
+        : `Socio ${cleanDni || rawInput}`);
+
+    const authUserObj = {
+      id: isMasterAdmin ? `admin-${cleanDni || 'master'}` : `socio-${cleanDni}`,
+      email: userEmail,
+      app_metadata: {},
+      user_metadata: {
+        full_name: displayName,
+        dni: isDni ? cleanDni : undefined,
+        role: assignedRole,
+      },
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    } as unknown as User;
+
+    // Persistir localmente
+    setUser(authUserObj);
+    setActualRole(assignedRole);
+    setRoleState(assignedRole);
+    try {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(authUserObj));
+      localStorage.setItem(ROLE_STORAGE_KEY, assignedRole);
+    } catch {}
+
+    const redirectPath = getRoleRedirectPath(assignedRole);
+    return { success: true, role: assignedRole, redirectPath };
+  };
+
   const switchRole = async (newRole: UserRole) => {
     if (!ROLES_CONFIG[newRole]) return;
 
-    // Solo un administrador verificado puede alternar entre módulos
     if (actualRole !== 'admin') {
       console.warn('Acceso denegado: solo usuarios con rol admin pueden conmutar de módulo.');
       return;
@@ -179,12 +248,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   };
 
   const handleSignOut = async () => {
-    await supabaseSignOut();
+    if (isConfigured) {
+      await supabaseSignOut();
+    }
     setUser(null);
     setSession(null);
     setActualRole('cliente');
     setRoleState('cliente');
-    localStorage.removeItem(ROLE_STORAGE_KEY);
+    try {
+      localStorage.removeItem(USER_STORAGE_KEY);
+      localStorage.removeItem(ROLE_STORAGE_KEY);
+    } catch {}
   };
 
   const getRedirectPath = () => {
@@ -203,6 +277,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         isAdmin,
         switchRole,
         getRedirectPath,
+        loginUser,
         signOut: handleSignOut,
       }}
     >
