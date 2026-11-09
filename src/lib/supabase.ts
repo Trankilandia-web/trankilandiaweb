@@ -12,7 +12,7 @@ const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   import.meta.env.SUPABASE_ANON_KEY ||
-  '';
+  'sb_publishable_eACPeelHpJbAtBU3b53OeQ_0JKOVPWa';
 
 export const isSupabaseConfigured = (): boolean => {
   return (

@@ -248,13 +248,13 @@ export const INITIAL_PROGRESS: ProgressRecord[] = [
   },
 ];
 
-const STORAGE_KEY = 'trankilandia_members_v4';
+const STORAGE_KEY = 'trankilandia_members_v5';
 
 // Helper to get members from LocalStorage or Fallback
 export const getStoredMembers = (): GymMember[] => {
   try {
     // Si existen claves obsoletas de versiones anteriores, limpiarlas
-    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3'].forEach((k) => {
+    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4'].forEach((k) => {
       if (localStorage.getItem(k)) {
         localStorage.removeItem(k);
       }
@@ -300,7 +300,7 @@ export const getStoredMembers = (): GymMember[] => {
  */
 export const reloadFreshMembersFromExcel = (): GymMember[] => {
   try {
-    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', STORAGE_KEY].forEach((k) => {
+    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4', STORAGE_KEY].forEach((k) => {
       localStorage.removeItem(k);
     });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_MEMBERS));
