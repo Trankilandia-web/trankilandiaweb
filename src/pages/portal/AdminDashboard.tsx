@@ -33,6 +33,8 @@ import {
   RotateCcw,
   Check,
   Trash2,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import { UserRole } from '../../types/roles';
@@ -40,6 +42,8 @@ import {
   GymMember,
   getStoredMembers,
   saveStoredMembers,
+  reloadFreshMembersFromExcel,
+  INITIAL_MEMBERS,
   GymPlanTier,
   AddonRates,
   getStoredMembershipPlans,
@@ -63,6 +67,7 @@ import {
   fetchSociosParaAdmin,
   validarDocumentoSocio,
   registerGymMember,
+  normalizeDateToISO,
 } from '../../lib/supabaseDb';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
@@ -72,12 +77,17 @@ interface MemberRecord {
   dni: string;
   role: UserRole;
   plan: string;
+  planPrice?: number;
+  phone?: string | null;
+  email?: string | null;
   shift: 'manana' | 'tarde' | 'noche';
   coachName: string;
   advancePaid: number;
   balanceDue: number;
   paymentMethod?: string;
   status: 'active' | 'expiring' | 'inactive';
+  membershipStatus?: 'active' | 'expiring' | 'inactive';
+  expiresAt?: string;
   expiresIn: string;
   lastVisit: string;
   documentStatus?: 'sin_documento' | 'pendiente' | 'verificado' | 'rechazado';
@@ -246,12 +256,17 @@ export default function AdminDashboard() {
         dni: m.dni || '',
         role: r,
         plan: m.plan,
+        planPrice: m.planPrice,
+        phone: m.phone,
+        email: m.email,
         shift: (m.shift as 'manana' | 'tarde' | 'noche') || 'manana',
         coachName: m.coachName || 'Coach Marcos Rivas',
         advancePaid: m.advancePaid || 0,
         balanceDue: m.balanceDue || 0,
         paymentMethod: m.paymentMethod || 'efectivo',
         status: m.membershipStatus,
+        membershipStatus: m.membershipStatus,
+        expiresAt: m.expiresAt,
         expiresIn: m.expiresAt,
         lastVisit: 'Reciente',
         documentStatus: m.documentStatus,
@@ -585,15 +600,19 @@ export default function AdminDashboard() {
     setTimeout(() => setActionSuccess(null), 4000);
   };
 
-  // 8. FILTRADO Y PAGINACIÓN ESTRICTA DEL PADRÓN
+  // 8. FILTRADO Y PAGINACIÓN ESTRICTA DEL PADRÓN (Insensible a tildes)
   const filteredMembers = useMemo(() => {
-    const q = searchTerm.toLowerCase().trim();
+    const rawQ = searchTerm.trim().toLowerCase();
+    const normalize = (str: string) =>
+      str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const q = normalize(rawQ);
+
     return members.filter((m) => {
       const matchSearch =
         !q ||
-        (m.name || '').toLowerCase().includes(q) ||
-        (m.dni ? String(m.dni).includes(q) : false) ||
-        (m.id || '').toLowerCase().includes(q);
+        normalize(m.name || '').includes(q) ||
+        (m.dni ? String(m.dni).includes(rawQ) : false) ||
+        (m.id || '').toLowerCase().includes(rawQ);
 
       const matchRole = roleFilter === 'all' || m.role === roleFilter;
       const matchShift = shiftFilter === 'all' || m.shift === shiftFilter;
@@ -627,72 +646,72 @@ export default function AdminDashboard() {
   }, [productos, categoriaInventario, searchInventario]);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-purple-500 selection:text-white">
+    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
       <PortalHeader
         currentRole="admin"
-        title="Panel Gerencial & Auditoría"
-        subtitle="Arqueo Consolidado · Control de Turnos · Inventario POS · Cero Egress Masivo"
+        title="Panel Gerencial"
+        subtitle="Control de Recaudación, Padrón de Socios y Tarifas Oficiales"
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* BARRA SUPERIOR DE PESTAÑAS Y NAVEGACIÓN */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-zinc-900/80 border border-white/10 rounded-3xl p-4 sm:p-5 backdrop-blur-md">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-zinc-900 border border-white/10 rounded-2xl p-3 sm:p-4">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0 max-w-full">
             <button
               type="button"
               onClick={() => handleSelectTab('kpis')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'kpis'
-                  ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <BarChart3 className="w-4 h-4" />
-              <span>Arqueo & Métricas</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSelectTab('inventario')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
-                activeTab === 'inventario'
-                  ? 'bg-emerald-400 text-black shadow-lg shadow-emerald-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
-              }`}
-            >
-              <Package className="w-4 h-4" />
-              <span>Inventario POS</span>
-              {productosCriticos.length > 0 && (
-                <span className="w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center">
-                  {productosCriticos.length}
-                </span>
-              )}
+              <BarChart3 className="w-4 h-4 flex-shrink-0" />
+              <span>Métricas</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSelectTab('padron')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'padron'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Users className="w-4 h-4" />
-              <span>Padrón de Socios ({members.length})</span>
+              <Users className="w-4 h-4 flex-shrink-0" />
+              <span>Padrón ({members.length})</span>
             </button>
 
             <button
               type="button"
               onClick={() => handleSelectTab('planes')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'planes'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Tag className="w-4 h-4" />
-              <span>Planes & Tarifas ({storedPlans.length})</span>
+              <Tag className="w-4 h-4 flex-shrink-0" />
+              <span>Planes & Tarifas</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectTab('inventario')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'inventario'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Package className="w-4 h-4 flex-shrink-0" />
+              <span>Inventario POS</span>
+              {productosCriticos.length > 0 && (
+                <span className="w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {productosCriticos.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -700,18 +719,18 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={handleOpenNewMember}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-mono font-bold transition-all shadow-lg shadow-amber-400/20 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-bold transition-all shadow-sm cursor-pointer whitespace-nowrap"
             >
-              <UserPlus className="w-4 h-4" />
+              <UserPlus className="w-3.5 h-3.5" />
               <span>+ Inscribir Socio</span>
             </button>
             <button
               type="button"
               onClick={handleExportConsolidadoCSV}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-mono border border-white/10 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs border border-white/10 transition-colors cursor-pointer whitespace-nowrap"
             >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>Exportar Reporte (CSV)</span>
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Exportar CSV</span>
             </button>
           </div>
         </div>
@@ -745,18 +764,18 @@ export default function AdminDashboard() {
 
               <div className="flex items-center gap-1.5 flex-wrap">
                 {[
-                  { id: 'mes', label: 'Mes Actual (Octubre)' },
+                  { id: 'mes', label: 'Mes Actual' },
                   { id: 'hoy', label: 'Hoy' },
-                  { id: '7dias', label: 'Últimos 7 Días' },
-                  { id: 'anual', label: 'Año 2026 (Anual)' },
+                  { id: '7dias', label: '7 Días' },
+                  { id: 'anual', label: 'Año 2026' },
                 ].map((r) => (
                   <button
                     key={r.id}
                     type="button"
                     onClick={() => setDateRange(r.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       dateRange === r.id
-                        ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                        ? 'bg-amber-400 text-black shadow-sm'
                         : 'bg-zinc-950 border border-white/10 text-zinc-400 hover:text-white'
                     }`}
                   >
@@ -764,25 +783,25 @@ export default function AdminDashboard() {
                   </button>
                 ))}
 
-                {/* Selector para auditar mes a mes exactamente como en el Excel */}
+                {/* Selector de meses históricos */}
                 <select
                   value={/^\d{4}-\d{2}$/.test(dateRange) ? dateRange : ''}
                   onChange={(e) => {
                     if (e.target.value) setDateRange(e.target.value);
                   }}
-                  className="bg-zinc-950 border border-purple-500/30 rounded-xl px-2.5 py-1.5 text-xs font-mono text-purple-300 focus:outline-none cursor-pointer"
+                  className="bg-zinc-950 border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-amber-400 cursor-pointer"
                 >
-                  <option value="">Auditar Mes Específico...</option>
-                  <option value="2026-10">Octubre 2026 (S/. 12,949 · 86 atletas)</option>
-                  <option value="2026-09">Septiembre 2026 (S/. 11,615 · 91 atletas)</option>
-                  <option value="2026-08">Agosto 2026 (S/. 8,615 · 85 atletas)</option>
-                  <option value="2026-07">Julio 2026 (S/. 9,610 · 57 atletas)</option>
-                  <option value="2026-06">Junio 2026 (S/. 5,740 · 25 atletas)</option>
-                  <option value="2026-05">Mayo 2026 (S/. 5,490 · 15 atletas)</option>
-                  <option value="2026-04">Abril 2026 (S/. 4,950 · 15 atletas)</option>
-                  <option value="2026-03">Marzo 2026 (S/. 3,480 · 11 atletas)</option>
-                  <option value="2026-02">Febrero 2026 (S/. 700 · 2 atletas)</option>
-                  <option value="2026-01">Enero 2026 (S/. 2,100 · 6 atletas)</option>
+                  <option value="">Otro mes...</option>
+                  <option value="2026-10">Octubre 2026</option>
+                  <option value="2026-09">Septiembre 2026</option>
+                  <option value="2026-08">Agosto 2026</option>
+                  <option value="2026-07">Julio 2026</option>
+                  <option value="2026-06">Junio 2026</option>
+                  <option value="2026-05">Mayo 2026</option>
+                  <option value="2026-04">Abril 2026</option>
+                  <option value="2026-03">Marzo 2026</option>
+                  <option value="2026-02">Febrero 2026</option>
+                  <option value="2026-01">Enero 2026</option>
                 </select>
 
                 <button
@@ -791,7 +810,7 @@ export default function AdminDashboard() {
                   className="p-1.5 rounded-xl bg-zinc-800 text-zinc-300 hover:text-white border border-white/10 cursor-pointer ml-1"
                   title="Recalcular métricas"
                 >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingResumen ? 'animate-spin text-purple-400' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingResumen ? 'animate-spin text-amber-400' : ''}`} />
                 </button>
               </div>
             </div>
@@ -862,11 +881,11 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-1 font-mono">
                   {dateRange === 'anual'
-                    ? '393 atletas en el padrón anual 2026'
+                    ? `${members.length || INITIAL_MEMBERS.length} atletas en el padrón anual 2026`
                     : `${resumen ? resumen.socios.total_socios : membersEnRango.length} inscritos en este periodo`}
                 </p>
                 <div className="text-[10px] text-zinc-500 font-mono mt-1">
-                  Sede Emadi (Huamanga) · Total: 393
+                  Sede Emadi (Huamanga) · Total: {members.length || INITIAL_MEMBERS.length}
                 </div>
               </div>
 
@@ -1288,8 +1307,25 @@ export default function AdminDashboard() {
 
                 <button
                   type="button"
+                  onClick={async () => {
+                    if (window.confirm('¿Deseas recargar y sincronizar el padrón oficial con la data actual de Gym.xlsm?')) {
+                      reloadFreshMembersFromExcel();
+                      await cargarSociosEnMemoria();
+                      setActionSuccess(`¡Padrón actualizado con éxito! ${INITIAL_MEMBERS.length} socios sincronizados desde Gym.xlsm.`);
+                      setTimeout(() => setActionSuccess(null), 4000);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-bold transition-all border border-white/10 cursor-pointer ml-auto"
+                  title="Recarga limpia y sincronización desde Gym.xlsm"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Sincronizar Gym.xlsm</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={handleOpenNewMember}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-mono font-bold transition-all shadow-md shadow-amber-400/20 cursor-pointer ml-auto"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-mono font-bold transition-all shadow-md shadow-amber-400/20 cursor-pointer"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   <span>+ Inscribir Socio</span>
@@ -1336,13 +1372,32 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody className="divide-y divide-white/5 font-sans">
                   {paginatedMembers.map((m) => {
-                    const hasDebt = m.balanceDue > 0;
+                    const isSinPlan = !m.plan || m.plan === 'Sin Membresía Activa' || (m.planPrice || 0) === 0;
+                    const todayISO = new Date().toISOString().split('T')[0];
+                    const expISO = normalizeDateToISO(m.expiresAt);
+                    const isExpired = expISO < todayISO;
+                    const isInactive = m.membershipStatus === 'inactive' || isExpired;
+                    const hasDebt = (m.balanceDue || 0) > 0;
 
                     return (
                       <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
                         <td className="py-3 px-4">
-                          <div className="font-bold text-white">{m.name}</div>
-                          <div className="text-[11px] text-zinc-500 font-mono">{m.id}</div>
+                          <div className="font-bold text-white leading-snug">{m.name}</div>
+                          <div className="text-[11px] text-zinc-400 font-mono flex items-center gap-2 mt-0.5">
+                            <span className="text-zinc-500">{m.id}</span>
+                            {m.phone && (
+                              <span className="text-zinc-300 flex items-center gap-1">
+                                <Phone className="w-3 h-3 text-amber-400/80" />
+                                {m.phone}
+                              </span>
+                            )}
+                          </div>
+                          {m.email && !m.email.endsWith('@socio.trankilandia.pe') && !m.email.endsWith('@cliente.trankilandia.pe') && (
+                            <div className="text-[10px] text-zinc-400 font-mono truncate max-w-[220px] flex items-center gap-1 mt-0.5">
+                              <Mail className="w-2.5 h-2.5 text-zinc-500 shrink-0" />
+                              <span className="truncate">{m.email}</span>
+                            </div>
+                          )}
                         </td>
 
                         <td className="py-3 px-4 font-mono text-zinc-300">{m.dni || 'Sin DNI'}</td>
@@ -1395,13 +1450,23 @@ export default function AdminDashboard() {
                         </td>
 
                         <td className="py-3 px-4 font-mono text-xs">
-                          <div className="text-white">{m.plan}</div>
-                          {hasDebt ? (
-                            <span className="text-red-400 font-bold text-[11px]">
-                              Debe: S/. {m.balanceDue.toFixed(2)}
+                          <div className="text-white font-medium">{m.plan || 'Sin Membresía Activa'}</div>
+                          {isSinPlan ? (
+                            <span className="inline-flex items-center gap-1 text-zinc-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 mt-1">
+                              ⚪ Sin Membresía
+                            </span>
+                          ) : isInactive ? (
+                            <span className="inline-flex items-center gap-1 text-red-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 mt-1">
+                              🔴 Vencida ({m.expiresAt})
+                            </span>
+                          ) : hasDebt ? (
+                            <span className="inline-flex items-center gap-1 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 mt-1">
+                              🟡 Debe: S/. {m.balanceDue.toFixed(2)}
                             </span>
                           ) : (
-                            <span className="text-emerald-400 text-[11px]">100% Al Día</span>
+                            <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 mt-1">
+                              🟢 100% Al Día
+                            </span>
                           )}
                         </td>
 

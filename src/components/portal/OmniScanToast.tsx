@@ -14,12 +14,13 @@ import {
 } from 'lucide-react';
 
 export interface ScanResultData {
-  status: 'al_dia' | 'por_vencer' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | null;
+  status: 'al_dia' | 'por_vencer' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | 'no_inscrito' | null;
   socio: {
     id: string;
     dni: string;
     nombre: string;
     plan: string;
+    precio_plan?: number;
     turno?: string;
     saldo_pendiente?: number;
     dias_restantes?: number;
@@ -37,7 +38,9 @@ interface OmniScanToastProps {
   onClose: () => void;
   onCobrarDeuda?: (dni: string) => void;
   onRenovarPlan?: (dni: string) => void;
+  onRenovar?: (socio: any) => void;
   onInscribirDni?: (dni: string) => void;
+  onInscribir?: (dni: string) => void;
   onVerPerfil?: (dni: string) => void;
 }
 
@@ -46,7 +49,9 @@ export default function OmniScanToast({
   onClose,
   onCobrarDeuda,
   onRenovarPlan,
+  onRenovar,
   onInscribirDni,
+  onInscribir,
   onVerPerfil,
 }: OmniScanToastProps) {
   const [secondsAgo, setSecondsAgo] = useState(0);
@@ -122,13 +127,22 @@ export default function OmniScanToast({
       iconColor: 'text-blue-400',
     },
     no_encontrado: {
-      border: 'border-zinc-600',
+      border: 'border-red-500/80',
       bg: 'bg-zinc-950/95',
-      glow: 'shadow-[0_0_30px_rgba(161,161,170,0.2)]',
-      badgeBg: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+      glow: 'shadow-[0_0_40px_rgba(239,68,68,0.35)]',
+      badgeBg: 'bg-red-500/20 text-red-300 border-red-500/40',
       title: 'DNI NO REGISTRADO',
-      icon: AlertTriangle,
-      iconColor: 'text-zinc-400',
+      icon: XCircle,
+      iconColor: 'text-red-400',
+    },
+    no_inscrito: {
+      border: 'border-red-500/80',
+      bg: 'bg-zinc-950/95',
+      glow: 'shadow-[0_0_40px_rgba(239,68,68,0.35)]',
+      badgeBg: 'bg-red-500/20 text-red-300 border-red-500/40',
+      title: 'DNI NO REGISTRADO',
+      icon: XCircle,
+      iconColor: 'text-red-400',
     },
   }[status];
 
@@ -216,7 +230,11 @@ export default function OmniScanToast({
                   <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30">
                     <div className="text-[10px] text-red-300 uppercase tracking-wider">Estado</div>
                     <div className="font-bold text-red-400 mt-0.5">
-                      {socio.dias_restantes ? `Venció hace ${Math.abs(socio.dias_restantes)}d` : 'Membresía Vencida'}
+                      {socio.plan === 'Sin Membresía Activa' || !socio.plan || (socio.precio_plan ?? 0) === 0
+                        ? 'Sin Plan Activo'
+                        : socio.dias_restantes
+                        ? `Venció hace ${Math.abs(socio.dias_restantes)}d`
+                        : 'Membresía Vencida'}
                     </div>
                   </div>
                 ) : status === 'rebote' ? (
@@ -235,9 +253,12 @@ export default function OmniScanToast({
               </div>
             </div>
           ) : (
-            <div className="py-3.5">
-              <p className="text-xs font-mono text-zinc-300">
-                El DNI <strong className="text-amber-400">{dni}</strong> leído por el escáner no coincide con ningún socio registrado en el padrón.
+            <div className="py-3.5 space-y-1">
+              <p className="text-xs font-mono text-zinc-200">
+                El DNI <strong className="text-amber-400 font-bold">{dni}</strong> leído por el escáner no coincide con ningún socio registrado en el padrón.
+              </p>
+              <p className="text-[11px] font-mono text-red-300">
+                Acceso no autorizado. Inscribe al atleta para permitir su ingreso.
               </p>
             </div>
           )}
@@ -258,35 +279,43 @@ export default function OmniScanToast({
               </button>
             )}
 
-            {(status === 'vencido' || status === 'por_vencer') && onRenovarPlan && socio && (
+            {(status === 'vencido' || status === 'por_vencer') && (onRenovarPlan || onRenovar) && socio && (
               <button
                 type="button"
                 onClick={() => {
-                  onRenovarPlan(socio.dni);
+                  if (onRenovar) {
+                    onRenovar(socio);
+                  } else if (onRenovarPlan) {
+                    onRenovarPlan(socio.dni);
+                  }
                   onClose();
                 }}
                 className={`flex-1 py-2.5 px-3 rounded-xl font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md ${
                   status === 'por_vencer'
                     ? 'bg-yellow-400 hover:bg-yellow-300 text-black'
-                    : 'bg-red-500 hover:bg-red-400 text-white'
+                    : 'bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white shadow-red-500/30 ring-2 ring-red-400/50'
                 }`}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>{status === 'por_vencer' ? 'Renovar con Anticipación' : 'Renovar Membresía'}</span>
+                <span>{status === 'por_vencer' ? 'Renovar con Anticipación' : '🔄 Renovar Membresía Ahora'}</span>
               </button>
             )}
 
-            {status === 'no_encontrado' && onInscribirDni && (
+            {(status === 'no_encontrado' || status === 'no_inscrito') && (onInscribir || onInscribirDni) && (
               <button
                 type="button"
                 onClick={() => {
-                  onInscribirDni(dni);
+                  if (onInscribir) {
+                    onInscribir(dni);
+                  } else if (onInscribirDni) {
+                    onInscribirDni(dni);
+                  }
                   onClose();
                 }}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-400/25 ring-2 ring-amber-400/60"
               >
                 <User className="w-3.5 h-3.5" />
-                <span>Inscribir Nuevo Socio</span>
+                <span>📝 Inscribir Atleta con este DNI</span>
               </button>
             )}
 

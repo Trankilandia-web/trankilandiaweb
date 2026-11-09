@@ -17,6 +17,7 @@ import {
   MapPin,
   Check,
   Tag,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES_CONFIG, UserRole } from '../types/roles';
@@ -254,6 +255,20 @@ export default function UserProfileDropdown() {
                       <span>Mi Rutina del Coach &amp; PRs</span>
                     </span>
                     <span className="text-[10px] font-mono text-zinc-500">Día 1</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      navigate('/cliente?tab=seguridad');
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
+                  >
+                    <span className="flex items-center gap-2">
+                      <KeyRound className="w-4 h-4 text-amber-400" />
+                      <span>Seguridad &amp; Cambiar Clave</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-400 font-bold">DNI / Google</span>
                   </button>
                 </>
               )}

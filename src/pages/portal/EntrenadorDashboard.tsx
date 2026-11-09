@@ -269,12 +269,18 @@ export default function EntrenadorDashboard() {
       // Filtro de Coach
       const matchCoach = filterCoach === 'all' || (m.coachName && m.coachName.includes(filterCoach));
 
-      // Búsqueda por texto
-      const query = searchMember.toLowerCase();
+      // Búsqueda por texto insensible a tildes y mayúsculas
+      const rawQ = searchMember.trim().toLowerCase();
+      const normalize = (str: string) =>
+        str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+      const qNorm = normalize(rawQ);
+      const nameNorm = normalize(m.name || '');
+
       const matchSearch =
-        m.name.toLowerCase().includes(query) ||
-        (m.dni && m.dni.includes(query)) ||
-        m.id.toLowerCase().includes(query);
+        !rawQ ||
+        nameNorm.includes(qNorm) ||
+        (m.dni && m.dni.includes(rawQ)) ||
+        m.id.toLowerCase().includes(rawQ);
 
       return matchShift && matchCoach && matchSearch;
     });
@@ -379,7 +385,7 @@ export default function EntrenadorDashboard() {
       <PortalHeader
         currentRole="entrenador"
         title="Panel del Entrenador (Coach)"
-        subtitle="Gestión de Rutinas por Turno · Carga Bajo Demanda · Evaluación de Marcas"
+        subtitle="Gestión de Rutinas, Turnos y Evaluación de Marcas"
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">

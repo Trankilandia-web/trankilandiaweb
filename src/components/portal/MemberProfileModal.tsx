@@ -11,6 +11,9 @@ import {
   FileCheck,
   Upload,
   Eye,
+  Sparkles,
+  Lock,
+  Mail,
 } from 'lucide-react';
 import { GymMember, getStoredCatalogPlans, CatalogPlanOption } from '../../data/gymStore';
 import { OFFICIAL_COACHES } from '../../pages/portal/ClientePortal';
@@ -22,6 +25,7 @@ interface MemberProfileModalProps {
   member: GymMember | null;
   onSave: (updatedMember: GymMember) => Promise<void>;
   onOpenPaymentModal?: (member: GymMember) => void;
+  initialTab?: 'personal' | 'membership' | 'shift' | 'documentos';
 }
 
 export default function MemberProfileModal({
@@ -30,11 +34,14 @@ export default function MemberProfileModal({
   member,
   onSave,
   onOpenPaymentModal,
+  initialTab = 'personal',
 }: MemberProfileModalProps) {
   if (!isOpen || !member) return null;
 
   const [formData, setFormData] = useState<GymMember>({ ...member });
-  const [activeTab, setActiveTab] = useState<'personal' | 'membership' | 'shift' | 'documentos'>('personal');
+  const [activeTab, setActiveTab] = useState<'personal' | 'membership' | 'shift' | 'documentos'>(
+    initialTab || 'personal'
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [gymPlans, setGymPlans] = useState<CatalogPlanOption[]>(getStoredCatalogPlans);
@@ -47,8 +54,11 @@ export default function MemberProfileModal({
 
   useEffect(() => {
     setFormData({ ...member });
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
     setSuccessMsg(null);
-  }, [member]);
+  }, [member, initialTab]);
 
   const handleInputChange = (field: keyof GymMember, value: any) => {
     setFormData((prev) => {
@@ -79,21 +89,45 @@ export default function MemberProfileModal({
     if (found) {
       setFormData((prev) => {
         const newPrice = found.price;
-        const balance = Math.max(0, newPrice - prev.advancePaid);
         const expDate = new Date();
         expDate.setMonth(expDate.getMonth() + (found.months || 1));
         const newExpiresAt = expDate.toISOString().split('T')[0];
+        const todayStr = new Date().toISOString().split('T')[0];
         return {
           ...prev,
           plan: found.name,
           planPrice: newPrice,
-          balanceDue: balance,
-          paymentType: balance === 0 ? 'full' : 'advance',
+          advancePaid: newPrice, // Pagado completo por defecto al seleccionar plan oficial
+          balanceDue: 0,
+          paymentType: 'full',
           membershipStatus: 'active',
-          expiresAt: prev.expiresAt && prev.membershipStatus === 'active' ? prev.expiresAt : newExpiresAt,
+          registeredAt: prev.registeredAt && prev.registeredAt !== 'Oct 2026' ? prev.registeredAt : todayStr,
+          expiresAt: newExpiresAt,
         };
       });
     }
+  };
+
+  // Renovación Rápida con 1 Clic
+  const handleQuickRenew = (months: number = 1) => {
+    const defaultPlan = gymPlans[0] || { name: '1 Mes · Musculación Libre', price: 80, months: 1 };
+    const targetPlan = gymPlans.find((p) => (p.months || 1) === months) || defaultPlan;
+    const expDate = new Date();
+    expDate.setMonth(expDate.getMonth() + months);
+    const newExpiresAt = expDate.toISOString().split('T')[0];
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    setFormData((prev) => ({
+      ...prev,
+      plan: targetPlan.name,
+      planPrice: targetPlan.price,
+      advancePaid: targetPlan.price,
+      balanceDue: 0,
+      paymentType: 'full',
+      membershipStatus: 'active',
+      registeredAt: todayStr,
+      expiresAt: newExpiresAt,
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,6 +144,10 @@ export default function MemberProfileModal({
   };
 
   const hasDebt = formData.balanceDue > 0;
+  const isSinPlan = !formData.plan || formData.plan === 'Sin Membresía Activa' || formData.planPrice === 0;
+  const todayISO = new Date().toISOString().split('T')[0];
+  const isExpired = formData.expiresAt ? normalizeDateToISO(formData.expiresAt) < todayISO : true;
+  const isInactive = formData.membershipStatus === 'inactive' || isSinPlan || isExpired;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
@@ -128,13 +166,21 @@ export default function MemberProfileModal({
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400">
                   {formData.id}
                 </span>
-                {hasDebt ? (
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-                    Debe S/. {formData.balanceDue.toFixed(2)}
+                {isSinPlan ? (
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-zinc-800 text-amber-300 border border-amber-400/30 font-bold">
+                    ⚪ Sin Membresía
+                  </span>
+                ) : isInactive ? (
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold">
+                    🔴 Membresía Vencida
+                  </span>
+                ) : hasDebt ? (
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
+                    🟡 Debe S/. {formData.balanceDue.toFixed(2)}
                   </span>
                 ) : (
-                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold">
-                    100% Al Día
+                  <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold">
+                    🟢 100% Al Día
                   </span>
                 )}
               </div>
@@ -242,19 +288,69 @@ export default function MemberProfileModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
-                    DNI / Documento (8 dígitos)
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={8}
-                    value={formData.dni || ''}
-                    onChange={(e) => handleInputChange('dni', e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ej. 87654321"
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
-                  />
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-mono font-bold text-zinc-400">
+                      DNI / Documento Oficial
+                    </label>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-white/5 font-bold">
+                      <Lock className="w-2.5 h-2.5 text-amber-400" />
+                      Bloqueado
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      value={formData.dni || 'Sin DNI'}
+                      className="w-full bg-zinc-950/70 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-zinc-300 font-mono cursor-not-allowed select-none pl-9"
+                    />
+                    <Lock className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1 font-mono">
+                    DNI oficial no modificable por seguridad de la cuenta.
+                  </p>
                 </div>
 
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-mono font-bold text-zinc-400">
+                      Correo Electrónico (Email)
+                    </label>
+                    {formData.email && !formData.email.endsWith('@socio.trankilandia.pe') && !formData.email.endsWith('@cliente.trankilandia.pe') ? (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-white/5 font-bold">
+                        <Lock className="w-2.5 h-2.5 text-amber-400" />
+                        Bloqueado
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20 font-bold">
+                        Por Asignar
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      readOnly={Boolean(formData.email && !formData.email.endsWith('@socio.trankilandia.pe') && !formData.email.endsWith('@cliente.trankilandia.pe'))}
+                      value={formData.email || ''}
+                      onChange={(e) => handleInputChange('email', e.target.value)}
+                      placeholder="correo@ejemplo.com"
+                      className={`w-full rounded-xl px-3.5 py-2 text-sm font-mono pl-9 ${
+                        formData.email && !formData.email.endsWith('@socio.trankilandia.pe') && !formData.email.endsWith('@cliente.trankilandia.pe')
+                          ? 'bg-zinc-950/70 border border-white/10 text-zinc-300 cursor-not-allowed select-none'
+                          : 'bg-zinc-950 border border-amber-400/30 text-white focus:outline-none focus:border-amber-400'
+                      }`}
+                    />
+                    <Mail className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1 font-mono">
+                    {formData.email && !formData.email.endsWith('@socio.trankilandia.pe') && !formData.email.endsWith('@cliente.trankilandia.pe')
+                      ? 'Correo vinculado al socio (bloqueado por seguridad).'
+                      : 'Casilla vacía: ingresa el correo para asociarlo al socio.'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                     Teléfono Celular
@@ -281,9 +377,7 @@ export default function MemberProfileModal({
                     )}
                   </div>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                     Edad
@@ -297,20 +391,20 @@ export default function MemberProfileModal({
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
-                    Género / Sexo
-                  </label>
-                  <select
-                    value={formData.gender || 'Masculino'}
-                    onChange={(e) => handleInputChange('gender', e.target.value)}
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
-                  >
-                    <option value="Masculino">Masculino</option>
-                    <option value="Femenino">Femenino</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                  Género / Sexo
+                </label>
+                <select
+                  value={formData.gender || 'Masculino'}
+                  onChange={(e) => handleInputChange('gender', e.target.value)}
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
+                >
+                  <option value="Masculino">Masculino</option>
+                  <option value="Femenino">Femenino</option>
+                </select>
               </div>
 
               <div>
@@ -331,6 +425,36 @@ export default function MemberProfileModal({
           {/* TAB 2: MEMBRESÍA & FINANZAS */}
           {activeTab === 'membership' && (
             <div className="space-y-4">
+              {/* Tarjeta de Renovación Rápida con 1 Clic */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-amber-400/10 to-transparent border border-amber-400/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs font-black text-amber-400 uppercase tracking-tight flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>Renovación Rápida (1 Clic)</span>
+                  </div>
+                  <div className="text-[11px] text-zinc-300 font-sans mt-0.5">
+                    Activa la membresía oficial desde hoy, calcula fecha de vencimiento y deja la cuenta al día.
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleQuickRenew(1)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider transition-all cursor-pointer shadow-md shrink-0"
+                  >
+                    + 1 Mes (S/. {gymPlans[0]?.price || 80})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickRenew(3)}
+                    className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 font-bold text-xs font-mono uppercase border border-white/10 transition-colors cursor-pointer shrink-0"
+                  >
+                    + 3 Meses
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                   Plan de Entrenamiento
@@ -394,18 +518,31 @@ export default function MemberProfileModal({
                   </span>
                 </div>
 
-                {hasDebt && onOpenPaymentModal && (
-                  <div className="pt-2">
+                {/* Acciones de Ajuste Financiero */}
+                <div className="pt-2 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleInputChange('advancePaid', formData.planPrice);
+                      handleInputChange('balanceDue', 0);
+                      handleInputChange('paymentType', 'full');
+                    }}
+                    className="flex-1 py-1.5 px-3 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono transition-colors cursor-pointer border border-white/5"
+                  >
+                    Marcar Pagado 100%
+                  </button>
+
+                  {hasDebt && onOpenPaymentModal && (
                     <button
                       type="button"
                       onClick={() => onOpenPaymentModal(formData)}
-                      className="w-full py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/20"
+                      className="flex-1 py-1.5 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
                     >
-                      <DollarSign className="w-4 h-4" />
-                      <span>COBRAR / REGISTRAR ABONO PARCIAL</span>
+                      <DollarSign className="w-3.5 h-3.5" />
+                      <span>Cobrar Abono</span>
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -415,7 +552,7 @@ export default function MemberProfileModal({
                   </label>
                   <input
                     type="date"
-                    value={formData.registeredAt}
+                    value={formData.registeredAt ? normalizeDateToISO(formData.registeredAt) : todayISO}
                     onChange={(e) => handleInputChange('registeredAt', e.target.value)}
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
                   />
@@ -428,7 +565,20 @@ export default function MemberProfileModal({
                   <input
                     type="date"
                     value={formData.expiresAt ? normalizeDateToISO(formData.expiresAt) : ''}
-                    onChange={(e) => handleInputChange('expiresAt', e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      handleInputChange('expiresAt', val);
+                      if (val >= todayISO) {
+                        handleInputChange('membershipStatus', 'active');
+                        if (isSinPlan) {
+                          const defaultPlan = gymPlans[0] || { name: '1 Mes · Musculación Libre', price: 80 };
+                          handleInputChange('plan', defaultPlan.name);
+                          handleInputChange('planPrice', defaultPlan.price);
+                          handleInputChange('advancePaid', defaultPlan.price);
+                          handleInputChange('balanceDue', 0);
+                        }
+                      }
+                    }}
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
                   />
                   {/* Extensiones Rápidas de Membresía */}
@@ -437,11 +587,20 @@ export default function MemberProfileModal({
                     <button
                       type="button"
                       onClick={() => {
-                        const baseDate = formData.expiresAt ? new Date(normalizeDateToISO(formData.expiresAt)) : new Date();
+                        const baseDate = formData.expiresAt && normalizeDateToISO(formData.expiresAt) >= todayISO
+                          ? new Date(normalizeDateToISO(formData.expiresAt))
+                          : new Date();
                         baseDate.setDate(baseDate.getDate() + 30);
                         const nextISO = baseDate.toISOString().split('T')[0];
                         handleInputChange('expiresAt', nextISO);
                         handleInputChange('membershipStatus', 'active');
+                        if (isSinPlan) {
+                          const defaultPlan = gymPlans[0] || { name: '1 Mes · Musculación Libre', price: 80 };
+                          handleInputChange('plan', defaultPlan.name);
+                          handleInputChange('planPrice', defaultPlan.price);
+                          handleInputChange('advancePaid', defaultPlan.price);
+                          handleInputChange('balanceDue', 0);
+                        }
                       }}
                       className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-amber-300 border border-white/10 cursor-pointer"
                     >
@@ -450,11 +609,20 @@ export default function MemberProfileModal({
                     <button
                       type="button"
                       onClick={() => {
-                        const baseDate = formData.expiresAt ? new Date(normalizeDateToISO(formData.expiresAt)) : new Date();
+                        const baseDate = formData.expiresAt && normalizeDateToISO(formData.expiresAt) >= todayISO
+                          ? new Date(normalizeDateToISO(formData.expiresAt))
+                          : new Date();
                         baseDate.setDate(baseDate.getDate() + 90);
                         const nextISO = baseDate.toISOString().split('T')[0];
                         handleInputChange('expiresAt', nextISO);
                         handleInputChange('membershipStatus', 'active');
+                        if (isSinPlan) {
+                          const defaultPlan = gymPlans[0] || { name: '1 Mes · Musculación Libre', price: 80 };
+                          handleInputChange('plan', defaultPlan.name);
+                          handleInputChange('planPrice', defaultPlan.price);
+                          handleInputChange('advancePaid', defaultPlan.price);
+                          handleInputChange('balanceDue', 0);
+                        }
                       }}
                       className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-amber-300 border border-white/10 cursor-pointer"
                     >
@@ -463,11 +631,20 @@ export default function MemberProfileModal({
                     <button
                       type="button"
                       onClick={() => {
-                        const baseDate = formData.expiresAt ? new Date(normalizeDateToISO(formData.expiresAt)) : new Date();
+                        const baseDate = formData.expiresAt && normalizeDateToISO(formData.expiresAt) >= todayISO
+                          ? new Date(normalizeDateToISO(formData.expiresAt))
+                          : new Date();
                         baseDate.setFullYear(baseDate.getFullYear() + 1);
                         const nextISO = baseDate.toISOString().split('T')[0];
                         handleInputChange('expiresAt', nextISO);
                         handleInputChange('membershipStatus', 'active');
+                        if (isSinPlan) {
+                          const defaultPlan = gymPlans[0] || { name: '1 Mes · Musculación Libre', price: 80 };
+                          handleInputChange('plan', defaultPlan.name);
+                          handleInputChange('planPrice', defaultPlan.price);
+                          handleInputChange('advancePaid', defaultPlan.price);
+                          handleInputChange('balanceDue', 0);
+                        }
                       }}
                       className="px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-[10px] font-mono text-amber-300 border border-white/10 cursor-pointer"
                     >
@@ -483,7 +660,25 @@ export default function MemberProfileModal({
                 </label>
                 <select
                   value={formData.membershipStatus}
-                  onChange={(e) => handleInputChange('membershipStatus', e.target.value as any)}
+                  onChange={(e) => {
+                    const newStatus = e.target.value as 'active' | 'expiring' | 'inactive';
+                    handleInputChange('membershipStatus', newStatus);
+                    if (newStatus === 'active') {
+                      const currentExp = formData.expiresAt ? normalizeDateToISO(formData.expiresAt) : '';
+                      if (!currentExp || currentExp < todayISO) {
+                        const exp = new Date();
+                        exp.setDate(exp.getDate() + 30);
+                        handleInputChange('expiresAt', exp.toISOString().split('T')[0]);
+                      }
+                      if (isSinPlan) {
+                        const defaultPlan = gymPlans[0] || { name: '1 Mes · Musculación Libre', price: 80 };
+                        handleInputChange('plan', defaultPlan.name);
+                        handleInputChange('planPrice', defaultPlan.price);
+                        handleInputChange('advancePaid', defaultPlan.price);
+                        handleInputChange('balanceDue', 0);
+                      }
+                    }
+                  }}
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
                 >
                   <option value="active">Activa (Vigente)</option>

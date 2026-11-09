@@ -8,7 +8,7 @@
 export interface LiveScanEvent {
   id: string;
   timestamp: number;
-  status: 'al_dia' | 'por_vencer' | 'vencido' | 'con_deuda' | 'rebote' | 'no_encontrado';
+  status: 'al_dia' | 'por_vencer' | 'vencido' | 'con_deuda' | 'rebote' | 'no_encontrado' | 'no_inscrito';
   athleteName: string;
   dni: string;
   plan: string;
@@ -104,43 +104,61 @@ export function playAccessAlert(type: 'success' | 'warning' | 'error' | 'rebote'
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioContextClass) return;
     const ctx = new AudioContextClass();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
 
     if (type === 'success') {
+      // Audio beep agudo 880Hz ascendente
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(880, ctx.currentTime);
       osc.frequency.exponentialRampToValueAtTime(1320, ctx.currentTime + 0.12);
-      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.14);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.15);
     } else if (type === 'warning') {
+      // Tono grave 220Hz (vencido / advertencia)
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'triangle';
-      osc.frequency.setValueAtTime(600, ctx.currentTime);
-      osc.frequency.setValueAtTime(450, ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.26);
-    } else if (type === 'error') {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sawtooth';
       osc.frequency.setValueAtTime(220, ctx.currentTime);
-      osc.frequency.setValueAtTime(160, ctx.currentTime + 0.15);
       gain.gain.setValueAtTime(0.35, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.28);
       osc.connect(gain);
       gain.connect(ctx.destination);
       osc.start();
-      osc.stop(ctx.currentTime + 0.36);
+      osc.stop(ctx.currentTime + 0.3);
+    } else if (type === 'error') {
+      // Dos beeps cortos graves (DNI no registrado / error)
+      const t = ctx.currentTime;
+      // Primer beep corto grave (180Hz)
+      const osc1 = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.type = 'sawtooth';
+      osc1.frequency.setValueAtTime(180, t);
+      gain1.gain.setValueAtTime(0.3, t);
+      gain1.gain.exponentialRampToValueAtTime(0.01, t + 0.09);
+      osc1.connect(gain1);
+      gain1.connect(ctx.destination);
+      osc1.start(t);
+      osc1.stop(t + 0.1);
+
+      // Segundo beep corto grave (180Hz)
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.type = 'sawtooth';
+      osc2.frequency.setValueAtTime(180, t + 0.13);
+      gain2.gain.setValueAtTime(0.3, t + 0.13);
+      gain2.gain.exponentialRampToValueAtTime(0.01, t + 0.22);
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.start(t + 0.13);
+      osc2.stop(t + 0.23);
     } else if (type === 'rebote') {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();

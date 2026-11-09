@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { extraerDniPeru } from './dniParser';
+import { getStoredCustomPassword } from './authPasswords';
 
 const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
@@ -80,11 +82,20 @@ export const signInWithEmail = async (email: string, password: string) => {
  * intenta registrarla/aprovisionarla automáticamente.
  */
 export const signInWithDni = async (dni: string, password: string) => {
-  const cleanDni = dni.trim().replace(/\D/g, '');
-  if (cleanDni.length !== 8) {
+  const cleanDni = extraerDniPeru(dni) || dni.trim().replace(/\D/g, '').slice(0, 8);
+  if (!cleanDni || cleanDni.length !== 8) {
     return {
       data: null,
       error: new Error('El DNI debe tener exactamente 8 dígitos numéricos.'),
+    };
+  }
+
+  const customPw = getStoredCustomPassword(cleanDni);
+  // Si tiene contraseña personalizada y no coincide
+  if (customPw && password !== customPw) {
+    return {
+      data: null,
+      error: new Error('Contraseña incorrecta para el DNI ingresado. Si la olvidaste, puedes cambiarla abajo.'),
     };
   }
 
@@ -111,11 +122,11 @@ export const signInWithDni = async (dni: string, password: string) => {
   });
 
   // 2. Si falló y es su primer ingreso con contraseña = DNI
-  if (res.error && password === cleanDni) {
+  if (res.error && (password === cleanDni || (customPw && password === customPw))) {
     try {
       const signUpRes = await supabase.auth.signUp({
         email: canonicalEmail,
-        password: cleanDni,
+        password: password,
         options: {
           data: {
             dni: cleanDni,
@@ -132,7 +143,7 @@ export const signInWithDni = async (dni: string, password: string) => {
       if (!signUpRes.error && signUpRes.data.user) {
         res = await supabase.auth.signInWithPassword({
           email: canonicalEmail,
-          password: cleanDni,
+          password: password,
         });
       }
     } catch {}

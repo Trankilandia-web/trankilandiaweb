@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, signOut as supabaseSignOut } from '../lib/supabase';
 import { UserRole, ROLES_CONFIG, getRoleRedirectPath } from '../types/roles';
+import { extraerDniPeru } from '../lib/dniParser';
+import { getStoredMembers } from '../data/gymStore';
 
 interface AuthContextType {
   user: User | null;
@@ -65,12 +67,45 @@ function resolveDefaultRole(user: User | null): UserRole {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.JSX.Element {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const storedUserRaw = localStorage.getItem(USER_STORAGE_KEY);
+      if (storedUserRaw) {
+        return JSON.parse(storedUserRaw) as User;
+      }
+    } catch {}
+    return null;
+  });
+
   const [session, setSession] = useState<Session | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [actualRole, setActualRole] = useState<UserRole>('cliente');
-  const [role, setRoleState] = useState<UserRole>('cliente');
   const isConfigured = isSupabaseConfigured();
+  const [isLoading, setIsLoading] = useState(!user && isConfigured);
+
+  const [actualRole, setActualRole] = useState<UserRole>(() => {
+    try {
+      const storedUserRaw = localStorage.getItem(USER_STORAGE_KEY);
+      const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
+      if (savedRole && ROLES_CONFIG[savedRole]) return savedRole;
+      if (storedUserRaw) {
+        const parsed = JSON.parse(storedUserRaw) as User;
+        return resolveDefaultRole(parsed);
+      }
+    } catch {}
+    return 'cliente';
+  });
+
+  const [role, setRoleState] = useState<UserRole>(() => {
+    try {
+      const storedUserRaw = localStorage.getItem(USER_STORAGE_KEY);
+      const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
+      if (savedRole && ROLES_CONFIG[savedRole]) return savedRole;
+      if (storedUserRaw) {
+        const parsed = JSON.parse(storedUserRaw) as User;
+        return resolveDefaultRole(parsed);
+      }
+    } catch {}
+    return 'cliente';
+  });
 
   const isAdmin = (actualRole as string) === 'admin' || (role as string) === 'admin';
 
@@ -193,29 +228,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     name?: string
   ): Promise<{ success: boolean; role: UserRole; redirectPath: string }> => {
     const rawInput = identifier.trim();
-    const cleanDni = rawInput.replace(/\D/g, '');
-    const isDni = cleanDni.length === 8;
     const isEmail = rawInput.includes('@');
+    const parsedDni = isEmail ? null : (extraerDniPeru(rawInput) || rawInput.replace(/\D/g, '').slice(0, 8));
+    const cleanDni = parsedDni || '';
+    const isDni = cleanDni.length === 8;
     const userEmail = isEmail ? rawInput.toLowerCase() : `${cleanDni}@socio.trankilandia.pe`;
 
     const isMasterAdmin = SUPER_ADMIN_EMAILS.some((admin) => admin.toLowerCase() === userEmail);
     const assignedRole: UserRole = isMasterAdmin ? 'admin' : 'cliente';
 
+    // Buscar socio local para unificar DNI y correo
+    const stored = getStoredMembers();
+    const matchedMember = isDni
+      ? stored.find((m) => m.dni && m.dni.trim() === cleanDni)
+      : isEmail
+      ? stored.find((m) => m.email && m.email.toLowerCase().trim() === userEmail)
+      : null;
+
+    const resolvedDni = isDni ? cleanDni : matchedMember?.dni || undefined;
+    const resolvedEmail = isEmail
+      ? userEmail
+      : matchedMember?.email && !matchedMember.email.endsWith('@socio.trankilandia.pe')
+      ? matchedMember.email
+      : userEmail;
+
     const displayName =
       name ||
+      matchedMember?.name ||
       (isMasterAdmin
         ? userEmail.includes('marisol')
           ? 'Marisol Flores'
           : 'Luis Gerardo Lloclla'
-        : `Socio ${cleanDni || rawInput}`);
+        : `Socio ${resolvedDni || cleanDni || rawInput}`);
 
     const authUserObj = {
-      id: isMasterAdmin ? `admin-${cleanDni || 'master'}` : `socio-${cleanDni}`,
-      email: userEmail,
+      id: isMasterAdmin ? `admin-${cleanDni || 'master'}` : `socio-${resolvedDni || cleanDni || 'cliente'}`,
+      email: resolvedEmail,
       app_metadata: {},
       user_metadata: {
         full_name: displayName,
-        dni: isDni ? cleanDni : undefined,
+        dni: resolvedDni,
+        personal_email: matchedMember?.email,
         role: assignedRole,
       },
       aud: 'authenticated',

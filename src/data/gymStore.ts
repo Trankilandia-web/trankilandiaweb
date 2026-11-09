@@ -72,8 +72,37 @@ export interface ProgressRecord {
   notes: string;
 }
 
-// Initial Real Members Loaded directly from Gym.xlsm (393 socios)
-export const INITIAL_MEMBERS: GymMember[] = (realMembersData as unknown) as GymMember[];
+// Initial Member: Luis Gerardo Llocclla Sauñe (Socio Fundador con membresía activa)
+export const LUIS_GERARDO_MEMBER: GymMember = {
+  id: 'MEM-2713',
+  name: 'Luis Gerardo Llocclla Sauñe',
+  dni: '70447087',
+  email: 'luisgerardolloccllasaune@gmail.com',
+  phone: '958183360',
+  plan: 'Combo Musculación + Escuela de Boxeo',
+  planPrice: 140,
+  paymentType: 'full',
+  advancePaid: 140,
+  balanceDue: 0,
+  paymentDueDate: null,
+  paymentMethod: 'yape',
+  receiptNumber: 'B001-000492',
+  membershipStatus: 'active',
+  registeredAt: '2026-11-01',
+  expiresAt: '2027-11-01',
+  coachName: 'Coach Marcos Rivas',
+  shift: 'manana',
+  observations: 'Socio activo. Enfoque en hipertrofia y acondicionamiento.',
+  age: 26,
+  gender: 'Masculino',
+};
+
+// Initial Real Members Loaded directly from Gym.xlsm + Luis Gerardo
+const rawList = (realMembersData as unknown) as GymMember[];
+export const INITIAL_MEMBERS: GymMember[] = [
+  LUIS_GERARDO_MEMBER,
+  ...rawList.filter((m) => m.dni !== '70447087' && m.id !== 'MEM-2713'),
+];
 
 // Initial Custom Routines per Member
 export const INITIAL_ROUTINES: Record<string, MemberRoutine> = {
@@ -123,10 +152,67 @@ export const INITIAL_ROUTINES: Record<string, MemberRoutine> = {
       },
     ],
   },
+  'MEM-2713': {
+    memberId: 'MEM-2713',
+    routineTitle: 'Fuerza Hipertrofia & Escuela de Boxeo',
+    objective: 'Aumento de masa muscular y potencia de golpeo',
+    coachName: 'Coach Marcos Rivas',
+    updatedAt: '01 Nov 2026',
+    coachNotes:
+      'Controlar la fase excéntrica en los presses de banca. En el saco, mantener guardia cerrada y girar cadera en el hook.',
+    days: [
+      {
+        id: 'D1',
+        dayName: 'Día 1: Empuje (Pecho, Hombro, Tríceps)',
+        focus: 'Fuerza & Densidad',
+        exercises: [
+          { id: 'E1', name: 'Press Banca con Barra', sets: 4, reps: '8-10', rest: '90s', notes: 'Pesado, pausa en pecho' },
+          { id: 'E2', name: 'Press Inclinado con Mancuernas', sets: 3, reps: '10-12', rest: '60s', notes: 'Enfoque clavicular' },
+          { id: 'E3', name: 'Press Militar de Pie', sets: 4, reps: '8', rest: '90s', notes: 'Apretar glúteos y core' },
+          { id: 'E4', name: 'Fondos en Paralelas lastrados', sets: 3, reps: '10', rest: '60s', notes: 'Inclinación leve al frente' },
+          { id: 'E5', name: 'Sombra de Boxeo con Mancuernas 1kg', sets: 4, reps: '3 min', rest: '45s', notes: 'Jabs, cross y desplazamientos' },
+        ],
+      },
+      {
+        id: 'D2',
+        dayName: 'Día 2: Tracción (Espalda & Bíceps)',
+        focus: 'Amplitud & Potencia dorsal',
+        exercises: [
+          { id: 'E6', name: 'Dominadas con Agarre Prono', sets: 4, reps: '8-10', rest: '90s', notes: 'Subir hasta barbilla' },
+          { id: 'E7', name: 'Remo con Barra Pendlay', sets: 4, reps: '8', rest: '90s', notes: 'Espalda paralela al piso' },
+          { id: 'E8', name: 'Jalón al Pecho Agarre Neutro', sets: 3, reps: '12', rest: '60s', notes: 'Retracción escapular' },
+          { id: 'E9', name: 'Curl con Barra Z de Pie', sets: 3, reps: '10-12', rest: '60s', notes: 'Codos pegados al torso' },
+          { id: 'E10', name: 'Saco Pesado de Boxeo', sets: 5, reps: '3 min', rest: '60s', notes: 'Combinaciones 1-2 y ganchos al cuerpo' },
+        ],
+      },
+      {
+        id: 'D3',
+        dayName: 'Día 3: Pierna & Core de Acero',
+        focus: 'Base y estabilidad atlética',
+        exercises: [
+          { id: 'E11', name: 'Sentadilla Libre con Barra', sets: 4, reps: '8', rest: '120s', notes: 'Romper paralelo con firmeza' },
+          { id: 'E12', name: 'Prensa Inclinada 45°', sets: 4, reps: '12', rest: '90s', notes: 'Sin hiperextender rodillas' },
+          { id: 'E13', name: 'Peso Muerto Rumano con Mancuernas', sets: 3, reps: '10', rest: '75s', notes: 'Sentir estiramiento de femorales' },
+          { id: 'E14', name: 'Elevaciones de Piernas Colgado', sets: 4, reps: '15', rest: '45s', notes: 'Para impacto y recepción en ring' },
+        ],
+      },
+    ],
+  },
 };
 
 // Initial Progress Records
 export const INITIAL_PROGRESS: ProgressRecord[] = [
+  {
+    id: 'PRG-00',
+    memberId: 'MEM-2713',
+    date: '01 Nov 2026',
+    weightKg: 76.5,
+    benchPressKg: 95,
+    squatKg: 120,
+    deadliftKg: 140,
+    pullupsRep: 14,
+    notes: 'Excelente base de fuerza en empuje y piernas.',
+  },
   {
     id: 'PRG-01',
     memberId: 'MEM-001',
@@ -162,17 +248,65 @@ export const INITIAL_PROGRESS: ProgressRecord[] = [
   },
 ];
 
-const STORAGE_KEY = 'trankilandia_members_v3';
+const STORAGE_KEY = 'trankilandia_members_v4';
 
 // Helper to get members from LocalStorage or Fallback
 export const getStoredMembers = (): GymMember[] => {
   try {
-    // Si existe la clave obsoleta de versiones anteriores, limpiarla para forzar los 393 socios reales de Gym.xlsm
-    if (localStorage.getItem('trankilandia_members')) {
-      localStorage.removeItem('trankilandia_members');
-    }
+    // Si existen claves obsoletas de versiones anteriores, limpiarlas
+    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3'].forEach((k) => {
+      if (localStorage.getItem(k)) {
+        localStorage.removeItem(k);
+      }
+    });
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed: GymMember[] = JSON.parse(raw);
+      // Garantizar que la cuenta de Luis Gerardo esté siempre con su membresía activa pagada
+      const luisIdx = parsed.findIndex((m) => m.dni === '70447087' || m.email === 'luisgerardolloccllasaune@gmail.com');
+      if (luisIdx >= 0) {
+        if (parsed[luisIdx].plan === 'Sin Membresía Activa' || parsed[luisIdx].membershipStatus === 'inactive' || (parsed[luisIdx].planPrice || 0) === 0) {
+          parsed[luisIdx] = {
+            ...parsed[luisIdx],
+            name: 'Luis Gerardo Llocclla Sauñe',
+            dni: '70447087',
+            email: 'luisgerardolloccllasaune@gmail.com',
+            phone: parsed[luisIdx].phone || '958183360',
+            plan: 'Combo Musculación + Escuela de Boxeo',
+            planPrice: 140,
+            advancePaid: 140,
+            balanceDue: 0,
+            paymentType: 'full',
+            membershipStatus: 'active',
+            expiresAt: '2027-11-01',
+            shift: 'manana',
+            coachName: 'Coach Marcos Rivas',
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        }
+        return parsed;
+      } else {
+        const withLuis = [LUIS_GERARDO_MEMBER, ...parsed];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(withLuis));
+        return withLuis;
+      }
+    }
+  } catch {}
+  return INITIAL_MEMBERS;
+};
+
+/**
+ * Restablece y fuerza la recarga limpia de todos los 417 socios actualizados desde Gym.xlsm
+ */
+export const reloadFreshMembersFromExcel = (): GymMember[] => {
+  try {
+    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', STORAGE_KEY].forEach((k) => {
+      localStorage.removeItem(k);
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_MEMBERS));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gym-members-updated', { detail: { count: INITIAL_MEMBERS.length } }));
+    }
   } catch {}
   return INITIAL_MEMBERS;
 };
@@ -180,6 +314,9 @@ export const getStoredMembers = (): GymMember[] => {
 export const saveStoredMembers = (members: GymMember[]) => {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('gym-members-updated', { detail: { count: members.length } }));
+    }
   } catch {}
 };
 

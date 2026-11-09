@@ -34,13 +34,17 @@ import {
   ChevronRight,
   ShieldCheck,
   X,
-  Radio,
   Volume2,
   VolumeX,
+  Camera,
+  Copy,
+  Mail,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
 import OmniScanToast from '../../components/portal/OmniScanToast';
+import CameraScannerModal from '../../components/portal/CameraScannerModal';
+import { extraerDniPeru } from '../../lib/dniParser';
 import {
   speakGymAnnouncement,
   playAccessAlert,
@@ -53,6 +57,7 @@ import {
   GymMember,
   getStoredMembers,
   saveStoredMembers,
+  reloadFreshMembersFromExcel,
   getStoredCatalogPlans,
   CatalogPlanOption,
 } from '../../data/gymStore';
@@ -73,6 +78,9 @@ import {
   updateMemberProfile,
   asignarDniYActivarCuenta,
   validarDocumentoSocio,
+  normalizeDateToISO,
+  subscribeToGymRealtime,
+  getGymMembers,
 } from '../../lib/supabaseDb';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
@@ -108,14 +116,26 @@ export default function CajaDashboard() {
   // Asignación de DNI a atletas sin DNI
   const [socioParaAsignarDni, setSocioParaAsignarDni] = useState<SocioRecepcion | null>(null);
   const [nuevoDniInput, setNuevoDniInput] = useState('');
+  const [nuevoEmailInput, setNuevoEmailInput] = useState('');
+  const [nuevoCelularInput, setNuevoCelularInput] = useState('');
   const [isSubmittingDni, setIsSubmittingDni] = useState(false);
   const [errorAsignarDni, setErrorAsignarDni] = useState<string | null>(null);
+
+  const handleAbrirAsignarDni = (socio: SocioRecepcion, dniInicial: string = '') => {
+    setSocioParaAsignarDni(socio);
+    const initialDni = dniInicial || (/^\d{8}$/.test(scannedDniInput.trim()) ? scannedDniInput.trim() : '');
+    setNuevoDniInput(initialDni);
+    const memberRel = members.find((m) => m.id === socio.id);
+    setNuevoEmailInput(socio.email || memberRel?.email || '');
+    setNuevoCelularInput(socio.celular || memberRel?.phone || '');
+    setErrorAsignarDni(null);
+  };
 
   // Escáner manual e interactivo
   const [scannedDniInput, setScannedDniInput] = useState('');
   const [voiceEnabled, setVoiceEnabled] = useState(isVoiceAlertsEnabled);
   const [lastScanResult, setLastScanResult] = useState<{
-    status: 'al_dia' | 'por_vencer' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | null;
+    status: 'al_dia' | 'por_vencer' | 'con_deuda' | 'vencido' | 'rebote' | 'no_encontrado' | 'no_inscrito' | null;
     socio: SocioRecepcion | null;
     dni: string;
     message: string;
@@ -129,6 +149,7 @@ export default function CajaDashboard() {
     timestamp: 0,
   });
   const [showOmniToast, setShowOmniToast] = useState(false);
+  const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
 
   // CRM State
   const [crmSearch, setCrmSearch] = useState('');
@@ -161,6 +182,7 @@ export default function CajaDashboard() {
   const [clientName, setClientName] = useState('');
   const [clientDni, setClientDni] = useState('');
   const [clientEmail, setClientEmail] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
   const [clientShift, setClientShift] = useState<'manana' | 'tarde' | 'noche'>('manana');
   const [isAdvancePayment, setIsAdvancePayment] = useState(false);
   const [advanceAmount, setAdvanceAmount] = useState<number>(50);
@@ -168,12 +190,48 @@ export default function CajaDashboard() {
   const [paymentMethod, setPaymentMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
   const [docVerifiedInPerson, setDocVerifiedInPerson] = useState(true);
 
+  // Helper para resetear formulario de inscripción
+  const handleResetForm = () => {
+    setClientName('');
+    setClientDni('');
+    setClientEmail('');
+    setClientPhone('');
+    setScannedDniInput('');
+    setIsAdvancePayment(false);
+  };
+
+  // Helper para pre-rellenar datos de socio en renovación o búsqueda DNI
+  const handlePreFillMember = (member: GymMember) => {
+    setClientDni(member.dni || '');
+    setClientName(member.name || '');
+    setClientEmail(member.email || '');
+    setClientPhone(member.phone || '');
+    if (member.shift) setClientShift(member.shift);
+  };
+
   // Modales
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
   const [customAbonoAmount, setCustomAbonoAmount] = useState<number>(0);
   const [profileModalMember, setProfileModalMember] = useState<GymMember | null>(null);
+  const [profileModalTab, setProfileModalTab] = useState<'personal' | 'membership' | 'shift' | 'documentos'>('personal');
   const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Modal de Credenciales de Acceso y Asistencia de Bienvenida
+  const [credencialesModal, setCredencialesModal] = useState<{
+    nombre: string;
+    dni: string;
+    email?: string | null;
+    phone?: string | null;
+    plan: string;
+    asistenciaMarcada: boolean;
+    hora: string;
+    member?: GymMember;
+    amount?: number;
+    paymentType?: string;
+    paymentMethod?: string;
+  } | null>(null);
+  const [copiedCredenciales, setCopiedCredenciales] = useState(false);
 
   // Modal de Boleta Membresía
   const [receiptModal, setReceiptModal] = useState<{
@@ -247,6 +305,96 @@ export default function CajaDashboard() {
 
   useEffect(() => {
     sincronizarDatosIniciales();
+  }, [sincronizarDatosIniciales]);
+
+  // Sincronización reactiva en tiempo real multi-dispositivo (Supabase Realtime, Storage y Eventos Locales)
+  useEffect(() => {
+    // 1. Manejador para recargar lista de socios sin congelar la UI
+    const handleSociosChange = async () => {
+      try {
+        const freshMembers = await getGymMembers();
+        setMembers(freshMembers);
+        const freshSocios = await fetchSociosParaRecepcion();
+        setListaSociosRecepcion(freshSocios);
+        const newMap = new Map<string, SocioRecepcion>();
+        freshSocios.forEach((s) => {
+          if (s.dni) newMap.set(s.dni, s);
+        });
+        setSociosMap(newMap);
+      } catch (err) {
+        console.warn('Error sincronizando socios en tiempo real:', err);
+      }
+    };
+
+    // 2. Manejador para nueva asistencia en tiempo real remoto
+    const handleAsistenciasChange = (payload: any) => {
+      const newAsistencia = payload?.new;
+      if (!newAsistencia) return;
+
+      const item: AsistenciaActiva = {
+        id: newAsistencia.id,
+        socio_id: newAsistencia.socio_id,
+        dni: newAsistencia.dni,
+        nombre: newAsistencia.nombre,
+        turno: (newAsistencia.turno as 'manana' | 'tarde' | 'noche') || 'manana',
+        fecha_ingreso: newAsistencia.fecha_ingreso || new Date().toISOString(),
+      };
+
+      setAsistenciasActivas((prev) => {
+        const exists = prev.some(
+          (a) =>
+            String(a.id) === String(item.id) ||
+            (a.dni === item.dni && Math.abs(new Date(a.fecha_ingreso).getTime() - new Date(item.fecha_ingreso).getTime()) < 5000)
+        );
+        if (exists) return prev;
+        return [item, ...prev];
+      });
+    };
+
+    // 3. Suscripción al canal Supabase Realtime
+    const unsubscribeRealtime = subscribeToGymRealtime({
+      onSociosChange: handleSociosChange,
+      onAsistenciasChange: handleAsistenciasChange,
+    });
+
+    // 4. Escuchar eventos 'storage' entre pestañas/ventanas
+    const handleStorage = (e: StorageEvent) => {
+      if (
+        !e.key ||
+        e.key === 'trankilandia_members_v1' ||
+        e.key === 'trankilandia_members_v3' ||
+        e.key === 'trankilandia_members' ||
+        e.key.includes('members')
+      ) {
+        const fresh = getStoredMembers();
+        setMembers(fresh);
+        sincronizarDatosIniciales();
+      }
+      if (
+        e.key === 'trankilandia_asistencias_sesion' ||
+        e.key === 'trankilandia_asistencias_offline'
+      ) {
+        cargarAsistenciasActivas90Min().then((asist) => {
+          setAsistenciasActivas(asist);
+        });
+      }
+    };
+
+    // 5. Escuchar evento de actualización local en la misma ventana/pestaña
+    const handleMembersUpdated = () => {
+      const fresh = getStoredMembers();
+      setMembers(fresh);
+      sincronizarDatosIniciales();
+    };
+
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('gym-members-updated', handleMembersUpdated);
+
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('gym-members-updated', handleMembersUpdated);
+      unsubscribeRealtime();
+    };
   }, [sincronizarDatosIniciales]);
 
   // Manejo de conexión online / offline
@@ -334,16 +482,21 @@ export default function CajaDashboard() {
   // 3. PROCESAMIENTO RÁPIDO DE INGRESO CON DETECCIÓN INTELIGENTE (VENCIDA, POR VENCER, AL DÍA, DEUDA)
   const procesarIngresoPorDni = useCallback(
     async (dniInput: string) => {
-      const targetDni = dniInput.trim();
-      if (!targetDni) return;
+      // Extraer y normalizar DNI (soporta DNI Azul 9 dígitos, asteriscos, MRZ, PDF417 y DNIe)
+      const parsedDni = extraerDniPeru(
+        dniInput,
+        new Set([...listaSociosRecepcion.map((s) => s.dni), ...members.map((m) => m.dni || '')].filter(Boolean))
+      );
+      const cleanDni = (parsedDni || dniInput.replace(/\D/g, '').slice(0, 8) || dniInput).trim();
+      if (!cleanDni) return;
 
       const now = Date.now();
 
-      // A) Comprobar Anti-Rebote en memoria (últimos 30 minutos)
+      // A) Comprobar Anti-Rebote en memoria (última hora: 60 minutos)
       const ingresoReciente = asistenciasActivas.find(
         (a) =>
-          (a.dni === targetDni || a.socio_id === targetDni) &&
-          now - new Date(a.fecha_ingreso).getTime() < 30 * 60 * 1000
+          (a.dni === cleanDni || a.socio_id === cleanDni) &&
+          now - new Date(a.fecha_ingreso).getTime() < 60 * 60 * 1000
       );
 
       if (ingresoReciente) {
@@ -353,9 +506,9 @@ export default function CajaDashboard() {
         );
         playTone('rebote');
         const socioExistente =
-          sociosMap.get(targetDni) ||
+          sociosMap.get(cleanDni) ||
           listaSociosRecepcion.find(
-            (s) => (s.dni && s.dni === targetDni) || s.id.toUpperCase() === targetDni.toUpperCase()
+            (s) => (s.dni && s.dni === cleanDni) || s.id.toUpperCase() === cleanDni.toUpperCase()
           ) ||
           null;
 
@@ -365,7 +518,7 @@ export default function CajaDashboard() {
         setLastScanResult({
           status: 'rebote',
           socio: socioExistente,
-          dni: targetDni,
+          dni: cleanDni,
           message: `YA REGISTRÓ INGRESO HACE ${diffMin} MIN (ANTI-REBOTE ACTIVO)`,
           timestamp: now,
           reboteMinutos: diffMin,
@@ -375,36 +528,84 @@ export default function CajaDashboard() {
       }
 
       // B) Buscar socio en el índice en memoria (< 2ms) o por ID (MEM-XXX)
-      let socio = sociosMap.get(targetDni);
+      let socio = sociosMap.get(cleanDni);
       if (!socio) {
         socio = listaSociosRecepcion.find(
           (s) =>
-            (s.dni && s.dni.trim() === targetDni) ||
-            (s.id && s.id.toUpperCase() === targetDni.toUpperCase())
+            (s.dni && s.dni.trim() === cleanDni) ||
+            (s.id && s.id.toUpperCase() === cleanDni.toUpperCase())
         );
       }
 
+      // Fallback directo a base local de miembros (garantiza encontrar recién inscritos)
       if (!socio) {
-        playTone('error');
-        const spokenText = `Alerta: DNI ${targetDni} no registrado en el sistema.`;
+        const localList = members.length > 0 ? members : getStoredMembers();
+        const found = localList.find(
+          (m) =>
+            (m.dni && m.dni.trim() === cleanDni) ||
+            (m.id && m.id.toUpperCase() === cleanDni.toUpperCase())
+        );
+        if (found) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          let diasRestantes = 0;
+          if (found.expiresAt) {
+            const expDate = new Date(found.expiresAt);
+            if (!isNaN(expDate.getTime())) {
+              expDate.setHours(0, 0, 0, 0);
+              diasRestantes = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            }
+          }
+          const socioCreado: SocioRecepcion = {
+            id: found.id,
+            dni: found.dni || cleanDni,
+            nombre: found.name,
+            plan: found.plan,
+            precio_plan: found.planPrice,
+            tipo_pago: found.paymentType,
+            adelanto_pagado: found.advancePaid,
+            saldo_pendiente: found.balanceDue,
+            fecha_limite_pago: found.paymentDueDate || null,
+            fecha_fin: found.expiresAt,
+            turno: found.shift || 'manana',
+            coach_asignado: found.coachName || 'Coach Marcos Rivas',
+            dias_restantes: diasRestantes,
+            estado_calculado:
+              found.membershipStatus === 'inactive' || diasRestantes < 0
+                ? 'vencido'
+                : diasRestantes <= 5
+                ? 'por_vencer'
+                : 'activo',
+            tiene_deuda_activa: (found.balanceDue || 0) > 0,
+            numero_boleta: found.receiptNumber,
+          };
+          socio = socioCreado;
+          setSociosMap((prev) => new Map(prev).set(socioCreado.dni, socioCreado));
+          setListaSociosRecepcion((prev) => [socioCreado, ...prev.filter((p) => p.dni !== socioCreado.dni)]);
+        }
+      }
+
+      if (!socio) {
+        playTone('error'); // Dos beeps cortos graves
+        const spokenText = `Alerta: DNI ${cleanDni} no registrado en el sistema.`;
         speakGymAnnouncement(spokenText);
 
         broadcastLiveScan({
           id: `unreg-${now}`,
           timestamp: now,
-          status: 'no_encontrado',
-          athleteName: `DNI ${targetDni}`,
-          dni: targetDni,
+          status: 'no_inscrito',
+          athleteName: `DNI ${cleanDni}`,
+          dni: cleanDni,
           plan: 'No Registrado',
           spokenText,
           alertTitle: 'DNI No Registrado',
         });
 
         setLastScanResult({
-          status: 'no_encontrado',
+          status: 'no_inscrito',
           socio: null,
-          dni: targetDni,
-          message: `DNI ${targetDni} NO REGISTRADO`,
+          dni: cleanDni,
+          message: `DNI ${cleanDni} NO REGISTRADO`,
           timestamp: now,
         });
         setShowOmniToast(true);
@@ -418,7 +619,7 @@ export default function CajaDashboard() {
       // C) Membresía Congelada (Pausa médica o viaje)
       const isFrozen = socio.observaciones?.includes('[MEMBRESÍA CONGELADA]') || (socio as any).membership_status === 'congelado';
       if (isFrozen) {
-        playTone('error');
+        playTone('warning');
         const spokenText = `Atención: ${socio.nombre}, membresía congelada temporalmente.`;
         speakGymAnnouncement(spokenText);
 
@@ -427,7 +628,7 @@ export default function CajaDashboard() {
           timestamp: now,
           status: 'vencido',
           athleteName: socio.nombre,
-          dni: targetDni,
+          dni: cleanDni,
           plan: socio.plan,
           spokenText,
           alertTitle: 'Membresía Congelada',
@@ -436,7 +637,7 @@ export default function CajaDashboard() {
         setLastScanResult({
           status: 'vencido',
           socio,
-          dni: targetDni,
+          dni: cleanDni,
           message: `ACCESO PAUSADO · MEMBRESÍA CONGELADA (VIAJE O SALUD)`,
           timestamp: now,
         });
@@ -449,7 +650,7 @@ export default function CajaDashboard() {
       const isExpired = socio.estado_calculado === 'vencido' || socio.dias_restantes < 0 || isSinPlan;
 
       if (isExpired) {
-        playTone('error');
+        playTone('warning'); // Tono grave 220Hz
         const message = isSinPlan
           ? `ACCESO DENEGADO · SOCIO SIN MEMBRESÍA ACTIVA`
           : `MEMBRESÍA VENCIDA HACE ${Math.abs(socio.dias_restantes)} DÍAS`;
@@ -461,7 +662,7 @@ export default function CajaDashboard() {
           timestamp: now,
           status: 'vencido',
           athleteName: socio.nombre,
-          dni: targetDni,
+          dni: cleanDni,
           plan: socio.plan,
           daysRemaining: socio.dias_restantes,
           balanceDue: socio.saldo_pendiente,
@@ -473,7 +674,7 @@ export default function CajaDashboard() {
         setLastScanResult({
           status: 'vencido',
           socio,
-          dni: targetDni,
+          dni: cleanDni,
           message,
           timestamp: now,
         });
@@ -495,7 +696,7 @@ export default function CajaDashboard() {
         const nuevaAsistencia: AsistenciaActiva = {
           id: `local-${now}`,
           socio_id: socio.id,
-          dni: socio.dni,
+          dni: socio.dni || cleanDni,
           nombre: socio.nombre,
           turno: socio.turno,
           fecha_ingreso: new Date().toISOString(),
@@ -505,7 +706,7 @@ export default function CajaDashboard() {
 
         registrarAsistencia({
           socio_id: socio.id,
-          dni: socio.dni,
+          dni: socio.dni || cleanDni,
           nombre: socio.nombre,
           turno: socio.turno,
         }).then((res) => {
@@ -519,7 +720,7 @@ export default function CajaDashboard() {
           timestamp: now,
           status: 'por_vencer',
           athleteName: socio.nombre,
-          dni: targetDni,
+          dni: cleanDni,
           plan: socio.plan,
           daysRemaining: socio.dias_restantes,
           balanceDue: socio.saldo_pendiente,
@@ -531,7 +732,7 @@ export default function CajaDashboard() {
         setLastScanResult({
           status: 'por_vencer',
           socio,
-          dni: targetDni,
+          dni: cleanDni,
           message,
           timestamp: now,
         });
@@ -549,7 +750,7 @@ export default function CajaDashboard() {
         const nuevaAsistencia: AsistenciaActiva = {
           id: `local-${now}`,
           socio_id: socio.id,
-          dni: socio.dni,
+          dni: socio.dni || cleanDni,
           nombre: socio.nombre,
           turno: socio.turno,
           fecha_ingreso: new Date().toISOString(),
@@ -559,7 +760,7 @@ export default function CajaDashboard() {
 
         registrarAsistencia({
           socio_id: socio.id,
-          dni: socio.dni,
+          dni: socio.dni || cleanDni,
           nombre: socio.nombre,
           turno: socio.turno,
         }).then((res) => {
@@ -573,7 +774,7 @@ export default function CajaDashboard() {
           timestamp: now,
           status: 'con_deuda',
           athleteName: socio.nombre,
-          dni: targetDni,
+          dni: cleanDni,
           plan: socio.plan,
           daysRemaining: socio.dias_restantes,
           balanceDue: socio.saldo_pendiente,
@@ -585,7 +786,7 @@ export default function CajaDashboard() {
         setLastScanResult({
           status: 'con_deuda',
           socio,
-          dni: targetDni,
+          dni: cleanDni,
           message,
           timestamp: now,
         });
@@ -594,7 +795,7 @@ export default function CajaDashboard() {
       }
 
       // G) Membresía 100% Activa y al Día
-      playTone('success');
+      playTone('success'); // Beep agudo 880Hz
       const message = `ACCESO AUTORIZADO · PLAN ${socio.plan.toUpperCase()}`;
       const spokenText = `Bienvenido ${socio.nombre}, acceso autorizado.`;
       speakGymAnnouncement(spokenText);
@@ -602,7 +803,7 @@ export default function CajaDashboard() {
       const nuevaAsistencia: AsistenciaActiva = {
         id: `local-${now}`,
         socio_id: socio.id,
-        dni: socio.dni,
+        dni: socio.dni || cleanDni,
         nombre: socio.nombre,
         turno: socio.turno,
         fecha_ingreso: new Date().toISOString(),
@@ -612,7 +813,7 @@ export default function CajaDashboard() {
 
       registrarAsistencia({
         socio_id: socio.id,
-        dni: socio.dni,
+        dni: socio.dni || cleanDni,
         nombre: socio.nombre,
         turno: socio.turno,
       }).then((res) => {
@@ -626,7 +827,7 @@ export default function CajaDashboard() {
         timestamp: now,
         status: 'al_dia',
         athleteName: socio.nombre,
-        dni: targetDni,
+        dni: cleanDni,
         plan: socio.plan,
         daysRemaining: socio.dias_restantes,
         balanceDue: 0,
@@ -638,28 +839,82 @@ export default function CajaDashboard() {
       setLastScanResult({
         status: 'al_dia',
         socio,
-        dni: targetDni,
+        dni: cleanDni,
         message,
         timestamp: now,
       });
       setShowOmniToast(true);
     },
-    [asistenciasActivas, sociosMap, listaSociosRecepcion]
+    [asistenciasActivas, sociosMap, listaSociosRecepcion, members]
   );
 
-  // Búsqueda en vivo de atletas por Nombre o DNI parcial (incluye atletas sin DNI)
+  // Búsqueda en vivo de atletas por Nombre, DNI o ID (flexible, sin distinción de tildes ni mayúsculas)
   const resultadosBusqueda = useMemo(() => {
-    const q = scannedDniInput.trim().toLowerCase();
-    if (!q || q.length < 2) return [];
+    const rawQ = scannedDniInput.trim().toLowerCase();
+    if (!rawQ || rawQ.length < 1) return [];
 
-    return listaSociosRecepcion
+    const normalize = (str: string) =>
+      str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+    const qNorm = normalize(rawQ);
+    const qDigits = rawQ.replace(/\D/g, '');
+
+    // Pool unificado: combina todo el padrón (members) y la data en tiempo real (listaSociosRecepcion)
+    const mapById = new Map<string, SocioRecepcion>();
+
+    // 1. Poblamos con members del padrón local (395 socios)
+    members.forEach((m) => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      let diasRestantes = 0;
+      if (m.expiresAt) {
+        const expDate = new Date(normalizeDateToISO(m.expiresAt));
+        if (!isNaN(expDate.getTime())) {
+          expDate.setHours(0, 0, 0, 0);
+          diasRestantes = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        }
+      }
+      const isExpired = diasRestantes < 0 || m.membershipStatus === 'inactive';
+      const item: SocioRecepcion = {
+        id: m.id,
+        dni: m.dni || '',
+        nombre: m.name,
+        plan: m.plan,
+        precio_plan: m.planPrice,
+        tipo_pago: m.paymentType,
+        adelanto_pagado: m.advancePaid,
+        saldo_pendiente: m.balanceDue,
+        fecha_limite_pago: m.paymentDueDate || null,
+        fecha_fin: m.expiresAt || '',
+        turno: (m.shift as 'manana' | 'tarde' | 'noche') || 'manana',
+        coach_asignado: m.coachName || 'Coach Marcos Rivas',
+        dias_restantes: diasRestantes,
+        estado_calculado: isExpired ? 'vencido' : diasRestantes <= 5 ? 'por_vencer' : 'activo',
+        tiene_deuda_activa: m.balanceDue > 0,
+        numero_boleta: m.receiptNumber || 'B001-000000',
+        observaciones: m.observations || null,
+        email: m.email || null,
+        celular: m.phone || null,
+      };
+      mapById.set(m.id, item);
+    });
+
+    // 2. Sobrescribir con listaSociosRecepcion sincronizada
+    listaSociosRecepcion.forEach((s) => {
+      mapById.set(s.id, s);
+    });
+
+    const pool = Array.from(mapById.values());
+
+    return pool
       .filter((s) => {
-        const matchName = s.nombre && s.nombre.toLowerCase().includes(q);
-        const matchDni = s.dni && s.dni.includes(q);
-        return matchName || matchDni;
+        const nameNorm = normalize(s.nombre || '');
+        const matchName = nameNorm.includes(qNorm);
+        const matchDni = (s.dni && s.dni.includes(rawQ)) || (qDigits.length >= 1 && s.dni && s.dni.includes(qDigits));
+        const matchId = s.id && s.id.toLowerCase().includes(rawQ);
+        return matchName || matchDni || matchId;
       })
-      .slice(0, 6);
-  }, [scannedDniInput, listaSociosRecepcion]);
+      .slice(0, 12);
+  }, [scannedDniInput, listaSociosRecepcion, members]);
 
   // Asignar DNI y Activar Cuenta de atleta
   const handleGuardarNuevoDni = async (e: React.FormEvent) => {
@@ -676,7 +931,9 @@ export default function CajaDashboard() {
     setErrorAsignarDni(null);
 
     try {
-      const res = await asignarDniYActivarCuenta(socioParaAsignarDni.id, cleanDni);
+      const emailVal = nuevoEmailInput.trim() || undefined;
+      const celularVal = nuevoCelularInput.trim() || undefined;
+      const res = await asignarDniYActivarCuenta(socioParaAsignarDni.id, cleanDni, emailVal, celularVal);
       setIsSubmittingDni(false);
 
       if (res.success && res.socioActualizado) {
@@ -696,12 +953,23 @@ export default function CajaDashboard() {
 
         // 3. Actualizar members general si existe
         setMembers((prev) =>
-          prev.map((m) => (m.id === updatedSocio.id ? { ...m, dni: cleanDni } : m))
+          prev.map((m) =>
+            m.id === updatedSocio.id
+              ? {
+                  ...m,
+                  dni: cleanDni,
+                  ...(emailVal ? { email: emailVal } : {}),
+                  ...(celularVal ? { phone: celularVal.replace(/\D/g, '').slice(0, 9) } : {}),
+                }
+              : m
+          )
         );
 
         // 4. Cerrar modal y limpiar
         setSocioParaAsignarDni(null);
         setNuevoDniInput('');
+        setNuevoEmailInput('');
+        setNuevoCelularInput('');
         setScannedDniInput('');
 
         // 5. Alerta de éxito y procesar asistencia
@@ -711,6 +979,19 @@ export default function CajaDashboard() {
         setTimeout(() => setSuccessMessage(null), 5000);
 
         procesarIngresoPorDni(cleanDni);
+
+        // 6. Abrir modal de credenciales de bienvenida para WhatsApp o Copiar
+        const horaActual = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+        setCredencialesModal({
+          nombre: updatedSocio.nombre,
+          dni: cleanDni,
+          plan: updatedSocio.plan,
+          email: nuevoEmailInput.trim() || undefined,
+          phone: nuevoCelularInput.trim() || undefined,
+          asistenciaMarcada: true,
+          hora: horaActual,
+          member: res.member,
+        });
       } else {
         setErrorAsignarDni(res.message);
       }
@@ -749,7 +1030,7 @@ export default function CajaDashboard() {
       ? (docVerifiedInPerson ? 'verificado' : 'pendiente')
       : undefined;
 
-    const cleanDni = clientDni.trim().replace(/\D/g, '');
+    const cleanDni = extraerDniPeru(clientDni) || clientDni.trim().replace(/\D/g, '').slice(0, 8);
     const existingMember = members.find((m) => m.dni && m.dni.trim() === cleanDni);
 
     // Calcular fecha de vencimiento: si ya tiene membresía vigente, extender desde esa fecha
@@ -776,8 +1057,8 @@ export default function CajaDashboard() {
         ...existingMember,
         name: clientName.trim() || existingMember.name,
         dni: cleanDni,
-        phone: clientEmail.includes('@') ? existingMember.phone : (clientEmail.trim() || existingMember.phone),
-        email: clientEmail.includes('@') ? clientEmail.trim() : existingMember.email,
+        phone: clientPhone.trim() || existingMember.phone || '',
+        email: clientEmail.trim() || existingMember.email || `${cleanDni}@cliente.trankilandia.pe`,
         plan: selectedPlan.name,
         planPrice: price,
         paymentType: isAdvancePayment ? 'advance' : 'full',
@@ -820,7 +1101,7 @@ export default function CajaDashboard() {
         name: clientName.trim(),
         dni: cleanDni,
         email: clientEmail.trim() || `${cleanDni}@cliente.trankilandia.pe`,
-        phone: clientEmail.includes('@') ? '' : clientEmail.trim(),
+        phone: clientPhone.trim(),
         plan: selectedPlan.name,
         planPrice: price,
         paymentType: isAdvancePayment ? 'advance' : 'full',
@@ -872,13 +1153,93 @@ export default function CajaDashboard() {
       return next;
     });
 
-    // Abrir comprobante
-    setReceiptModal({
-      isOpen: true,
+    setListaSociosRecepcion((prev) => {
+      const filtered = prev.filter((s) => s.id !== nuevoSocioRecepcion.id && s.dni !== nuevoSocioRecepcion.dni);
+      return [nuevoSocioRecepcion, ...filtered];
+    });
+
+    // Inmediatamente reflejar al socio como inscrito y al día (evita mensaje falso de "no inscrito")
+    setLastScanResult({
+      status: 'al_dia',
+      socio: nuevoSocioRecepcion,
+      dni: nuevoSocioRecepcion.dni,
+      message: `¡INSCRIPCIÓN EXITOSA! ACCESO AUTORIZADO · PLAN ${nuevoSocioRecepcion.plan.toUpperCase()}`,
+      timestamp: Date.now(),
+    });
+    setShowOmniToast(true);
+
+    // Difundir en vivo a todos los dispositivos (móvil y mostrador)
+    broadcastLiveScan({
+      id: nuevoSocioRecepcion.id,
+      timestamp: Date.now(),
+      status: 'al_dia',
+      athleteName: nuevoSocioRecepcion.nombre,
+      dni: nuevoSocioRecepcion.dni,
+      plan: nuevoSocioRecepcion.plan,
+      daysRemaining: durationDays,
+      balanceDue: balance,
+      shift: clientShift,
+      spokenText: `¡Bienvenido a Trankilandia Gym, ${nuevoSocioRecepcion.nombre}! Inscripción registrada con éxito.`,
+      alertTitle: 'Inscripción Exitosa · Acceso Autorizado',
+    });
+
+    if (voiceEnabled) {
+      playTone('success');
+      speakGymAnnouncement(`¡Bienvenido a Trankilandia Gym, ${nuevoSocioRecepcion.nombre}!`);
+    }
+
+    // Auto-registro de asistencia de bienvenida si se inscribe hoy y está al día / con abono
+    const nowTimestamp = Date.now();
+    const horaActual = new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+    const todayStr = new Date().toDateString();
+
+    const alreadyCheckedInToday = asistenciasActivas.some(
+      (a) =>
+        (a.dni === cleanDni || a.socio_id === memberToSave.id) &&
+        new Date(a.fecha_ingreso).toDateString() === todayStr
+    );
+
+    let asistenciaMarcada = false;
+    if (!alreadyCheckedInToday && (balance === 0 || paid > 0)) {
+      const nuevaAsistencia: AsistenciaActiva = {
+        id: `local-${nowTimestamp}`,
+        socio_id: memberToSave.id,
+        dni: cleanDni,
+        nombre: memberToSave.name,
+        turno: clientShift,
+        fecha_ingreso: new Date().toISOString(),
+      };
+
+      setAsistenciasActivas((prev) => [nuevaAsistencia, ...prev]);
+
+      registrarAsistencia({
+        socio_id: memberToSave.id,
+        dni: cleanDni,
+        nombre: memberToSave.name,
+        turno: clientShift,
+      }).then((res) => {
+        if (res?.offlineQueued) {
+          setOfflinePendingCount((c) => c + 1);
+        }
+      });
+      asistenciaMarcada = true;
+    } else if (alreadyCheckedInToday) {
+      asistenciaMarcada = true;
+    }
+
+    // Abrir modal de credenciales de acceso y bienvenida
+    setCredencialesModal({
+      nombre: memberToSave.name,
+      dni: cleanDni,
+      email: memberToSave.email,
+      phone: memberToSave.phone,
+      plan: memberToSave.plan,
+      asistenciaMarcada,
+      hora: horaActual,
       member: memberToSave,
       amount: paid,
-      type: isAdvancePayment ? 'Adelanto de Membresía' : 'Membresía Completa',
-      method: paymentMethod,
+      paymentType: isAdvancePayment ? 'Adelanto de Membresía' : 'Membresía Completa',
+      paymentMethod,
     });
 
     setSuccessMessage(
@@ -889,11 +1250,8 @@ export default function CajaDashboard() {
         : `Membresía cancelada al 100% (S/. ${price}.00) para ${memberToSave.name}. Turno: ${clientShift.toUpperCase()}.`
     );
 
-    // Resetear formulario
-    setClientName('');
-    setClientDni('');
-    setClientEmail('');
-    setIsAdvancePayment(false);
+    // Resetear formulario para evitar cruce de información
+    handleResetForm();
   };
 
   // Helper para recordatorio de vencimiento por WhatsApp
@@ -935,12 +1293,42 @@ export default function CajaDashboard() {
 
   // Helper para iniciar renovación
   const handleStartRenewal = (member: GymMember) => {
-    setClientDni(member.dni || '');
-    setClientName(member.name);
-    if (member.phone) setClientEmail(member.phone);
-    if (member.shift) setClientShift(member.shift);
+    handlePreFillMember(member);
     const matchedPlan = plansCatalog.find((p) => p.name.toLowerCase().includes((member.plan || '').toLowerCase())) || plansCatalog[0];
     setSelectedPlan(matchedPlan);
+    setActiveTab('inscripcion');
+  };
+
+  // Helper para iniciar renovación directa desde escaneo (banner o toast)
+  const handleRenovarDesdeEscaneo = (socioOrDni: SocioRecepcion | GymMember | string) => {
+    const targetDni = typeof socioOrDni === 'string' ? socioOrDni : (socioOrDni.dni || '');
+    const found = members.find((m) => m.dni === targetDni);
+    if (found) {
+      handleStartRenewal(found);
+    } else {
+      handleResetForm();
+      setClientDni(targetDni);
+      if (typeof socioOrDni !== 'string') {
+        const anySocio = socioOrDni as any;
+        setClientName(anySocio.nombre || anySocio.name || '');
+        if (anySocio.email) setClientEmail(anySocio.email);
+        if (anySocio.celular || anySocio.phone) {
+          setClientPhone(anySocio.celular || anySocio.phone || '');
+        }
+        if (anySocio.turno || anySocio.shift) {
+          setClientShift(anySocio.turno || anySocio.shift);
+        }
+        const matched = plansCatalog.find((p) => p.name.toLowerCase().includes((anySocio.plan || '').toLowerCase())) || plansCatalog[0];
+        setSelectedPlan(matched);
+      }
+      setActiveTab('inscripcion');
+    }
+  };
+
+  // Helper para inscribir directamente un DNI no registrado (banner o toast)
+  const handleInscribirNuevoDni = (unregisteredDni: string) => {
+    handleResetForm();
+    setClientDni(unregisteredDni);
     setActiveTab('inscripcion');
   };
 
@@ -1170,7 +1558,13 @@ export default function CajaDashboard() {
         return;
       }
 
-      // E) Procesar el ingreso del atleta (con notificación flotante inmediata en cualquier pestaña)
+      // E) Extraer y normalizar DNI (DNI Azul antiguo 9 dígitos, Code 39 asteriscos, MRZ, PDF417, DNIe)
+      const parsedDni = extraerDniPeru(code);
+      if (parsedDni) {
+        code = parsedDni;
+      }
+
+      // F) Procesar el ingreso del atleta (con notificación flotante inmediata en cualquier pestaña)
       procesarIngresoPorDni(code);
     },
     [activeTab, productos, agregarAlCarrito, procesarIngresoPorDni]
@@ -1183,12 +1577,12 @@ export default function CajaDashboard() {
 
       if (e.key === 'Enter') {
         if (buf.chars.length >= 4) {
-          // Medir el delta promedio de tecleo
+          // Medir el delta promedio de tecleo (tolerante a pistolas 1D y DNIs azules antiguos)
           const totalDuration = now - buf.timestamps[0];
           const avgDelta = totalDuration / (buf.chars.length - 1);
 
-          if (avgDelta < 50) {
-            // Ráfaga comprobada de lector omnidireccional 2D o pistola 1D (< 50ms)
+          if (avgDelta < 110) {
+            // Ráfaga comprobada de lector omnidireccional 2D o pistola láser 1D (< 110ms)
             e.preventDefault();
             e.stopPropagation();
 
@@ -1221,8 +1615,8 @@ export default function CajaDashboard() {
       if (e.key.length === 1) {
         if (buf.chars.length > 0) {
           const delta = now - buf.timestamps[buf.timestamps.length - 1];
-          if (delta > 60) {
-            // Tecleo manual humano lento: reiniciar captura
+          if (delta > 140) {
+            // Tecleo manual humano lento (> 140ms): reiniciar captura
             const activeEl = document.activeElement;
             buf.chars = [e.key];
             buf.timestamps = [now];
@@ -1285,19 +1679,22 @@ export default function CajaDashboard() {
     };
   }, [members]);
 
-  // Socios filtrados en el CRM
+  // Socios filtrados en el CRM (Búsqueda inteligente insensible a tildes)
   const filteredCrmMembers = useMemo(() => {
-    const query = crmSearch.toLowerCase().trim();
+    const rawQuery = crmSearch.trim().toLowerCase();
+    const normalize = (str: string) =>
+      str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const query = normalize(rawQuery);
     const nowLima = new Date().toISOString().slice(0, 10);
 
     return members.filter((m) => {
       const matchesSearch =
         !query ||
-        m.name.toLowerCase().includes(query) ||
-        (m.dni && m.dni.includes(query)) ||
-        (m.phone && m.phone.includes(query)) ||
-        m.plan.toLowerCase().includes(query) ||
-        (m.coachName && m.coachName.toLowerCase().includes(query));
+        normalize(m.name || '').includes(query) ||
+        (m.dni && m.dni.includes(rawQuery)) ||
+        (m.phone && m.phone.includes(rawQuery)) ||
+        normalize(m.plan || '').includes(query) ||
+        (m.coachName && normalize(m.coachName).includes(query));
 
       if (!matchesSearch) return false;
 
@@ -1330,14 +1727,18 @@ export default function CajaDashboard() {
 
   // Socios con deuda filtrados para Cobros
   const filteredDebtors = useMemo(() => {
-    const query = cobrosSearch.toLowerCase().trim();
+    const rawQuery = cobrosSearch.trim().toLowerCase();
+    const normalize = (str: string) =>
+      str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    const query = normalize(rawQuery);
+
     return membersWithDebt.filter((m) => {
       if (!query) return true;
       return (
-        m.name.toLowerCase().includes(query) ||
-        (m.dni && m.dni.includes(query)) ||
-        (m.phone && m.phone.includes(query)) ||
-        m.plan.toLowerCase().includes(query)
+        normalize(m.name || '').includes(query) ||
+        (m.dni && m.dni.includes(rawQuery)) ||
+        (m.phone && m.phone.includes(rawQuery)) ||
+        normalize(m.plan || '').includes(query)
       );
     });
   }, [membersWithDebt, cobrosSearch]);
@@ -1351,111 +1752,54 @@ export default function CajaDashboard() {
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        {/* BARRA PERSISTENTE DEL LECTOR OMNIDIRECCIONAL 2D (SIEMPRE ACTIVO EN TODAS LAS PESTAÑAS) */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-gradient-to-r from-zinc-900 via-zinc-900 to-black border border-amber-400/30 rounded-3xl p-4 sm:px-6 shadow-xl relative overflow-hidden backdrop-blur-md">
-          <div className="flex items-center gap-3">
-            <div className="relative flex items-center justify-center">
-              <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping absolute" />
-              <span className="w-3 h-3 rounded-full bg-emerald-400 relative" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-black uppercase tracking-wider text-white flex items-center gap-1.5">
-                  <Radio className="w-4 h-4 text-amber-400" />
-                  <span>Lector Omnidireccional 2D:</span>
-                  <span className="text-emerald-400">SIEMPRE ACTIVO</span>
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-[10px] font-mono font-bold">
-                  Auto-Checkin 360°
-                </span>
-              </div>
-              <p className="text-[11px] font-mono text-zinc-400 mt-0.5">
-                Escaneo manos libres permanente (DNI, carnet físico 1D o QR móvil 2D) desde cualquier pestaña.
-              </p>
-            </div>
-          </div>
-
-          {lastScanResult.status && lastScanResult.socio && (
-            <button
-              type="button"
-              onClick={() => setShowOmniToast(true)}
-              className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-zinc-800/90 hover:bg-zinc-800 border border-white/10 text-xs font-mono transition-all cursor-pointer shadow-md self-start sm:self-auto"
-              title="Abrir detalles completos del último atleta escaneado"
-            >
-              <span className="text-zinc-400">Último:</span>
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  lastScanResult.status === 'al_dia'
-                    ? 'bg-emerald-400'
-                    : lastScanResult.status === 'con_deuda'
-                    ? 'bg-amber-400 animate-pulse'
-                    : lastScanResult.status === 'vencido'
-                    ? 'bg-red-400'
-                    : 'bg-blue-400'
-                }`}
-              />
-              <span className="font-bold text-white max-w-[160px] truncate">
-                {lastScanResult.socio.nombre}
-              </span>
-              <span className="text-[10px] font-mono text-amber-400">
-                {lastScanResult.status === 'con_deuda'
-                  ? '⚠️ Con Deuda'
-                  : lastScanResult.status === 'vencido'
-                  ? '🔴 Vencido'
-                  : '🟢 Al Día'}
-              </span>
-            </button>
-          )}
-        </div>
-
-        {/* BARRA SUPERIOR DE ESTADO Y PESTAÑAS (ORDENADA POR PRIORIDAD OFICIAL) */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-zinc-900/80 border border-white/10 rounded-3xl p-4 sm:p-5 backdrop-blur-md">
+        {/* BARRA SUPERIOR DE ESTADO Y PESTAÑAS */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-zinc-900 border border-white/10 rounded-2xl p-3 sm:p-4">
           {/* Navegación por Pestañas */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0">
-            {/* 1. Prioridad: Control Acceso 1D / 2D */}
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 lg:pb-0 max-w-full">
+            {/* 1. Control Acceso */}
             <button
               type="button"
               onClick={() => setActiveTab('acceso')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'acceso'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <QrCode className="w-4 h-4 text-amber-400" />
-              <span>Control Acceso 1D/2D</span>
+              <QrCode className="w-4 h-4 flex-shrink-0" />
+              <span>Acceso</span>
               {isLoadingSocios && <RefreshCw className="w-3 h-3 animate-spin text-zinc-400" />}
             </button>
 
-            {/* 2. Prioridad: Nueva Inscripción (Segundo en prioridad) */}
+            {/* 2. Nueva Inscripción */}
             <button
               type="button"
               onClick={() => setActiveTab('inscripcion')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'inscripcion'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <UserPlus className="w-4 h-4" />
-              <span>Nueva Inscripción</span>
+              <UserPlus className="w-4 h-4 flex-shrink-0" />
+              <span>Inscripción</span>
             </button>
 
             {/* 3. CRM Vencimientos */}
             <button
               type="button"
               onClick={() => setActiveTab('crm')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'crm'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <CalendarClock className="w-4 h-4" />
-              <span>CRM Vencimientos</span>
+              <CalendarClock className="w-4 h-4 flex-shrink-0" />
+              <span>Vencimientos</span>
               {crmStats.porVencer > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-black">
-                  {crmStats.porVencer} por vencer
+                <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold">
+                  {crmStats.porVencer}
                 </span>
               )}
             </button>
@@ -1464,17 +1808,17 @@ export default function CajaDashboard() {
             <button
               type="button"
               onClick={() => setActiveTab('cobros')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'cobros'
-                  ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Receipt className="w-4 h-4" />
-              <span>Cobros & Deudas</span>
+              <Receipt className="w-4 h-4 flex-shrink-0" />
+              <span>Cobros</span>
               {membersWithDebt.length > 0 && (
-                <span className="px-2 py-0.5 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-[10px] font-black">
-                  {membersWithDebt.length} deudas
+                <span className="px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-300 text-[10px] font-bold">
+                  {membersWithDebt.length}
                 </span>
               )}
             </button>
@@ -1483,76 +1827,112 @@ export default function CajaDashboard() {
             <button
               type="button"
               onClick={() => setActiveTab('pos')}
-              className={`px-4 py-2.5 rounded-2xl text-xs font-mono font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'pos'
-                  ? 'bg-emerald-400 text-black shadow-lg shadow-emerald-400/20'
-                  : 'bg-zinc-800/80 text-zinc-400 hover:text-white'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <ShoppingCart className="w-4 h-4" />
-              <span>Punto de Venta (POS)</span>
+              <ShoppingCart className="w-4 h-4 flex-shrink-0" />
+              <span>Venta POS</span>
               {carrito.length > 0 && (
-                <span className="w-5 h-5 rounded-full bg-black text-emerald-400 text-[10px] font-black flex items-center justify-center">
+                <span className="w-4 h-4 rounded-full bg-black text-amber-400 text-[10px] font-bold flex items-center justify-center">
                   {carrito.reduce((s, i) => s + i.cantidad, 0)}
                 </span>
               )}
             </button>
           </div>
 
-          {/* Medidor de Aforo en Sala & Conexión */}
-          <div className="flex items-center gap-4 flex-wrap">
+          {/* Medidor de Aforo, Lector Activo & Conexión */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Lector Omnidireccional Chip */}
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-white/5 text-xs text-zinc-400">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[11px] font-medium">Lector 1D/2D Activo</span>
+            </div>
+
+            {/* Último Escaneo Rápido (si existe) */}
+            {lastScanResult.status && (
+              <button
+                type="button"
+                onClick={() => setShowOmniToast(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs transition-colors cursor-pointer"
+                title="Ver último resultado del escáner"
+              >
+                <span className="text-zinc-400 text-[11px]">Último:</span>
+                <span className="font-bold text-white text-[11px] max-w-[120px] truncate">
+                  {lastScanResult.socio ? lastScanResult.socio.nombre.split(' ')[0] : `DNI ${lastScanResult.dni}`}
+                </span>
+                <span className={`text-[10px] font-bold ${
+                  lastScanResult.status === 'al_dia'
+                    ? 'text-emerald-400'
+                    : lastScanResult.status === 'vencido' || lastScanResult.status === 'no_inscrito' || lastScanResult.status === 'no_encontrado'
+                    ? 'text-red-400'
+                    : 'text-amber-400'
+                }`}>
+                  {lastScanResult.status === 'al_dia'
+                    ? '🟢'
+                    : lastScanResult.status === 'vencido' || lastScanResult.status === 'no_inscrito' || lastScanResult.status === 'no_encontrado'
+                    ? '🔴'
+                    : '⚠️'}
+                </span>
+              </button>
+            )}
+
             {/* Indicador de Aforo */}
-            <div className="flex items-center gap-3 bg-zinc-950/80 border border-white/10 px-4 py-2 rounded-2xl">
-              <Users className="w-4 h-4 text-amber-400" />
-              <div className="text-xs font-mono">
-                <span className="text-zinc-400">Aforo Sala: </span>
-                <span className="text-white font-bold text-sm">{aforoEnVivo.total}</span>
-                <span className="text-zinc-500"> / {aforoEnVivo.capacidadMax}</span>
-              </div>
-              <div className="hidden sm:flex items-center gap-1.5 text-[10px] font-mono text-zinc-400 border-l border-white/10 pl-3">
-                <span title="Mañana (6:00 AM - 2:00 PM)" className="flex items-center gap-0.5">
-                  <Sun className="w-3 h-3 text-amber-400" /> {aforoEnVivo.manana}
-                </span>
-                <span title="Tarde (2:00 PM - 6:00 PM)" className="flex items-center gap-0.5">
-                  <Sunset className="w-3 h-3 text-orange-400" /> {aforoEnVivo.tarde}
-                </span>
-                <span title="Noche (6:00 PM - 10:00 PM)" className="flex items-center gap-0.5">
-                  <Moon className="w-3 h-3 text-blue-400" /> {aforoEnVivo.noche}
-                </span>
-              </div>
+            <div className="flex items-center gap-2 bg-zinc-950 border border-white/10 px-3 py-1.5 rounded-xl text-xs">
+              <Users className="w-3.5 h-3.5 text-amber-400" />
+              <span className="text-zinc-400">Aforo:</span>
+              <span className="text-white font-bold">{aforoEnVivo.total}</span>
+              <span className="text-zinc-500">/ {aforoEnVivo.capacidadMax}</span>
             </div>
 
-            {/* Estado de Red / Cola Offline */}
-            <div className="flex items-center gap-2">
-              {isOnline ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
-                  <Wifi className="w-3.5 h-3.5" />
-                  <span>En Línea</span>
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-mono text-red-400 bg-red-500/10 border border-red-500/30 px-3 py-1.5 rounded-xl animate-pulse">
-                  <WifiOff className="w-3.5 h-3.5" />
-                  <span>Modo Offline Local</span>
-                </span>
-              )}
+            {/* Estado Online */}
+            <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-xl border ${
+              isOnline
+                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                : 'text-red-400 bg-red-500/10 border-red-500/20'
+            }`}>
+              {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
+              <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>
+            </span>
 
-              {offlinePendingCount > 0 && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    const synced = await procesarColaAsistenciasOffline();
-                    if (synced > 0) {
-                      setOfflinePendingCount(0);
-                      alert(`Sincronizadas ${synced} asistencias pendientes con Supabase.`);
-                    }
-                  }}
-                  className="inline-flex items-center gap-1 text-[11px] font-mono font-bold bg-amber-400 text-black px-2.5 py-1.5 rounded-xl cursor-pointer hover:bg-amber-300"
-                >
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  <span>{offlinePendingCount} en cola</span>
-                </button>
-              )}
-            </div>
+            {/* Botón de Sincronización y Recarga de Padrón Excel */}
+            <button
+              type="button"
+              onClick={async () => {
+                if (window.confirm('¿Deseas recargar y sincronizar el padrón oficial con la data actual de Gym.xlsm?')) {
+                  reloadFreshMembersFromExcel();
+                  const fresh = getStoredMembers();
+                  setMembers(fresh);
+                  await sincronizarDatosIniciales();
+                  setSuccessMessage(`¡Padrón de ${fresh.length} socios actualizado con éxito desde Gym.xlsm!`);
+                  setTimeout(() => setSuccessMessage(null), 4000);
+                }
+              }}
+              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-white/10 transition-colors cursor-pointer"
+              title="Recargar y sincronizar padrón actualizado desde Gym.xlsm"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span className="hidden sm:inline">Padrón ({members.length})</span>
+            </button>
+
+            {offlinePendingCount > 0 && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const synced = await procesarColaAsistenciasOffline();
+                  if (synced > 0) {
+                    setOfflinePendingCount(0);
+                    alert(`Sincronizadas ${synced} asistencias pendientes.`);
+                  }
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-bold bg-amber-400 text-black px-2 py-1 rounded-xl cursor-pointer"
+              >
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                <span>{offlinePendingCount}</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -1574,25 +1954,24 @@ export default function CajaDashboard() {
         {activeTab === 'acceso' && (
           <div className="space-y-6">
             {/* HERO DEL ESCÁNER & SEMÁFORO VISUAL */}
-            <section className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-black border-2 border-amber-400/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-white/10">
-                <div className="flex items-center gap-3.5">
-                  <div className="p-3.5 rounded-2xl bg-amber-400 text-black font-black shadow-lg shadow-amber-400/20">
-                    <Barcode className="w-7 h-7" />
+            <section className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-6 shadow-xl relative">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-5 border-b border-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 rounded-2xl bg-amber-400/10 border border-amber-400/20 text-amber-400 font-black">
+                    <Barcode className="w-6 h-6" />
                   </div>
                   <div>
-                    <h2 className="text-xl sm:text-2xl font-black uppercase text-white font-display tracking-tight flex items-center gap-2">
-                      <span>Control de Acceso (Escáner QR 2D / 1D &amp; DNI)</span>
+                    <h2 className="text-lg sm:text-xl font-bold uppercase text-white tracking-tight">
+                      Control de Acceso
                     </h2>
-                    <p className="text-xs text-zinc-400 font-sans mt-0.5">
-                      Pasa el carnet físico o digital por el lector omnidireccional o escribe el DNI. Detección automática en &lt; 5ms.
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      Escanea el carnet del socio o escribe su DNI para registrar su ingreso.
                     </p>
                   </div>
                 </div>
 
-                {/* Controles: Botón de Anuncios por Voz & Estado del Escáner */}
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {/* Botón de Voz para Marisol */}
+                {/* Controles: Botón de Anuncios por Voz */}
+                <div className="flex items-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => {
@@ -1603,25 +1982,16 @@ export default function CajaDashboard() {
                         speakGymAnnouncement('Alertas de voz activas en el gimnasio.');
                       }
                     }}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-mono font-bold transition-all border cursor-pointer ${
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all border cursor-pointer ${
                       voiceEnabled
-                        ? 'bg-amber-400/15 border-amber-400/50 text-amber-300 shadow-md shadow-amber-400/10'
-                        : 'bg-zinc-950/80 border-white/10 text-zinc-400 hover:text-white'
+                        ? 'bg-amber-400/15 border-amber-400/40 text-amber-300'
+                        : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
                     }`}
-                    title="Anuncia por voz en el teléfono o parlantes quién ingresa y el estado de su membresía mientras limpias"
+                    title="Anuncia por voz quién ingresa y el estado de su membresía"
                   >
-                    {voiceEnabled ? <Volume2 className="w-4 h-4 text-amber-400 animate-pulse" /> : <VolumeX className="w-4 h-4" />}
-                    <span>{voiceEnabled ? 'VOZ: ACTIVADA' : 'VOZ: EN SILENCIO'}</span>
+                    {voiceEnabled ? <Volume2 className="w-4 h-4 text-amber-400" /> : <VolumeX className="w-4 h-4 text-zinc-500" />}
+                    <span>{voiceEnabled ? 'Voz Activada' : 'Voz Silenciada'}</span>
                   </button>
-
-                  {/* Estado del Modo Escáner */}
-                  <div
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-950/90 border border-emerald-500/30 text-emerald-400 font-mono text-xs"
-                    title="Los lectores USB operan como teclado de entrada automática. No requieren controladores."
-                  >
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="font-bold uppercase tracking-wider">Modo Escáner Activo</span>
-                  </div>
                 </div>
               </div>
 
@@ -1633,24 +2003,28 @@ export default function CajaDashboard() {
                     const trimmed = scannedDniInput.trim();
                     if (!trimmed) return;
 
-                    const isPureDni = /^\d{8}$/.test(trimmed);
-                    if (isPureDni) {
-                      procesarIngresoPorDni(trimmed);
+                    // Extraer DNI inteligente (soporta DNI azul 9 dígitos, DNIe, etc.)
+                    const cleanDni = extraerDniPeru(trimmed) || (trimmed.replace(/\D/g, '').length === 8 ? trimmed.replace(/\D/g, '') : null);
+                    if (cleanDni) {
+                      procesarIngresoPorDni(cleanDni);
                       setScannedDniInput('');
                       return;
                     }
 
-                    if (resultadosBusqueda.length === 1) {
+                    if (resultadosBusqueda.length >= 1) {
                       const match = resultadosBusqueda[0];
                       if (match.dni) {
                         procesarIngresoPorDni(match.dni);
                         setScannedDniInput('');
                       } else {
-                        setSocioParaAsignarDni(match);
-                        setNuevoDniInput('');
-                        setErrorAsignarDni(null);
+                        handleAbrirAsignarDni(match, /^\d{8}$/.test(trimmed) ? trimmed : '');
                       }
+                      return;
                     }
+
+                    // Si no hubo coincidencia y se ingresó un código/DNI, procesarlo (alerta no registrado)
+                    procesarIngresoPorDni(trimmed);
+                    setScannedDniInput('');
                   }}
                   className="flex flex-col sm:flex-row gap-3"
                 >
@@ -1660,8 +2034,8 @@ export default function CajaDashboard() {
                       type="text"
                       value={scannedDniInput}
                       onChange={(e) => setScannedDniInput(e.target.value)}
-                      placeholder="Pasa el carnet por el lector 2D/1D, escribe DNI o busca por nombre..."
-                      className="w-full pl-12 pr-10 py-3.5 bg-zinc-950 border border-white/20 rounded-2xl text-base font-mono text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors shadow-inner"
+                      placeholder="Escanear carnet o escribir DNI / nombre (soporta DNI azul y DNIe)..."
+                      className="w-full pl-12 pr-10 py-3.5 bg-zinc-950 border border-white/10 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors shadow-inner"
                     />
                     {scannedDniInput && (
                       <button
@@ -1675,90 +2049,162 @@ export default function CajaDashboard() {
                     )}
                   </div>
 
+                  {/* Botón Escáner Óptico con Cámara (DNI Azul & DNIe) */}
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraScannerOpen(true)}
+                    className="flex items-center justify-center gap-2 px-4 py-3.5 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-2xl text-xs font-bold text-white transition-colors cursor-pointer"
+                    title="Escanear DNI Azul o DNIe con la cámara del celular o computadora"
+                  >
+                    <Camera className="w-4 h-4 text-amber-400" />
+                    <span>Cámara DNI</span>
+                  </button>
+
                   <button
                     type="submit"
-                    className="bg-amber-400 hover:bg-amber-300 text-black font-black px-6 py-3.5 rounded-2xl text-sm font-display uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20"
+                    className="bg-amber-400 hover:bg-amber-300 text-black font-bold px-6 py-3.5 rounded-2xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shrink-0"
                   >
-                    <Search className="w-4 h-4" />
-                    <span>REGISTRAR INGRESO</span>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Marcar Ingreso</span>
                   </button>
                 </form>
 
-                {/* RESULTADOS EN VIVO DE BÚSQUEDA (Por Nombre o DNI Parcial) */}
+                {/* RESULTADOS EN VIVO DE BÚSQUEDA (Por Nombre, DNI o ID) */}
                 {resultadosBusqueda.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-950/95 border-2 border-amber-400/40 rounded-2xl shadow-2xl z-30 p-2 space-y-1 backdrop-blur-xl max-h-80 overflow-y-auto">
-                    <div className="px-3 py-1.5 text-[11px] font-mono text-zinc-400 font-bold uppercase tracking-wider flex items-center justify-between border-b border-white/10 pb-2">
-                      <span className="text-white flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Atletas encontrados ({resultadosBusqueda.length}):</span>
+                  <div className="mt-4 bg-zinc-950 border-2 border-amber-400/50 rounded-2xl shadow-2xl p-3 sm:p-4 space-y-2 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="px-2 py-1.5 text-xs font-mono text-zinc-400 font-bold uppercase tracking-wider flex items-center justify-between border-b border-white/10 pb-2.5">
+                      <span className="text-white flex items-center gap-2">
+                        <Users className="w-4 h-4 text-amber-400" />
+                        <span>Atletas encontrados ({resultadosBusqueda.length}) para &quot;{scannedDniInput}&quot;:</span>
                       </span>
-                      <span className="text-[10px] text-amber-400 font-mono">Búsqueda rápida</span>
+                      <span className="text-[11px] text-amber-400 font-mono bg-amber-400/10 px-2 py-0.5 rounded-lg border border-amber-400/20">
+                        {resultadosBusqueda.length === 1 ? 'Presiona Enter o haz clic para marcar' : 'Selecciona el atleta'}
+                      </span>
                     </div>
 
-                    {resultadosBusqueda.map((s) => (
-                      <div
-                        key={s.id}
-                        className="p-3 rounded-xl bg-zinc-900/90 hover:bg-zinc-800/90 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-400 font-bold flex items-center justify-center text-sm font-mono shrink-0">
-                            {(s.nombre[0] || 'A').toUpperCase()}
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-white font-display flex items-center gap-2">
-                              <span>{s.nombre}</span>
-                              {!s.dni ? (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                                  ⚠️ Sin DNI
-                                </span>
-                              ) : (
-                                <span className="text-xs text-zinc-400 font-mono">DNI: {s.dni}</span>
-                              )}
-                            </div>
-                            <div className="text-xs text-zinc-400 font-sans mt-0.5 flex items-center gap-2 flex-wrap">
-                              <span>{s.plan}</span>
-                              <span>·</span>
-                              <span className="uppercase text-[11px] font-mono text-zinc-300">Turno {s.turno}</span>
-                              {s.saldo_pendiente > 0 && (
-                                <>
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {resultadosBusqueda.map((s) => {
+                        const isExpired = s.estado_calculado === 'vencido' || s.dias_restantes < 0;
+                        const isPorVencer = s.estado_calculado === 'por_vencer';
+                        return (
+                          <div
+                            key={s.id}
+                            onClick={() => {
+                              if (s.dni) {
+                                if (isExpired) {
+                                  handleRenovarDesdeEscaneo(s);
+                                } else {
+                                  procesarIngresoPorDni(s.dni);
+                                  setScannedDniInput('');
+                                }
+                              } else {
+                                handleAbrirAsignarDni(s, /^\d{8}$/.test(scannedDniInput.trim()) ? scannedDniInput.trim() : '');
+                              }
+                            }}
+                            className="p-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800/90 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all hover:border-amber-400/50 cursor-pointer shadow-sm group"
+                          >
+                            <div className="flex items-center gap-3.5">
+                              <div
+                                className={`w-10 h-10 rounded-xl font-bold flex items-center justify-center text-sm font-mono shrink-0 border ${
+                                  !s.dni
+                                    ? 'bg-amber-400/10 border-amber-400/30 text-amber-400'
+                                    : isExpired
+                                    ? 'bg-red-500/10 border-red-500/30 text-red-400'
+                                    : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                                }`}
+                              >
+                                {(s.nombre[0] || 'A').toUpperCase()}
+                              </div>
+                              <div>
+                                <div className="text-base font-bold text-white font-display flex items-center gap-2 flex-wrap">
+                                  <span>{s.nombre}</span>
+                                  {!s.dni ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                      ⚠️ Sin DNI
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-zinc-300 font-mono bg-white/5 px-2 py-0.5 rounded border border-white/10">
+                                      DNI: {s.dni}
+                                    </span>
+                                  )}
+                                  {isExpired ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/30">
+                                      Vencido ({Math.abs(s.dias_restantes)}d)
+                                    </span>
+                                  ) : isPorVencer ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                      Por Vencer ({s.dias_restantes}d)
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                                      Al Día ({s.dias_restantes}d)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-zinc-400 font-sans mt-1 flex items-center gap-2 flex-wrap">
+                                  <span className="text-zinc-200 font-medium">{s.plan}</span>
                                   <span>·</span>
-                                  <span className="text-red-400 font-bold font-mono">Debe S/. {s.saldo_pendiente.toFixed(2)}</span>
-                                </>
+                                  <span className="uppercase text-[11px] font-mono text-zinc-300">Turno {s.turno}</span>
+                                  <span>·</span>
+                                  <span className="text-zinc-400 text-[11px] font-mono">{s.id}</span>
+                                  {s.saldo_pendiente > 0 && (
+                                    <>
+                                      <span>·</span>
+                                      <span className="text-red-400 font-bold font-mono bg-red-500/10 px-1.5 py-0.5 rounded">
+                                        Debe S/. {s.saldo_pendiente.toFixed(2)}
+                                      </span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                              {s.dni ? (
+                                isExpired ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRenovarDesdeEscaneo(s);
+                                    }}
+                                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-md flex items-center gap-1.5 transition-all"
+                                  >
+                                    <RefreshCw className="w-3.5 h-3.5" />
+                                    <span>Renovar Membresía</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      procesarIngresoPorDni(s.dni);
+                                      setScannedDniInput('');
+                                    }}
+                                    className="px-4 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-lg shadow-emerald-400/20 flex items-center gap-1.5 transition-all"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>Marcar Ingreso</span>
+                                  </button>
+                                )
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAbrirAsignarDni(s, /^\d{8}$/.test(scannedDniInput.trim()) ? scannedDniInput.trim() : '');
+                                  }}
+                                  className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-lg shadow-amber-400/20 flex items-center gap-1.5 transition-all"
+                                >
+                                  <UserCheck className="w-4 h-4" />
+                                  <span>+ Asignar DNI &amp; Marcar</span>
+                                </button>
                               )}
                             </div>
                           </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                          {s.dni ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                procesarIngresoPorDni(s.dni);
-                                setScannedDniInput('');
-                              }}
-                              className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-md flex items-center gap-1.5 transition-all"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Marcar Ingreso</span>
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSocioParaAsignarDni(s);
-                                setNuevoDniInput('');
-                                setErrorAsignarDni(null);
-                              }}
-                              className="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-lg shadow-amber-400/20 flex items-center gap-1.5 transition-all animate-pulse"
-                            >
-                              <UserCheck className="w-3.5 h-3.5" />
-                              <span>+ Asignar DNI &amp; Activar</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2003,39 +2449,55 @@ export default function CajaDashboard() {
                             <button
                               type="button"
                               onClick={() => {
+                                handleRenovarDesdeEscaneo(lastScanResult.socio!);
+                              }}
+                              className="px-5 py-3 rounded-xl bg-gradient-to-r from-red-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white font-black text-xs font-display uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-red-500/25 ring-2 ring-red-400/50"
+                            >
+                              🔄 Renovar Membresía Ahora
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
                                 const found = members.find((m) => m.dni === lastScanResult.socio?.dni);
                                 if (found) setProfileModalMember(found);
                               }}
-                              className="px-5 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-display uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-400/20"
+                              className="px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono text-xs font-bold transition-colors cursor-pointer border border-white/10"
                             >
-                              ⚡ Inscribir / Renovar Membresía
+                              Ver Ficha
                             </button>
                           </div>
                         </div>
                       </div>
                     )}
 
-                    {/* CASO 5: NO ENCONTRADO */}
-                    {lastScanResult.status === 'no_encontrado' && (
-                      <div className="p-6 rounded-2xl bg-zinc-900 border border-white/10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-mono text-zinc-300">
-                            No se encontró ningún socio registrado con el DNI <span className="font-bold text-amber-400">{lastScanResult.dni}</span>.
-                          </p>
-                          <p className="text-xs text-zinc-500 mt-1">
-                            Puedes inscribirlo en la pestaña de Inscripción dejando un adelanto o pago completo.
-                          </p>
+                    {/* CASO 5: NO ENCONTRADO / NO INSCRITO */}
+                    {(lastScanResult.status === 'no_inscrito' || lastScanResult.status === 'no_encontrado') && (
+                      <div className="p-6 rounded-2xl bg-red-500/10 border-2 border-red-500/40 relative overflow-hidden flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className="p-3.5 rounded-2xl bg-red-500 text-white flex-shrink-0 shadow-lg">
+                            <ShieldAlert className="w-7 h-7" />
+                          </div>
+                          <div>
+                            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-black uppercase bg-red-500/20 text-red-300 border border-red-500/30">
+                              <span>🔴 DNI NO REGISTRADO</span>
+                            </div>
+                            <p className="text-base font-mono text-white mt-1">
+                              No se encontró ningún socio registrado con el DNI <span className="font-bold text-amber-400">{lastScanResult.dni}</span>.
+                            </p>
+                            <p className="text-xs text-zinc-400 mt-0.5">
+                              Acceso no autorizado. Inscribe al atleta para permitir su ingreso y registrar asistencia.
+                            </p>
+                          </div>
                         </div>
 
                         <button
                           type="button"
                           onClick={() => {
-                            setActiveTab('inscripcion');
-                            setClientDni(lastScanResult.dni);
+                            handleInscribirNuevoDni(lastScanResult.dni);
                           }}
-                          className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs font-display uppercase tracking-wider cursor-pointer"
+                          className="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs font-display uppercase tracking-wider cursor-pointer shadow-lg shadow-amber-400/25 shrink-0 ring-2 ring-amber-400/60"
                         >
-                          INSCRIBIR SOCIO
+                          📝 Inscribir Atleta con este DNI
                         </button>
                       </div>
                     )}
@@ -2492,9 +2954,7 @@ export default function CajaDashboard() {
                         if (val.length === 8) {
                           const existing = members.find((m) => m.dni && m.dni.trim() === val);
                           if (existing) {
-                            setClientName(existing.name);
-                            if (existing.phone) setClientEmail(existing.phone);
-                            if (existing.shift) setClientShift(existing.shift);
+                            handlePreFillMember(existing);
                           }
                         }
                       }}
@@ -2527,29 +2987,42 @@ export default function CajaDashboard() {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-zinc-400 font-bold mb-1.5 uppercase text-xs">
+                    Nombre Completo del Atleta
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={clientName}
+                    onChange={(e) => setClientName(e.target.value)}
+                    placeholder="Ej: Daniel Quispe Huamán"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 text-sm"
+                  />
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
-                      Nombre Completo del Atleta
+                    <label className="block text-zinc-400 font-bold mb-1.5 uppercase text-xs">
+                      Correo Electrónico (Acceso Google)
                     </label>
                     <input
-                      type="text"
-                      required
-                      value={clientName}
-                      onChange={(e) => setClientName(e.target.value)}
-                      placeholder="Ej: Daniel Quispe Huamán"
+                      type="email"
+                      value={clientEmail}
+                      onChange={(e) => setClientEmail(e.target.value)}
+                      placeholder="atleta@gmail.com (Para acceso web con Google)"
                       className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-zinc-400 font-bold mb-1.5 uppercase">
+                    <label className="block text-zinc-400 font-bold mb-1.5 uppercase text-xs">
                       Celular / WhatsApp
                     </label>
                     <input
-                      type="text"
-                      value={clientEmail}
-                      onChange={(e) => setClientEmail(e.target.value)}
-                      placeholder="Ej: 966123456"
+                      type="tel"
+                      value={clientPhone}
+                      onChange={(e) => setClientPhone(e.target.value)}
+                      placeholder="987654321 (Para credenciales WhatsApp)"
                       className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-zinc-200 focus:outline-none focus:border-amber-400 text-sm"
                     />
                   </div>
@@ -2711,6 +3184,23 @@ export default function CajaDashboard() {
                       <span className="text-amber-400 font-bold uppercase">{clientShift}</span>
                     </div>
                   </div>
+
+                  {(clientPhone || clientEmail) && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1 border-t border-white/5">
+                      {clientPhone && (
+                        <div>
+                          <span className="text-zinc-500 block text-[10px] uppercase">WhatsApp:</span>
+                          <span className="text-zinc-300 font-mono">{clientPhone}</span>
+                        </div>
+                      )}
+                      {clientEmail && (
+                        <div className="truncate">
+                          <span className="text-zinc-500 block text-[10px] uppercase">Correo:</span>
+                          <span className="text-zinc-300 font-mono truncate">{clientEmail}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <span className="text-zinc-500 block text-[10px] uppercase">Membresía Seleccionada:</span>
@@ -3177,10 +3667,10 @@ export default function CajaDashboard() {
                                       estado_calculado: 'activo' as const,
                                       tiene_deuda_activa: true,
                                       numero_boleta: m.receiptNumber || 'B001-000000',
+                                      email: m.email || null,
+                                      celular: m.phone || null,
                                     };
-                                    setSocioParaAsignarDni(socioEncontrado);
-                                    setNuevoDniInput('');
-                                    setErrorAsignarDni(null);
+                                    handleAbrirAsignarDni(socioEncontrado);
                                   }}
                                   className="px-3 py-2 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 text-amber-300 border border-amber-400/40 text-xs font-mono transition-colors cursor-pointer flex items-center gap-1 font-bold"
                                 >
@@ -3375,31 +3865,88 @@ export default function CajaDashboard() {
           isOpen={!!profileModalMember}
           onClose={() => setProfileModalMember(null)}
           member={profileModalMember}
+          initialTab={profileModalTab}
           onSave={async (updated) => {
             const next = await updateMemberProfile(updated.id, updated);
             setMembers(next);
-            // Actualizar mapa en memoria de recepción
-            const exist = sociosMap.get(updated.dni || '');
-            if (exist) {
-              const actual: SocioRecepcion = {
-                ...exist,
-                nombre: updated.name,
-                dni: updated.dni || exist.dni,
-                precio_plan: updated.planPrice,
-                adelanto_pagado: updated.advancePaid,
-                saldo_pendiente: updated.balanceDue,
-                tiene_deuda_activa: updated.balanceDue > 0,
-                turno: updated.shift || 'manana',
-                coach_asignado: updated.coachName || 'Coach Marcos Rivas',
-              };
-              setSociosMap((prev) => {
-                const m = new Map(prev);
-                m.set(actual.dni, actual);
-                return m;
-              });
+
+            // Calcular días restantes y estado calculados reales
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            let diasRestantes = 0;
+            const fechaFin = updated.expiresAt ? normalizeDateToISO(updated.expiresAt) : '';
+            if (fechaFin) {
+              const expDate = new Date(fechaFin);
+              if (!isNaN(expDate.getTime())) {
+                expDate.setHours(0, 0, 0, 0);
+                diasRestantes = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+              }
             }
+
+            const isSinPlan = !updated.plan || updated.plan === 'Sin Membresía Activa' || updated.planPrice === 0;
+            const isInactive = updated.membershipStatus === 'inactive' || isSinPlan;
+            const estadoCalculado: 'activo' | 'por_vencer' | 'vencido' =
+              isInactive || diasRestantes < 0
+                ? 'vencido'
+                : diasRestantes <= 5
+                ? 'por_vencer'
+                : 'activo';
+
+            const updatedSocioRecepcion: SocioRecepcion = {
+              id: updated.id,
+              dni: updated.dni || '',
+              nombre: updated.name,
+              plan: updated.plan,
+              precio_plan: updated.planPrice,
+              tipo_pago: updated.paymentType,
+              adelanto_pagado: updated.advancePaid,
+              saldo_pendiente: updated.balanceDue,
+              fecha_limite_pago: updated.paymentDueDate || null,
+              fecha_fin: fechaFin,
+              turno: updated.shift || 'manana',
+              coach_asignado: updated.coachName || 'Coach Marcos Rivas',
+              dias_restantes: diasRestantes,
+              estado_calculado: estadoCalculado,
+              tiene_deuda_activa: updated.balanceDue > 0,
+              numero_boleta: updated.receiptNumber || 'B001-000000',
+              observaciones: updated.observations || null,
+            };
+
+            // 1. Actualizar mapa en memoria de recepción
+            setSociosMap((prev) => {
+              const m = new Map(prev);
+              if (updated.dni) {
+                m.set(updated.dni, updatedSocioRecepcion);
+              }
+              return m;
+            });
+
+            // 2. Actualizar lista de recepción
+            setListaSociosRecepcion((prev) => {
+              const idx = prev.findIndex((s) => s.id === updated.id || (updated.dni && s.dni === updated.dni));
+              if (idx >= 0) {
+                const nextList = [...prev];
+                nextList[idx] = updatedSocioRecepcion;
+                return nextList;
+              }
+              return [updatedSocioRecepcion, ...prev];
+            });
+
+            // 3. Si el Toast omnidireccional está abierto con este socio, actualizarlo al instante
+            setLastScanResult((prev) => {
+              if (prev && prev.socio && (prev.socio.id === updated.id || prev.dni === updated.dni)) {
+                return {
+                  ...prev,
+                  status: estadoCalculado === 'activo' ? 'al_dia' : estadoCalculado,
+                  socio: updatedSocioRecepcion,
+                  message: estadoCalculado === 'activo' ? 'MEMBRESÍA RENOVADA Y AL DÍA' : prev.message,
+                };
+              }
+              return prev;
+            });
+
             setProfileModalMember(null);
-            setSuccessMessage(`¡Perfil de ${updated.name} actualizado con éxito!`);
+            setSuccessMessage(`🎉 ¡Membresía y perfil de ${updated.name} actualizados con éxito!`);
             setTimeout(() => setSuccessMessage(null), 4000);
           }}
           onOpenPaymentModal={(m) => {
@@ -3507,6 +4054,8 @@ export default function CajaDashboard() {
                 onClick={() => {
                   setSocioParaAsignarDni(null);
                   setNuevoDniInput('');
+                  setNuevoEmailInput('');
+                  setNuevoCelularInput('');
                   setErrorAsignarDni(null);
                 }}
                 className="p-1.5 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white cursor-pointer"
@@ -3540,8 +4089,9 @@ export default function CajaDashboard() {
 
             <form onSubmit={handleGuardarNuevoDni} className="mt-4 space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1.5">
-                  Número de DNI (8 dígitos)
+                <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1.5 flex items-center justify-between">
+                  <span>Número de DNI (8 dígitos)</span>
+                  <span className="text-[10px] text-amber-400 font-normal lowercase font-sans">Obligatorio</span>
                 </label>
                 <input
                   type="text"
@@ -3559,12 +4109,50 @@ export default function CajaDashboard() {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1.5 flex items-center justify-between">
+                  <span>Correo Electrónico</span>
+                  <span className="text-[10px] text-zinc-500 font-normal lowercase font-sans">Para acceso Google</span>
+                </label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="email"
+                    value={nuevoEmailInput}
+                    onChange={(e) => setNuevoEmailInput(e.target.value)}
+                    placeholder="ejemplo@gmail.com (Para acceso Google)"
+                    className="w-full bg-zinc-950 border border-white/20 focus:border-amber-400 rounded-xl pl-10 pr-4 py-2.5 text-sm font-sans text-white placeholder-zinc-500 outline-none transition-colors"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1.5 flex items-center justify-between">
+                  <span>Celular / WhatsApp</span>
+                  <span className="text-[10px] text-zinc-500 font-normal lowercase font-sans">Para enviar credenciales</span>
+                </label>
+                <div className="relative">
+                  <Smartphone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    maxLength={9}
+                    value={nuevoCelularInput}
+                    onChange={(e) => setNuevoCelularInput(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                    placeholder="987654321 (Para enviar credenciales)"
+                    className="w-full bg-zinc-950 border border-white/20 focus:border-amber-400 rounded-xl pl-10 pr-4 py-2.5 text-sm font-sans text-white placeholder-zinc-500 outline-none transition-colors font-mono"
+                  />
+                </div>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => {
                     setSocioParaAsignarDni(null);
                     setNuevoDniInput('');
+                    setNuevoEmailInput('');
+                    setNuevoCelularInput('');
                     setErrorAsignarDni(null);
                   }}
                   className="flex-1 px-4 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono uppercase font-bold transition-colors cursor-pointer"
@@ -3594,6 +4182,195 @@ export default function CajaDashboard() {
         </div>
       )}
 
+      {/* MODAL DE ENTREGA DE CREDENCIALES Y ASISTENCIA DE BIENVENIDA */}
+      {credencialesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="w-full max-w-md bg-zinc-900 border border-amber-400/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden"
+          >
+            {/* Header decorativo */}
+            <div className="flex items-start justify-between pb-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-display font-black text-lg text-white uppercase tracking-tight">
+                    Credenciales Activadas
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    Acceso web y registro de bienvenida
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCredencialesModal(null)}
+                className="w-8 h-8 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Contenido / Tarjeta de Credenciales */}
+            <div className="mt-5 space-y-4">
+              {/* Badge verde de asistencia */}
+              {credencialesModal.asistenciaMarcada && (
+                <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-2.5 text-emerald-400">
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400" />
+                  <span className="text-xs font-bold leading-tight">
+                    ✅ Asistencia de hoy registrada automáticamente a las {credencialesModal.hora}
+                  </span>
+                </div>
+              )}
+
+              {/* Tarjeta de Credenciales */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-3 font-mono text-xs">
+                <div className="flex justify-between items-start pb-2 border-b border-white/5">
+                  <span className="text-zinc-500 uppercase text-[10px]">Socio</span>
+                  <span className="text-white font-bold text-right text-sm">
+                    {credencialesModal.nombre}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                  <span className="text-zinc-500 uppercase text-[10px]">Plan Activo</span>
+                  <span className="text-amber-400 font-bold">{credencialesModal.plan}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-amber-400/20">
+                    <span className="text-zinc-500 block text-[10px] uppercase">Usuario</span>
+                    <span className="text-white font-black text-sm tracking-widest">{credencialesModal.dni}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-amber-400/20">
+                    <span className="text-zinc-500 block text-[10px] uppercase">Contraseña Inicial</span>
+                    <span className="text-amber-400 font-black text-sm tracking-widest">{credencialesModal.dni}</span>
+                  </div>
+                </div>
+
+                {credencialesModal.email && (
+                  <div className="flex justify-between items-center text-[11px] pt-1">
+                    <span className="text-zinc-500">Email:</span>
+                    <span className="text-zinc-300 truncate max-w-[210px]">{credencialesModal.email}</span>
+                  </div>
+                )}
+                {credencialesModal.phone && (
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-zinc-500">Celular:</span>
+                    <span className="text-zinc-300">{credencialesModal.phone}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Botones de acción */}
+              <div className="space-y-2 pt-2">
+                {/* Botón WhatsApp */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const phoneClean = (credencialesModal.phone || '').replace(/\D/g, '');
+                    if (!phoneClean) {
+                      alert('El socio no tiene un número de celular registrado.');
+                      return;
+                    }
+                    const waNumber = phoneClean.length === 9 ? `51${phoneClean}` : phoneClean;
+                    const waText =
+                      `¡Hola ${credencialesModal.nombre}! 👋 Bienvenido a Trankilandia Gym 🏋️‍♂️💪\n\n` +
+                      `Tu membresía *${credencialesModal.plan}* ya se encuentra activa.\n\n` +
+                      `🔑 *Tus Credenciales de Acceso al Portal:*\n` +
+                      `• Web: ${window.location.origin}/portal\n` +
+                      `• Usuario: ${credencialesModal.dni}\n` +
+                      `• Contraseña Inicial: ${credencialesModal.dni}\n` +
+                      `*(Al ingresar por primera vez se te solicitará cambiar tu contraseña)*\n\n` +
+                      (credencialesModal.asistenciaMarcada
+                        ? `✅ *Asistencia de hoy registrada automáticamente a las ${credencialesModal.hora}*\n\n`
+                        : '') +
+                      `¡A entrenar con todo! 🔥`;
+
+                    window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`, '_blank');
+                  }}
+                  className="w-full py-3 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs font-display uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  <span>📲 Enviar Credenciales por WhatsApp</span>
+                </button>
+
+                {/* Botón Copiar */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const textToCopy =
+                      `TRANKILANDIA GYM · CREDENCIALES DE ACCESO\n` +
+                      `Socio: ${credencialesModal.nombre}\n` +
+                      `Plan: ${credencialesModal.plan}\n` +
+                      `Usuario: ${credencialesModal.dni}\n` +
+                      `Contraseña Inicial: ${credencialesModal.dni}\n` +
+                      `Portal Web: ${window.location.origin}/portal\n` +
+                      (credencialesModal.asistenciaMarcada
+                        ? `✅ Asistencia de hoy registrada a las ${credencialesModal.hora}\n`
+                        : '');
+                    navigator.clipboard.writeText(textToCopy);
+                    setCopiedCredenciales(true);
+                    setTimeout(() => setCopiedCredenciales(false), 2500);
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs font-mono uppercase transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  {copiedCredenciales ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span className="text-emerald-400">¡Credenciales Copiadas!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4 text-amber-400" />
+                      <span>📋 Copiar Credenciales</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Botón Ver Boleta si aplica */}
+                {credencialesModal.member && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const member = credencialesModal.member!;
+                      const amount = credencialesModal.amount || 0;
+                      const type = credencialesModal.paymentType || 'Membresía Completa';
+                      const method = credencialesModal.paymentMethod || 'yape';
+                      setCredencialesModal(null);
+                      setReceiptModal({
+                        isOpen: true,
+                        member,
+                        amount,
+                        type,
+                        method,
+                      });
+                    }}
+                    className="w-full py-2 px-4 rounded-xl border border-white/10 hover:border-amber-400/40 text-zinc-400 hover:text-white font-mono text-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Ver / Imprimir Boleta de Pago</span>
+                  </button>
+                )}
+
+                {/* Botón Listo */}
+                <button
+                  type="button"
+                  onClick={() => setCredencialesModal(null)}
+                  className="w-full py-2.5 px-4 rounded-xl bg-zinc-800/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-bold text-xs uppercase transition-colors cursor-pointer"
+                >
+                  Listo
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
       {/* MODAL DE COMPROBANTE OFICIAL DE MEMBRESÍA */}
       <ReceiptModal
         isOpen={receiptModal.isOpen}
@@ -3617,20 +4394,39 @@ export default function CajaDashboard() {
               setCustomAbonoAmount(found.balanceDue);
             }
           }}
+          onRenovar={(socio) => {
+            handleRenovarDesdeEscaneo(socio);
+          }}
           onRenovarPlan={(targetDni) => {
-            const found = members.find((m) => m.dni === targetDni);
-            if (found) setProfileModalMember(found);
+            handleRenovarDesdeEscaneo(targetDni);
+          }}
+          onInscribir={(unregisteredDni) => {
+            handleInscribirNuevoDni(unregisteredDni);
           }}
           onInscribirDni={(unregisteredDni) => {
-            setActiveTab('inscripcion');
-            setClientDni(unregisteredDni);
+            handleInscribirNuevoDni(unregisteredDni);
           }}
           onVerPerfil={(targetDni) => {
-            const found = members.find((m) => m.dni === targetDni);
-            if (found) setProfileModalMember(found);
+            const found =
+              members.find((m) => m.dni === targetDni) ||
+              (targetDni && sociosMap.get(targetDni) ? (sociosMap.get(targetDni) as any) : null);
+            if (found) {
+              setProfileModalMember(found);
+              setProfileModalTab('personal');
+            }
           }}
         />
       )}
+
+      {/* MODAL DE ESCÁNER ÓPTICO CON CÁMARA (DNI AZUL & DNIe) */}
+      <CameraScannerModal
+        isOpen={isCameraScannerOpen}
+        onClose={() => setIsCameraScannerOpen(false)}
+        onScanDni={(dni) => {
+          setIsCameraScannerOpen(false);
+          procesarIngresoPorDni(dni);
+        }}
+      />
     </div>
   );
 }

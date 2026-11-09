@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Lock, Eye, EyeOff, X, ArrowRight, CheckCircle2, MessageCircle, ShieldCheck } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, X, ArrowRight, CheckCircle2, MessageCircle, ShieldCheck, KeyRound } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GYM_CONTACT } from '../data/gymData';
 import { useAuth, SUPER_ADMIN_EMAILS } from '../context/AuthContext';
 import { signInWithGoogle, signInWithDni } from '../lib/supabase';
-import { ROLES_CONFIG, UserRole } from '../types/roles';
+import { ROLES_CONFIG } from '../types/roles';
+import { extraerDniPeru } from '../lib/dniParser';
+import { actualizarPasswordSocio } from '../lib/authPasswords';
 
 export interface LoginModalProps {
   isOpen: boolean;
@@ -42,7 +44,7 @@ export default function LoginModal({
   onOpenTourModal,
 }: LoginModalProps): React.JSX.Element | null {
   const navigate = useNavigate();
-  const { user, isConfigured, signOut, role, switchRole, getRedirectPath, loginUser } = useAuth();
+  const { user, isConfigured, signOut, role, getRedirectPath, loginUser } = useAuth();
   const [dni, setDni] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -51,6 +53,15 @@ export default function LoginModal({
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [demoLoggedInUser, setDemoLoggedInUser] = useState<string | null>(null);
+
+  // Modal para cambio/recuperación de contraseña vinculada al DNI
+  const [isChangingPasswordModal, setIsChangingPasswordModal] = useState(false);
+  const [resetDni, setResetDni] = useState('');
+  const [resetOldPw, setResetOldPw] = useState('');
+  const [resetNewPw, setResetNewPw] = useState('');
+  const [resetConfirmPw, setResetConfirmPw] = useState('');
+  const [resetStatus, setResetStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
 
   // Lock body scroll while open
   useEffect(() => {
@@ -129,11 +140,45 @@ export default function LoginModal({
     }
   };
 
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = extraerDniPeru(resetDni) || resetDni.replace(/\D/g, '').slice(0, 8);
+    if (!clean || clean.length !== 8) {
+      setResetStatus({ type: 'error', message: 'Ingresa un DNI válido de 8 dígitos numéricos.' });
+      return;
+    }
+    if (resetNewPw !== resetConfirmPw) {
+      setResetStatus({ type: 'error', message: 'La nueva contraseña y su confirmación no coinciden.' });
+      return;
+    }
+    if (resetNewPw.length < 6) {
+      setResetStatus({ type: 'error', message: 'La nueva contraseña debe tener al menos 6 caracteres.' });
+      return;
+    }
+
+    setIsResetting(true);
+    setResetStatus(null);
+    const res = await actualizarPasswordSocio(clean, resetNewPw, resetOldPw || undefined);
+    setIsResetting(false);
+
+    if (res.success) {
+      setResetStatus({ type: 'success', message: res.message });
+      setTimeout(() => {
+        setIsChangingPasswordModal(false);
+        setDni(clean);
+        setPassword(resetNewPw);
+        setResetStatus(null);
+      }, 1500);
+    } else {
+      setResetStatus({ type: 'error', message: res.message });
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const rawInput = dni.trim();
-    const cleanDni = rawInput.replace(/\D/g, '');
     const isEmail = rawInput.includes('@');
+    const cleanDni = isEmail ? '' : (extraerDniPeru(rawInput) || rawInput.replace(/\D/g, '').slice(0, 8));
     const isMasterEmail = SUPER_ADMIN_EMAILS.some((adm: string) => adm.toLowerCase() === rawInput.toLowerCase());
 
     if (!isEmail && cleanDni.length !== 8) {
@@ -249,7 +294,119 @@ export default function LoginModal({
               <X className="w-4 h-4" />
             </button>
 
-            {!activeUserEmail ? (
+            {isChangingPasswordModal ? (
+              <div className="space-y-4 font-mono text-xs">
+                <div className="mb-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsChangingPasswordModal(false);
+                      setResetStatus(null);
+                    }}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 mb-2 cursor-pointer font-bold"
+                  >
+                    ← Volver al inicio de sesión
+                  </button>
+                  <h3 className="text-xl sm:text-2xl font-black uppercase text-white font-display">
+                    Cambiar Contraseña
+                  </h3>
+                  <p className="text-zinc-400 text-xs mt-1 font-sans">
+                    Si es tu primer ingreso, tu contraseña inicial es tu DNI.
+                  </p>
+                </div>
+
+                {resetStatus && (
+                  <div
+                    className={`p-3 rounded-xl text-xs ${
+                      resetStatus.type === 'success'
+                        ? 'bg-emerald-500/15 border border-emerald-500/30 text-emerald-300'
+                        : 'bg-red-500/15 border border-red-500/30 text-red-300'
+                    }`}
+                  >
+                    {resetStatus.message}
+                  </div>
+                )}
+
+                <form onSubmit={handleResetPasswordSubmit} className="space-y-3">
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-zinc-300 mb-1 font-semibold">
+                      Tu DNI (8 dígitos)
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={resetDni}
+                      onChange={(e) => setResetDni(e.target.value)}
+                      placeholder="Ej: 72345678"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-zinc-300 mb-1 font-semibold">
+                      Contraseña Actual (o DNI si es primer cambio)
+                    </label>
+                    <input
+                      type="password"
+                      value={resetOldPw}
+                      onChange={(e) => setResetOldPw(e.target.value)}
+                      placeholder="Tu clave actual o DNI"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-zinc-300 mb-1 font-semibold">
+                      Nueva Contraseña (mínimo 6 caracteres)
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={resetNewPw}
+                      onChange={(e) => setResetNewPw(e.target.value)}
+                      placeholder="Nueva clave segura"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-zinc-300 mb-1 font-semibold">
+                      Confirmar Nueva Contraseña
+                    </label>
+                    <input
+                      type="password"
+                      required
+                      minLength={6}
+                      value={resetConfirmPw}
+                      onChange={(e) => setResetConfirmPw(e.target.value)}
+                      placeholder="Repite la nueva clave"
+                      className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isResetting}
+                    className="w-full bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black font-extrabold uppercase py-3 rounded-xl text-xs transition-colors cursor-pointer shadow-md mt-2 flex items-center justify-center gap-2"
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>{isResetting ? 'Guardando...' : 'Guardar Nueva Contraseña'}</span>
+                  </button>
+                </form>
+
+                <div className="pt-2 text-center">
+                  <button
+                    type="button"
+                    onClick={handleResetPasswordViaWhatsApp}
+                    className="text-[11px] text-zinc-400 hover:text-emerald-400 underline cursor-pointer inline-flex items-center gap-1.5"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>¿Olvidaste tu contraseña anterior? Ayuda por WhatsApp</span>
+                  </button>
+                </div>
+              </div>
+            ) : !activeUserEmail ? (
               <div>
                 {/* Header */}
                 <div className="mb-6">
@@ -348,13 +505,26 @@ export default function LoginModal({
                       >
                         Contraseña
                       </label>
-                      <button
-                        type="button"
-                        onClick={handleResetPasswordViaWhatsApp}
-                        className="text-[11px] font-mono text-amber-400 hover:text-amber-300 transition-colors underline cursor-pointer"
-                      >
-                        ¿Olvidaste tu clave?
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsChangingPasswordModal(true);
+                            setResetDni(dni);
+                          }}
+                          className="text-[11px] font-mono text-amber-400 hover:text-amber-300 transition-colors underline cursor-pointer"
+                        >
+                          ¿Cambiar clave?
+                        </button>
+                        <span className="text-zinc-600">·</span>
+                        <button
+                          type="button"
+                          onClick={handleResetPasswordViaWhatsApp}
+                          className="text-[11px] font-mono text-zinc-400 hover:text-zinc-200 transition-colors underline cursor-pointer"
+                        >
+                          WhatsApp
+                        </button>
+                      </div>
                     </div>
                     <div className="relative">
                       <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
@@ -498,38 +668,6 @@ export default function LoginModal({
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-zinc-400 font-mono">Sede:</span>
                     <span className="text-amber-400 font-mono font-bold">Sede Emadi · Huamanga</span>
-                  </div>
-                </div>
-
-                {/* Tester / Simulator for testing roles */}
-                <div className="mt-4 p-3 bg-zinc-950/70 border border-white/5 rounded-2xl text-left">
-                  <div className="text-[11px] font-mono text-zinc-400 mb-2 font-bold flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                      <span>PROBAR ROL (MODO PRUEBA):</span>
-                    </span>
-                    <span className="text-zinc-500 font-normal">Clic para cambiar</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {(['admin', 'caja', 'entrenador', 'cliente'] as UserRole[]).map((r) => {
-                      const cfg = ROLES_CONFIG[r];
-                      const isCurrent = r === role;
-                      return (
-                        <button
-                          key={r}
-                          type="button"
-                          onClick={() => switchRole(r)}
-                          className={`px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold transition-all flex items-center justify-between cursor-pointer ${
-                            isCurrent
-                              ? `${cfg.themeColor.badgeBg} ${cfg.themeColor.badgeText} border ${cfg.themeColor.badgeBorder} shadow-sm`
-                              : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
-                          }`}
-                        >
-                          <span>{cfg.name}</span>
-                          {isCurrent && <span className="text-[11px] text-emerald-400">●</span>}
-                        </button>
-                      );
-                    })}
                   </div>
                 </div>
 
