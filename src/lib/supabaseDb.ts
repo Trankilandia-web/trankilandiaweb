@@ -862,47 +862,29 @@ export async function vincularDniCliente(
         };
       }
 
-      // Si no existe en ningún padrón: Crear cuenta digital nueva
-      const newId = 'MEM-' + Date.now().toString().slice(-4);
-      const boletaNum = `REG-${cleanDni.slice(-4)}`;
+      // Si no existe en el padrón de socios oficiales: Registrar perfil digital de usuario sin crear socio fantasma
+      const tempId = 'TEMP-' + cleanDni;
       const formattedName = cleanName
         .split(' ')
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
         .join(' ');
 
-      await supabase
-        .from('profiles')
-        .update({
-          dni: cleanDni,
-          full_name: formattedName,
-          membership_status: 'vencido',
-          plan: 'Sin Membresía Activa',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', userId);
+      try {
+        await supabase
+          .from('profiles')
+          .update({
+            dni: cleanDni,
+            full_name: formattedName,
+            membership_status: 'sin_membresia',
+            plan: 'Sin Membresía Activa',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', userId);
+      } catch {}
 
-      await supabase.from('socios').insert({
-        id: newId,
-        nombre: formattedName,
-        dni: cleanDni,
-        email: userEmail,
-        user_id: userId,
-        plan: 'Sin Membresía Activa',
-        precio_plan: 0,
-        tipo_pago: 'full',
-        adelanto_pagado: 0,
-        saldo_pendiente: 0,
-        fecha_inicio: todayISO,
-        fecha_fin: todayISO,
-        metodo_pago: 'efectivo',
-        numero_boleta: boletaNum,
-        turno: 'manana',
-        coach_asignado: 'Coach Marcos Rivas',
-        observaciones: 'Cuenta digital creada. Pendiente de suscripción a un plan.',
-      });
-
-      const newMember: GymMember = {
-        id: newId,
+      // Retornar objeto en memoria para la sesión del usuario (NO se inserta en public.socios para no alterar el padrón oficial)
+      const virtualMember: GymMember = {
+        id: tempId,
         name: formattedName,
         dni: cleanDni,
         email: userEmail,
@@ -914,25 +896,22 @@ export async function vincularDniCliente(
         balanceDue: 0,
         paymentDueDate: null,
         paymentMethod: 'efectivo',
-        receiptNumber: boletaNum,
+        receiptNumber: `REG-${cleanDni.slice(-4)}`,
         membershipStatus: 'inactive',
         expiresAt: 'Por Activar',
         coachName: 'Coach Marcos Rivas',
         registeredAt: todayISO,
-        observations: 'Cuenta digital creada. Pendiente de suscripción a un plan.',
+        observations: 'Cuenta digital creada. Pendiente de suscripción a un plan en caja o recepción.',
         shift: 'manana',
       };
 
-      const current = getStoredMembers();
-      saveStoredMembers([newMember, ...current]);
-
       return {
         success: true,
-        message: `¡Cuenta creada exitosamente! Tu tarjeta de socio está lista.`,
-        member: newMember,
+        message: `¡Cuenta digital conectada! Aún no registras un plan activo. Acércate a recepción de Trankilandia Gym para formalizar tu inscripción.`,
+        member: virtualMember,
       };
     } catch (err: any) {
-      console.warn('Supabase link failed, fallback to local creation:', err);
+      console.warn('Supabase link error:', err);
     }
   }
 
@@ -944,8 +923,6 @@ export async function vincularDniCliente(
       ...match,
       email: userEmail,
     };
-    const updatedList = localMembers.map((m) => (m.dni === cleanDni ? updatedMember : m));
-    saveStoredMembers(updatedList);
     return {
       success: true,
       message: `¡Membresía vinculada con éxito a nombre de ${match.name}!`,
@@ -953,11 +930,10 @@ export async function vincularDniCliente(
     };
   }
 
-  // Crear nuevo en local
-  const newId = 'MEM-' + Date.now().toString().slice(-4);
+  // Si no está registrado en el padrón local, devolver estado temporal sin persistir socio fantasma
   const todayISO = new Date().toISOString().split('T')[0];
-  const newMember: GymMember = {
-    id: newId,
+  const virtualMember: GymMember = {
+    id: 'TEMP-' + cleanDni,
     name: cleanName,
     dni: cleanDni,
     email: userEmail,
@@ -978,12 +954,10 @@ export async function vincularDniCliente(
     shift: 'manana',
   };
 
-  saveStoredMembers([newMember, ...localMembers]);
-
   return {
     success: true,
     message: `¡Cuenta creada con éxito! Tu tarjeta de socio está lista.`,
-    member: newMember,
+    member: virtualMember,
   };
 }
 
@@ -1571,11 +1545,12 @@ export async function fetchSociosParaAdmin(): Promise<GymMember[]> {
           };
         });
 
-        // Combinar preservando fotos de documentos locales y conservando socios locales aún no sincronizados
+        // Combinar preservando fotos de documentos locales si existen
         const local = getStoredMembers();
         const mappedDnis = new Set(mapped.map((m) => m.dni).filter(Boolean));
         const mappedIds = new Set(mapped.map((m) => m.id));
-        const localOnly = local.filter((l) => !mappedIds.has(l.id) && (!l.dni || !mappedDnis.has(l.dni)));
+        // Solo conservar socios locales si fueron registrados offline con marca explícita pendiente de sync
+        const offlinePending = local.filter((l: any) => l._offlinePendingSync === true && !mappedIds.has(l.id) && (!l.dni || !mappedDnis.has(l.dni)));
 
         const merged = [
           ...mapped.map((m) => {
@@ -1590,7 +1565,7 @@ export async function fetchSociosParaAdmin(): Promise<GymMember[]> {
             }
             return m;
           }),
-          ...localOnly,
+          ...offlinePending,
         ];
 
         saveStoredMembers(merged);

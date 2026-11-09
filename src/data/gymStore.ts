@@ -97,12 +97,9 @@ export const LUIS_GERARDO_MEMBER: GymMember = {
   gender: 'Masculino',
 };
 
-// Initial Real Members Loaded directly from Gym.xlsm + Luis Gerardo
+// Initial Real Members Loaded directly from Gym.xlsm (417 socios oficiales)
 const rawList = (realMembersData as unknown) as GymMember[];
-export const INITIAL_MEMBERS: GymMember[] = [
-  LUIS_GERARDO_MEMBER,
-  ...rawList.filter((m) => m.dni !== '70447087' && m.id !== 'MEM-2713'),
-];
+export const INITIAL_MEMBERS: GymMember[] = rawList;
 
 // Initial Custom Routines per Member
 export const INITIAL_ROUTINES: Record<string, MemberRoutine> = {
@@ -248,13 +245,13 @@ export const INITIAL_PROGRESS: ProgressRecord[] = [
   },
 ];
 
-const STORAGE_KEY = 'trankilandia_members_v5';
+const STORAGE_KEY = 'trankilandia_members_v6';
 
 // Helper to get members from LocalStorage or Fallback
 export const getStoredMembers = (): GymMember[] => {
   try {
     // Si existen claves obsoletas de versiones anteriores, limpiarlas
-    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4'].forEach((k) => {
+    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4', 'trankilandia_members_v5'].forEach((k) => {
       if (localStorage.getItem(k)) {
         localStorage.removeItem(k);
       }
@@ -262,33 +259,8 @@ export const getStoredMembers = (): GymMember[] => {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed: GymMember[] = JSON.parse(raw);
-      // Garantizar que la cuenta de Luis Gerardo esté siempre con su membresía activa pagada
-      const luisIdx = parsed.findIndex((m) => m.dni === '70447087' || m.email === 'luisgerardolloccllasaune@gmail.com');
-      if (luisIdx >= 0) {
-        if (parsed[luisIdx].plan === 'Sin Membresía Activa' || parsed[luisIdx].membershipStatus === 'inactive' || (parsed[luisIdx].planPrice || 0) === 0) {
-          parsed[luisIdx] = {
-            ...parsed[luisIdx],
-            name: 'Luis Gerardo Llocclla Sauñe',
-            dni: '70447087',
-            email: 'luisgerardolloccllasaune@gmail.com',
-            phone: parsed[luisIdx].phone || '958183360',
-            plan: 'Combo Musculación + Escuela de Boxeo',
-            planPrice: 140,
-            advancePaid: 140,
-            balanceDue: 0,
-            paymentType: 'full',
-            membershipStatus: 'active',
-            expiresAt: '2027-11-01',
-            shift: 'manana',
-            coachName: 'Coach Marcos Rivas',
-          };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-        }
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed;
-      } else {
-        const withLuis = [LUIS_GERARDO_MEMBER, ...parsed];
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(withLuis));
-        return withLuis;
       }
     }
   } catch {}
@@ -300,7 +272,7 @@ export const getStoredMembers = (): GymMember[] => {
  */
 export const reloadFreshMembersFromExcel = (): GymMember[] => {
   try {
-    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4', STORAGE_KEY].forEach((k) => {
+    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4', 'trankilandia_members_v5', STORAGE_KEY].forEach((k) => {
       localStorage.removeItem(k);
     });
     localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_MEMBERS));
