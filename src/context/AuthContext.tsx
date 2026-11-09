@@ -4,6 +4,7 @@ import { supabase, isSupabaseConfigured, signOut as supabaseSignOut } from '../l
 import { UserRole, ROLES_CONFIG, getRoleRedirectPath } from '../types/roles';
 import { extraerDniPeru } from '../lib/dniParser';
 import { getStoredMembers } from '../data/gymStore';
+import { StaffUser, setActiveStaffSession } from '../lib/staffStore';
 
 interface AuthContextType {
   user: User | null;
@@ -16,6 +17,8 @@ interface AuthContextType {
   switchRole: (newRole: UserRole) => Promise<void>;
   getRedirectPath: () => string;
   loginUser: (identifier: string, name?: string) => Promise<{ success: boolean; role: UserRole; redirectPath: string }>;
+  loginStaff: (staff: StaffUser) => { success: boolean; role: UserRole; redirectPath: string };
+  logoutStaff: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -30,6 +33,8 @@ const AuthContext = createContext<AuthContextType>({
   switchRole: async () => {},
   getRedirectPath: () => '/cliente',
   loginUser: async () => ({ success: false, role: 'cliente', redirectPath: '/' }),
+  loginStaff: () => ({ success: false, role: 'cliente', redirectPath: '/' }),
+  logoutStaff: async () => {},
   signOut: async () => {},
 });
 
@@ -322,7 +327,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     localStorage.setItem(ROLE_STORAGE_KEY, newRole);
   };
 
+  const loginStaff = (staff: StaffUser): { success: boolean; role: UserRole; redirectPath: string } => {
+    setActiveStaffSession(staff);
+    const assignedRole: UserRole = staff.rol === 'admin' ? 'admin' : 'caja';
+    const email =
+      staff.rol === 'admin'
+        ? staff.id === 'staff-marisol'
+          ? 'marisolflores@gmail.com'
+          : 'luisgerardolloccllasaune@gmail.com'
+        : `${staff.id}@caja.trankilandia.pe`;
+
+    const authUserObj = {
+      id: staff.id,
+      email,
+      app_metadata: {},
+      user_metadata: {
+        full_name: staff.nombre,
+        role: assignedRole,
+      },
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    } as unknown as User;
+
+    try {
+      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(authUserObj));
+      localStorage.setItem(ROLE_STORAGE_KEY, assignedRole);
+    } catch {}
+
+    setUser(authUserObj);
+    setActualRole(assignedRole);
+    setRoleState(assignedRole);
+
+    return {
+      success: true,
+      role: assignedRole,
+      redirectPath: assignedRole === 'admin' ? '/admin' : '/caja',
+    };
+  };
+
   const handleSignOut = async () => {
+    setActiveStaffSession(null);
     if (isConfigured) {
       await supabaseSignOut();
     }
@@ -334,6 +378,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       localStorage.removeItem(USER_STORAGE_KEY);
       localStorage.removeItem(ROLE_STORAGE_KEY);
     } catch {}
+  };
+
+  const logoutStaff = async () => {
+    await handleSignOut();
   };
 
   const getRedirectPath = () => {
@@ -353,6 +401,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         switchRole,
         getRedirectPath,
         loginUser,
+        loginStaff,
+        logoutStaff,
         signOut: handleSignOut,
       }}
     >

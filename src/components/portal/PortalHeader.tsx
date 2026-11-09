@@ -43,6 +43,10 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
     return null;
   });
 
+  const isDesktopApp =
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'file:' || Boolean((window as any).electronAPI?.isElectron));
+
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
 
   useEffect(() => {
@@ -171,17 +175,19 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
                 </button>
               )}
 
-              {/* Botón de acceso a la web de socios */}
-              <Link
-                to="/"
-                className="inline-flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-medium border border-white/10 transition-colors"
-                title="Ver web pública del gimnasio"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Web Clientes</span>
-              </Link>
+              {/* Botón de acceso a la web de socios (solo en navegador web, oculto en app de escritorio) */}
+              {!isDesktopApp && (
+                <Link
+                  to="/"
+                  className="inline-flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-medium border border-white/10 transition-colors"
+                  title="Ver web pública del gimnasio"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Web Clientes</span>
+                </Link>
+              )}
 
-              {/* Salir */}
+              {/* Salir / Bloquear Turno */}
               <button
                 type="button"
                 onClick={async () => {
@@ -190,10 +196,10 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
                   navigate('/');
                 }}
                 className="inline-flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 px-3 py-1.5 rounded-xl text-xs font-medium border border-red-500/20 transition-colors cursor-pointer"
-                title="Cerrar sesión"
+                title="Cerrar turno y bloquear terminal"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>Salir</span>
+                <span>{isDesktopApp ? 'Bloquear Terminal' : 'Salir'}</span>
               </button>
             </div>
           </div>

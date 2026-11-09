@@ -13,9 +13,9 @@ import ProtectedRoute from './components/portal/ProtectedRoute';
 // Code-Splitting: Carga diferida de portales y páginas secundarias (< 250 KB initial bundle)
 const AdminDashboard = lazy(() => import('./pages/portal/AdminDashboard'));
 const CajaDashboard = lazy(() => import('./pages/portal/CajaDashboard'));
-const EntrenadorDashboard = lazy(() => import('./pages/portal/EntrenadorDashboard'));
 const ClientePortal = lazy(() => import('./pages/portal/ClientePortal'));
 const PortalRedirect = lazy(() => import('./pages/portal/PortalRedirect'));
+const DesktopStaffLogin = lazy(() => import('./pages/portal/DesktopStaffLogin'));
 const PlansPage = lazy(() => import('./pages/PlansPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const FacilitiesPage = lazy(() => import('./pages/FacilitiesPage'));
@@ -26,10 +26,19 @@ function AppContent() {
   const [tourInitialPlan, setTourInitialPlan] = useState<string | undefined>(undefined);
   const location = useLocation();
 
-  // Check if current route is a management portal route
-  const isPortalRoute = ['/portal', '/hub', '/admin', '/caja', '/entrenador', '/cliente'].some(
-    (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
-  );
+  // Detectar modo escritorio (ejecutable Electron o acceso a /hub en navegador)
+  const isDesktopMode =
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'file:' ||
+      Boolean((window as any).electronAPI?.isElectron) ||
+      sessionStorage.getItem('trankilandia_desktop_mode') === 'true');
+
+  // En modo escritorio NUNCA se muestran Navbar ni Footer públicos
+  const isPortalRoute =
+    isDesktopMode ||
+    ['/portal', '/hub', '/admin', '/caja', '/entrenador', '/cliente'].some(
+      (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
+    );
 
   const handleOpenTour = (planId?: string) => {
     setTourInitialPlan(planId);
@@ -44,7 +53,7 @@ function AppContent() {
     <div className="min-h-screen w-full max-w-full overflow-x-hidden flex flex-col bg-zinc-950 text-white font-display antialiased selection:bg-amber-400 selection:text-black">
       <ScrollToTop />
 
-      {/* Public Navbar only on public website routes */}
+      {/* Public Navbar solo en la web pública de clientes */}
       {!isPortalRoute && (
         <Navbar
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
@@ -64,81 +73,99 @@ function AppContent() {
           }
         >
           <Routes>
-            {/* Public Landing & Marketing Routes */}
-            <Route path="/" element={<HomePage onOpenTourModal={() => handleOpenTour()} />} />
-            <Route
-              path="/planes"
-              element={
-                <PlansPage
-                  onSelectPlan={(id) => handleOpenTour(id)}
-                  onOpenTourModal={() => handleOpenTour()}
+            {isDesktopMode ? (
+              /* ==============================================================
+                 MODO ESCRITORIO (PC DEL GIMNASIO · ELECTRON · HUB TERMINAL)
+                 Cero web pública, cero landing page. Directo a Personal y PIN.
+                 ============================================================== */
+              <>
+                <Route path="/" element={<DesktopStaffLogin />} />
+                <Route path="/hub" element={<DesktopStaffLogin />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  }
                 />
-              }
-            />
-            <Route
-              path="/clases"
-              element={
-                <SchedulePage
-                  onBookClass={() => handleOpenTour()}
-                  onOpenTourModal={() => handleOpenTour()}
+                <Route
+                  path="/caja"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin', 'caja']}>
+                      <CajaDashboard />
+                    </ProtectedRoute>
+                  }
                 />
-              }
-            />
-            <Route
-              path="/instalaciones"
-              element={<FacilitiesPage onOpenTourModal={() => handleOpenTour()} />}
-            />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </>
+            ) : (
+              /* ==============================================================
+                 MODO WEB PÚBLICA (EXCLUSIVA PARA CLIENTES Y ACCESO A SOCIOS)
+                 ============================================================== */
+              <>
+                {/* Public Landing & Marketing Routes */}
+                <Route path="/" element={<HomePage onOpenTourModal={() => handleOpenTour()} />} />
+                <Route path="/hub" element={<DesktopStaffLogin />} />
+                <Route
+                  path="/planes"
+                  element={
+                    <PlansPage
+                      onSelectPlan={(id) => handleOpenTour(id)}
+                      onOpenTourModal={() => handleOpenTour()}
+                    />
+                  }
+                />
+                <Route
+                  path="/clases"
+                  element={
+                    <SchedulePage
+                      onBookClass={() => handleOpenTour()}
+                      onOpenTourModal={() => handleOpenTour()}
+                    />
+                  }
+                />
+                <Route
+                  path="/instalaciones"
+                  element={<FacilitiesPage onOpenTourModal={() => handleOpenTour()} />}
+                />
 
-            {/* Role Index & Management Portal Routes con Protección de Roles Estricta */}
-            <Route path="/portal" element={<PortalRedirect />} />
-            <Route
-              path="/hub"
-              element={
-                <ProtectedRoute allowedRoles={['admin', 'caja']}>
-                  <CajaDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/caja"
-              element={
-                <ProtectedRoute allowedRoles={['admin', 'caja']}>
-                  <CajaDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/entrenador"
-              element={
-                <ProtectedRoute allowedRoles={['admin', 'entrenador']}>
-                  <EntrenadorDashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/cliente"
-              element={
-                <ProtectedRoute allowedRoles={['admin', 'caja', 'entrenador', 'cliente']}>
-                  <ClientePortal />
-                </ProtectedRoute>
-              }
-            />
+                {/* Role Portals con Protección */}
+                <Route path="/portal" element={<PortalRedirect />} />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin']}>
+                      <AdminDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/caja"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin', 'caja']}>
+                      <CajaDashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/cliente"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin', 'caja', 'entrenador', 'cliente']}>
+                      <ClientePortal />
+                    </ProtectedRoute>
+                  }
+                />
 
-            {/* Fallback to Home */}
-            <Route path="*" element={<Navigate to="/" replace />} />
+                {/* Fallback to Home */}
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </>
+            )}
           </Routes>
         </Suspense>
       </main>
 
-      {/* Public Footer & Floating Badge only on public website routes */}
+      {/* Public Footer & Floating Badge solo en la web pública */}
       {!isPortalRoute && <Footer onOpenTourModal={() => handleOpenTour()} />}
       {!isPortalRoute && <FloatingPassBadge onOpenTourModal={() => handleOpenTour()} />}
 
