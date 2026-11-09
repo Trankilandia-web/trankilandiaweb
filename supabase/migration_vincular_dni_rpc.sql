@@ -131,3 +131,61 @@ $$;
 
 revoke execute on function public.vincular_socio_por_dni(text, text, text) from public, anon;
 grant execute on function public.vincular_socio_por_dni(text, text, text) to authenticated;
+
+-- 3. Función RPC: vincular_correo_a_dni (unificación bidireccional DNI <-> Google)
+create or replace function public.vincular_correo_a_dni(
+  p_dni text,
+  p_email text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_clean_dni text;
+  v_clean_email text;
+  v_socio record;
+  v_existing_profile record;
+begin
+  v_clean_dni := regexp_replace(p_dni, '[^0-9]', '', 'g');
+  v_clean_email := lower(trim(p_email));
+
+  if length(v_clean_dni) != 8 then
+    return jsonb_build_object('success', false, 'message', 'El DNI debe tener exactamente 8 dígitos.');
+  end if;
+
+  if position('@' in v_clean_email) = 0 then
+    return jsonb_build_object('success', false, 'message', 'Correo electrónico inválido.');
+  end if;
+
+  -- 1. Buscar socio por DNI
+  select * into v_socio from public.socios where dni = v_clean_dni;
+  if not found then
+    return jsonb_build_object('success', false, 'message', 'Socio no encontrado con el DNI ' || v_clean_dni);
+  end if;
+
+  -- 2. Actualizar email en public.socios
+  update public.socios
+  set email = v_clean_email, updated_at = now()
+  where id = v_socio.id;
+
+  -- 3. Buscar si existe un perfil registrado con ese email (ej: usuario Google)
+  select * into v_existing_profile from public.profiles where lower(email) = v_clean_email;
+  if found then
+    -- Vincular el user_id de Google a public.socios y public.profiles
+    update public.socios set user_id = v_existing_profile.id where id = v_socio.id;
+    update public.profiles set dni = v_clean_dni, updated_at = now() where id = v_existing_profile.id;
+  else
+    -- Actualizar el perfil que tenga este DNI
+    update public.profiles set email = v_clean_email, updated_at = now() where dni = v_clean_dni;
+  end if;
+
+  return jsonb_build_object(
+    'success', true,
+    'message', '¡Correo vinculado con éxito! Tu DNI y cuenta de Google ahora son una sola cuenta.'
+  );
+end;
+$$;
+
+grant execute on function public.vincular_correo_a_dni(text, text) to authenticated, anon;
