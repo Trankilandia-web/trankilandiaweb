@@ -40,3 +40,4 @@ supabase/.temp/
 test-results/
 playwright-report/
 .superpowers/
+dist-electron/

@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -158,11 +158,17 @@ function AppContent() {
 }
 
 export default function App() {
+  const isDesktopOrFile =
+    typeof window !== 'undefined' &&
+    (window.location.protocol === 'file:' || Boolean((window as any).electronAPI?.isElectron));
+
+  const Router = isDesktopOrFile ? HashRouter : BrowserRouter;
+
   return (
-    <BrowserRouter>
+    <Router>
       <AuthProvider>
         <AppContent />
       </AuthProvider>
-    </BrowserRouter>
+    </Router>
   );
 }

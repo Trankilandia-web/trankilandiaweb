@@ -1,15 +1,48 @@
 {
   "name": "trankilandia-gym",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.trankilandia.hub",
+    "productName": "Trankilandia Hub",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Trankilandia Hub"
+    }
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
@@ -31,12 +64,17 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^10.0.7",
+    "cross-env": "^10.1.0",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
     "happy-dom": "^21.0.4",
     "playwright": "^1.65.0",
     "tailwindcss": "^4.0.0",
     "typescript": "~5.7.2",
     "vite": "^6.2.0",
     "vitest": "^5.1.0",
+    "wait-on": "^9.5.1",
     "xlsx": "^0.18.5"
   }
 }
