@@ -735,11 +735,17 @@ export async function vincularDniCliente(
 
       if (socio && !error) {
         // Socio existente en el padrón: Vincular con su cuenta de Google/correo
+        const isExpired = socio.fecha_fin
+          ? socio.fecha_fin < new Date().toISOString().split('T')[0]
+          : false;
+
         await supabase
           .from('profiles')
           .update({
             dni: cleanDni,
             full_name: socio.nombre,
+            membership_status: isExpired ? 'vencido' : 'activo',
+            plan: socio.plan,
             updated_at: new Date().toISOString(),
           })
           .eq('id', userId);
@@ -752,10 +758,6 @@ export async function vincularDniCliente(
             updated_at: new Date().toISOString(),
           })
           .eq('id', socio.id);
-
-        const isExpired = socio.fecha_fin
-          ? socio.fecha_fin < new Date().toISOString().split('T')[0]
-          : false;
 
         const mapped: GymMember = {
           id: socio.id,
@@ -794,16 +796,85 @@ export async function vincularDniCliente(
         };
       }
 
-      // Si no existe en el padrón: CREAR CUENTA NUEVA CON CARNET (MEMBRESÍA POR ACTIVAR)
+      // Si no existe directamente en el select de Supabase (ej: bloqueo RLS o sincronización pendiente),
+      // comprobar si existe en el padrón local (inscrito en recepción con plan y nombre oficial)
+      const localMatch = getStoredMembers().find((m) => m.dni === cleanDni);
+      const todayISO = new Date().toISOString().split('T')[0];
+
+      if (localMatch && localMatch.plan && localMatch.plan !== 'Sin Membresía Activa') {
+        const realName = localMatch.name || cleanName;
+        const realPlan = localMatch.plan;
+        const isExp =
+          localMatch.membershipStatus === 'inactive' ||
+          (localMatch.expiresAt && localMatch.expiresAt < todayISO);
+
+        await supabase
+          .from('profiles')
+          .update({
+            dni: cleanDni,
+            full_name: realName,
+            membership_status: isExp ? 'vencido' : 'activo',
+            plan: realPlan,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', userId);
+
+        const mappedMember: GymMember = {
+          ...localMatch,
+          name: realName,
+          email: userEmail,
+        };
+
+        await supabase.from('socios').upsert(
+          {
+            id: localMatch.id,
+            nombre: realName,
+            dni: cleanDni,
+            email: userEmail,
+            user_id: userId,
+            plan: realPlan,
+            precio_plan: localMatch.planPrice || 80,
+            tipo_pago: localMatch.paymentType || 'full',
+            adelanto_pagado: localMatch.advancePaid || 0,
+            saldo_pendiente: localMatch.balanceDue || 0,
+            fecha_inicio: normalizeDateToISO(localMatch.registeredAt),
+            fecha_fin: normalizeDateToISO(localMatch.expiresAt),
+            metodo_pago: localMatch.paymentMethod || 'efectivo',
+            numero_boleta: localMatch.receiptNumber || `REG-${cleanDni.slice(-4)}`,
+            turno: localMatch.shift || 'manana',
+            coach_asignado: localMatch.coachName || 'Coach Marcos Rivas',
+            observaciones: localMatch.observations || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+
+        const current = getStoredMembers();
+        const updated = current.map((m) =>
+          m.dni === cleanDni || m.id === localMatch.id ? mappedMember : m
+        );
+        saveStoredMembers(updated);
+
+        return {
+          success: true,
+          message: `¡Membresía vinculada con éxito a nombre de ${realName}!`,
+          member: mappedMember,
+        };
+      }
+
+      // Si no existe en ningún padrón: Crear cuenta digital nueva
       const newId = 'MEM-' + Date.now().toString().slice(-4);
       const boletaNum = `REG-${cleanDni.slice(-4)}`;
-      const todayISO = new Date().toISOString().split('T')[0];
+      const formattedName = cleanName
+        .split(' ')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
 
       await supabase
         .from('profiles')
         .update({
           dni: cleanDni,
-          full_name: cleanName,
+          full_name: formattedName,
           membership_status: 'vencido',
           plan: 'Sin Membresía Activa',
           updated_at: new Date().toISOString(),
@@ -812,7 +883,7 @@ export async function vincularDniCliente(
 
       await supabase.from('socios').insert({
         id: newId,
-        nombre: cleanName,
+        nombre: formattedName,
         dni: cleanDni,
         email: userEmail,
         user_id: userId,
@@ -832,7 +903,7 @@ export async function vincularDniCliente(
 
       const newMember: GymMember = {
         id: newId,
-        name: cleanName,
+        name: formattedName,
         dni: cleanDni,
         email: userEmail,
         phone: '',
@@ -1203,51 +1274,129 @@ export async function asignarDniYActivarCuenta(
  */
 export async function registerGymMember(member: GymMember): Promise<void> {
   const current = getStoredMembers();
-  const updated = [member, ...current.filter((m) => m.id !== member.id)];
+  const cleanDni = member.dni
+    ? (extraerDniPeru(member.dni) || member.dni.trim().replace(/\D/g, '').slice(0, 8))
+    : '';
+
+  // 1. Verificar si ya existía localmente por DNI o ID para reutilizar el mismo ID canónico
+  let targetId = member.id;
+  const existingLocal = current.find(
+    (m) => (cleanDni && m.dni && m.dni.trim() === cleanDni) || m.id === member.id
+  );
+  if (existingLocal) {
+    targetId = existingLocal.id;
+  }
+
+  const normalizedMember: GymMember = {
+    ...member,
+    id: targetId,
+    dni: cleanDni || member.dni,
+  };
+
+  const updated = [
+    normalizedMember,
+    ...current.filter(
+      (m) => m.id !== targetId && (!cleanDni || !m.dni || m.dni.trim() !== cleanDni)
+    ),
+  ];
   saveStoredMembers(updated);
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('socios').upsert({
-        id: member.id,
-        nombre: member.name,
-        dni: member.dni ? member.dni.trim().replace(/\D/g, '').slice(0, 8) : null,
-        email: member.email,
-        celular: member.phone,
-        plan: member.plan,
-        precio_plan: member.planPrice,
-        tipo_pago: member.paymentType,
-        adelanto_pagado: member.advancePaid,
-        saldo_pendiente: member.balanceDue,
-        fecha_inicio: normalizeDateToISO(member.registeredAt),
-        fecha_fin: normalizeDateToISO(member.expiresAt),
-        fecha_limite_pago: member.paymentDueDate ? normalizeDateToISO(member.paymentDueDate) : null,
-        metodo_pago: member.paymentMethod,
-        numero_boleta: member.receiptNumber,
-        turno: member.shift || 'manana',
-        coach_asignado: member.coachName,
-        observaciones: member.observations,
-        edad: member.age,
-        sexo: member.gender,
-      });
+      // 2. Verificar si en Supabase ya existía un socio con este DNI (ej: cuenta digital previa MEM-2747)
+      let finalId = targetId;
+      let matchedUserId: string | null = null;
+      if (cleanDni) {
+        const { data: dbSocio } = await supabase
+          .from('socios')
+          .select('id, user_id')
+          .eq('dni', cleanDni)
+          .maybeSingle();
 
-      // Si tiene DNI válido de 8 dígitos, activar su cuenta asociada y vincular correo
-      const cleanDni = member.dni ? (extraerDniPeru(member.dni) || member.dni.trim().replace(/\D/g, '').slice(0, 8)) : '';
+        if (dbSocio?.id) {
+          finalId = dbSocio.id;
+          matchedUserId = dbSocio.user_id;
+        }
+      }
+
+      const dbPayload: any = {
+        id: finalId,
+        nombre: normalizedMember.name,
+        dni: cleanDni || null,
+        email: normalizedMember.email,
+        celular: normalizedMember.phone,
+        plan: normalizedMember.plan,
+        precio_plan: normalizedMember.planPrice,
+        tipo_pago: normalizedMember.paymentType,
+        adelanto_pagado: normalizedMember.advancePaid,
+        saldo_pendiente: normalizedMember.balanceDue,
+        fecha_inicio: normalizeDateToISO(normalizedMember.registeredAt),
+        fecha_fin: normalizeDateToISO(normalizedMember.expiresAt),
+        fecha_limite_pago: normalizedMember.paymentDueDate
+          ? normalizeDateToISO(normalizedMember.paymentDueDate)
+          : null,
+        metodo_pago: normalizedMember.paymentMethod,
+        numero_boleta: normalizedMember.receiptNumber,
+        turno: normalizedMember.shift || 'manana',
+        coach_asignado: normalizedMember.coachName,
+        observaciones: normalizedMember.observations,
+        edad: normalizedMember.age,
+        sexo: normalizedMember.gender,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (matchedUserId) {
+        dbPayload.user_id = matchedUserId;
+      }
+
+      const { error: upsertErr } = await supabase
+        .from('socios')
+        .upsert(dbPayload, { onConflict: 'id' });
+      if (upsertErr) {
+        console.error('Error guardando socio en Supabase:', upsertErr);
+      }
+
+      // Sincronizar en public.profiles si el socio tiene DNI
+      if (cleanDni) {
+        await supabase
+          .from('profiles')
+          .update({
+            full_name: normalizedMember.name,
+            dni: cleanDni,
+            plan: normalizedMember.plan,
+            membership_status:
+              normalizedMember.membershipStatus === 'inactive' ? 'vencido' : 'activo',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('dni', cleanDni);
+      }
+
+      // Activar cuenta canónica para acceso por DNI
       if (cleanDni && cleanDni.length === 8) {
-        await asignarDniYActivarCuenta(member.id, cleanDni, member.email || undefined, member.phone || undefined);
+        await asignarDniYActivarCuenta(
+          finalId,
+          cleanDni,
+          normalizedMember.email || undefined,
+          normalizedMember.phone || undefined
+        );
       }
 
       // Registrar también en tabla de ingresos si hubo abono efectivo
-      if (member.advancePaid > 0) {
+      if (normalizedMember.advancePaid > 0) {
         await supabase.from('ingresos').insert({
-          key_socio: member.id,
-          monto: member.advancePaid,
-          metodo_pago: member.paymentMethod,
-          tipo: member.paymentType === 'advance' ? 'Adelanto de Membresía' : 'Membresía Completa',
-          observacion: `Cobro boleta ${member.receiptNumber} (${member.plan})`,
+          key_socio: finalId,
+          monto: normalizedMember.advancePaid,
+          metodo_pago: normalizedMember.paymentMethod,
+          tipo:
+            normalizedMember.paymentType === 'advance'
+              ? 'Adelanto de Membresía'
+              : 'Membresía Completa',
+          observacion: `Cobro boleta ${normalizedMember.receiptNumber} (${normalizedMember.plan})`,
         });
       }
-    } catch {}
+    } catch (err) {
+      console.warn('registerGymMember notice:', err);
+    }
   }
 }
 
@@ -1422,20 +1571,27 @@ export async function fetchSociosParaAdmin(): Promise<GymMember[]> {
           };
         });
 
-        // Combinar preservando fotos de documentos locales si existen
+        // Combinar preservando fotos de documentos locales y conservando socios locales aún no sincronizados
         const local = getStoredMembers();
-        const merged = mapped.map((m) => {
-          const localMatch = local.find((l) => l.id === m.id || (m.dni && l.dni === m.dni));
-          if (localMatch?.documentUrl) {
-            return {
-              ...m,
-              documentUrl: localMatch.documentUrl,
-              documentStatus: localMatch.documentStatus || m.documentStatus,
-              documentType: localMatch.documentType,
-            };
-          }
-          return m;
-        });
+        const mappedDnis = new Set(mapped.map((m) => m.dni).filter(Boolean));
+        const mappedIds = new Set(mapped.map((m) => m.id));
+        const localOnly = local.filter((l) => !mappedIds.has(l.id) && (!l.dni || !mappedDnis.has(l.dni)));
+
+        const merged = [
+          ...mapped.map((m) => {
+            const localMatch = local.find((l) => l.id === m.id || (m.dni && l.dni === m.dni));
+            if (localMatch?.documentUrl) {
+              return {
+                ...m,
+                documentUrl: localMatch.documentUrl,
+                documentStatus: localMatch.documentStatus || m.documentStatus,
+                documentType: localMatch.documentType,
+              };
+            }
+            return m;
+          }),
+          ...localOnly,
+        ];
 
         saveStoredMembers(merged);
         return merged;

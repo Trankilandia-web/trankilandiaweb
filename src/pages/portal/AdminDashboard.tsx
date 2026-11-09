@@ -612,6 +612,8 @@ export default function AdminDashboard() {
         !q ||
         normalize(m.name || '').includes(q) ||
         (m.dni ? String(m.dni).includes(rawQ) : false) ||
+        (m.phone ? String(m.phone).includes(rawQ) : false) ||
+        (m.email ? m.email.toLowerCase().includes(rawQ) : false) ||
         (m.id || '').toLowerCase().includes(rawQ);
 
       const matchRole = roleFilter === 'all' || m.role === roleFilter;

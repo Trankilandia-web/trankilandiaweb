@@ -1031,7 +1031,9 @@ export default function CajaDashboard() {
       : undefined;
 
     const cleanDni = extraerDniPeru(clientDni) || clientDni.trim().replace(/\D/g, '').slice(0, 8);
-    const existingMember = members.find((m) => m.dni && m.dni.trim() === cleanDni);
+    const existingMember =
+      members.find((m) => m.dni && m.dni.trim() === cleanDni) ||
+      getStoredMembers().find((m) => m.dni && m.dni.trim() === cleanDni);
 
     // Calcular fecha de vencimiento: si ya tiene membresía vigente, extender desde esa fecha
     const baseDate = existingMember && existingMember.expiresAt && new Date(existingMember.expiresAt) > new Date()
@@ -1096,8 +1098,12 @@ export default function CajaDashboard() {
       }
     } else {
       // MODO NUEVA INSCRIPCIÓN
+      const assignedId =
+        sociosMap.get(cleanDni)?.id ||
+        `MEM-00${members.length + 1}`;
+
       memberToSave = {
-        id: `MEM-00${members.length + 1}`,
+        id: assignedId,
         name: clientName.trim(),
         dni: cleanDni,
         email: clientEmail.trim() || `${cleanDni}@cliente.trankilandia.pe`,
