@@ -1319,6 +1319,29 @@ export default function AdminDashboard() {
                   <option value="al_dia">100% Al Día</option>
                 </select>
 
+                {/* Indicador de Conexión Real a Supabase Cloud */}
+                <span
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono border ml-auto ${
+                    !isSupabaseConfigured()
+                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                      : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                  }`}
+                  title={
+                    !isSupabaseConfigured()
+                      ? 'La aplicación no tiene configurada la clave anon de Supabase. Los datos operan en almacenamiento local.'
+                      : 'Conexión activa en tiempo real con Supabase PostgreSQL'
+                  }
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${
+                      !isSupabaseConfigured() ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'
+                    }`}
+                  />
+                  <span>
+                    {!isSupabaseConfigured() ? 'Modo Local (Sin Cloud)' : 'Cloud En Vivo'}
+                  </span>
+                </span>
+
                 <button
                   type="button"
                   onClick={async () => {
@@ -1329,7 +1352,7 @@ export default function AdminDashboard() {
                       setTimeout(() => setActionSuccess(null), 4000);
                     }
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-bold transition-all border border-white/10 cursor-pointer ml-auto"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-bold transition-all border border-white/10 cursor-pointer"
                   title="Recarga limpia y sincronización desde Gym.xlsm"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />

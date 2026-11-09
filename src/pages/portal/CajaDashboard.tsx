@@ -1893,14 +1893,39 @@ export default function CajaDashboard() {
               <span className="text-zinc-500">/ {aforoEnVivo.capacidadMax}</span>
             </div>
 
-            {/* Estado Online */}
-            <span className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1.5 rounded-xl border ${
-              isOnline
-                ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                : 'text-red-400 bg-red-500/10 border-red-500/20'
-            }`}>
-              {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              <span className="hidden sm:inline">{isOnline ? 'Online' : 'Offline'}</span>
+            {/* Estado Online / Conexión Supabase */}
+            <span
+              className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1.5 rounded-xl border ${
+                !isSupabaseConfigured()
+                  ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                  : isOnline
+                  ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                  : 'text-red-400 bg-red-500/10 border-red-500/20'
+              }`}
+              title={
+                !isSupabaseConfigured()
+                  ? 'La aplicación no tiene configurada la VITE_SUPABASE_ANON_KEY. Los datos se guardan únicamente en este navegador.'
+                  : isOnline
+                  ? 'Conectado a la base de datos Supabase en tiempo real'
+                  : 'Sin conexión a internet'
+              }
+            >
+              {!isSupabaseConfigured() ? (
+                <>
+                  <WifiOff className="w-3 h-3 text-amber-400" />
+                  <span className="hidden sm:inline">Modo Local (Falta API Key)</span>
+                </>
+              ) : isOnline ? (
+                <>
+                  <Wifi className="w-3 h-3 text-emerald-400" />
+                  <span className="hidden sm:inline">Supabase En Vivo</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff className="w-3 h-3 text-red-400" />
+                  <span className="hidden sm:inline">Offline</span>
+                </>
+              )}
             </span>
 
             {/* Botón de Sincronización y Recarga de Padrón Excel */}
