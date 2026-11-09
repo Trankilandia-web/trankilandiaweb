@@ -217,6 +217,19 @@ export async function cargarAsistenciasActivas90Min(): Promise<AsistenciaActiva[
         .order('fecha_ingreso', { ascending: false });
 
       if (!error && data) {
+        // Combinar con asistencias locales de la sesión activa para soporte local-first
+        try {
+          const raw = sessionStorage.getItem('trankilandia_asistencias_sesion') || localStorage.getItem('trankilandia_asistencias_sesion');
+          if (raw) {
+            const localList: AsistenciaActiva[] = JSON.parse(raw);
+            const remoteIds = new Set(data.map((d: any) => d.id));
+            const pendingLocal = localList.filter((l) =>
+              !remoteIds.has(l.id) &&
+              new Date(l.fecha_ingreso).getTime() >= Date.now() - 90 * 60 * 1000
+            );
+            return [...data, ...pendingLocal] as AsistenciaActiva[];
+          }
+        } catch {}
         return data as AsistenciaActiva[];
       }
     } catch {}
@@ -381,25 +394,21 @@ export async function registrarVentaPOS(
         p_cliente_dni: clienteDni.trim() || null,
       });
 
-      if (error) {
-        throw new Error(error.message || 'Error al procesar la venta en Supabase.');
+      if (!error && data) {
+        return {
+          success: true,
+          venta_id: data.venta_id,
+          numero_ticket: data.numero_ticket,
+          total: Number(data.total),
+          metodo_pago: data.metodo_pago,
+          cliente_nombre: clienteNombre,
+          cliente_dni: clienteDni,
+          fecha: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+        };
       }
-
-      return {
-        success: true,
-        venta_id: data.venta_id,
-        numero_ticket: data.numero_ticket,
-        total: Number(data.total),
-        metodo_pago: data.metodo_pago,
-        cliente_nombre: clienteNombre,
-        cliente_dni: clienteDni,
-        fecha: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-      };
+      console.warn('Supabase RPC registrar_venta_pos no disponible, usando procesamiento POS local-first:', error?.message);
     } catch (err: any) {
-      if (err.message && !err.message.includes('fetch')) {
-        throw err;
-      }
-      // Si fue error de conexión de red, proceder con procesamiento local para no frenar la venta
+      console.warn('Error en conexión con RPC registrar_venta_pos, usando procesamiento POS local-first:', err?.message);
     }
   }
 

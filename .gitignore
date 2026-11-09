@@ -37,3 +37,6 @@ backups/
 .vercel
 audit_screenshots/
 supabase/.temp/
+test-results/
+playwright-report/
+.superpowers/
