@@ -237,24 +237,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     const isMasterAdmin = SUPER_ADMIN_EMAILS.some((admin) => admin.toLowerCase() === userEmail);
     const assignedRole: UserRole = isMasterAdmin ? 'admin' : 'cliente';
 
-    // Buscar socio local para unificar DNI y correo
+    // Buscar socio local o en Supabase para unificar DNI, nombre oficial y correo
     const stored = getStoredMembers();
-    const matchedMember = isDni
+    let matchedMember = isDni
       ? stored.find((m) => m.dni && m.dni.trim() === cleanDni)
       : isEmail
       ? stored.find((m) => m.email && m.email.toLowerCase().trim() === userEmail)
       : null;
 
+    let memberOfficialName = name || matchedMember?.name;
+    let memberPersonalEmail = matchedMember?.email;
+
+    // Si es login por DNI y no estaba en caché local, consultar en Supabase
+    if (isDni && !matchedMember && isSupabaseConfigured()) {
+      try {
+        const { data: dbSocio } = await supabase
+          .from('socios')
+          .select('nombre, email, dni')
+          .eq('dni', cleanDni)
+          .maybeSingle();
+
+        if (dbSocio) {
+          if (!memberOfficialName && dbSocio.nombre) {
+            memberOfficialName = dbSocio.nombre;
+          }
+          if (dbSocio.email) {
+            memberPersonalEmail = dbSocio.email;
+          }
+        }
+      } catch {}
+    }
+
     const resolvedDni = isDni ? cleanDni : matchedMember?.dni || undefined;
     const resolvedEmail = isEmail
       ? userEmail
-      : matchedMember?.email && !matchedMember.email.endsWith('@socio.trankilandia.pe')
-      ? matchedMember.email
+      : memberPersonalEmail && !memberPersonalEmail.endsWith('@socio.trankilandia.pe')
+      ? memberPersonalEmail
       : userEmail;
 
     const displayName =
-      name ||
-      matchedMember?.name ||
+      memberOfficialName ||
       (isMasterAdmin
         ? userEmail.includes('marisol')
           ? 'Marisol Flores'
@@ -267,8 +289,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
       app_metadata: {},
       user_metadata: {
         full_name: displayName,
-        dni: resolvedDni,
-        personal_email: matchedMember?.email,
+        dni: resolvedDni || cleanDni,
+        personal_email: memberPersonalEmail,
         role: assignedRole,
       },
       aud: 'authenticated',

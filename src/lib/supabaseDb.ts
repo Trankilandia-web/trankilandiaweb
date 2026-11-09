@@ -516,94 +516,102 @@ export async function updateMemberShift(
  * Consultar si el usuario autenticado ya tiene un socio vinculado en Supabase
  * (Sincronización multi-dispositivo y sesiones móviles).
  */
-export async function obtenerSocioPorUserId(userId: string): Promise<GymMember | null> {
-  if (!userId) return null;
+/**
+ * Consultar el socio activo en Supabase usando DNI, ID o Correo.
+ * Evita errores de tipo UUID cuando userId es un DNI o clave sintética.
+ * Sincronización multi-dispositivo y sesiones móviles en tiempo real.
+ */
+export async function obtenerSocioActivo(params: {
+  userId?: string | null;
+  dni?: string | null;
+  email?: string | null;
+}): Promise<GymMember | null> {
+  const isUuid = (val?: string | null): boolean =>
+    Boolean(val && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+
+  const cleanDni = params.dni
+    ? (extraerDniPeru(params.dni) || params.dni.replace(/\D/g, '').slice(0, 8))
+    : (params.userId && !isUuid(params.userId) ? params.userId.replace(/\D/g, '').slice(0, 8) : '');
+
+  const cleanEmail = params.email?.trim().toLowerCase() || '';
+  const isRealEmail = cleanEmail && !cleanEmail.endsWith('@socio.trankilandia.pe') && !cleanEmail.endsWith('@cliente.trankilandia.pe');
 
   if (isSupabaseConfigured()) {
     try {
-      // 1. Buscar socio por user_id directo
-      let { data: socio, error } = await supabase
-        .from('socios')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
+      let socio: any = null;
 
-      // 2. Si no se encontró por user_id, buscar DNI en su perfil de Supabase
-      if (!socio || error) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('dni')
-          .eq('id', userId)
+      // 1. Prioridad: Buscar socio en Supabase directamente por DNI de 8 dígitos
+      if (cleanDni && cleanDni.length === 8) {
+        const { data: socioByDni } = await supabase
+          .from('socios')
+          .select('*')
+          .eq('dni', cleanDni)
           .maybeSingle();
 
-        if (profile?.dni) {
-          const { data: socioByDni } = await supabase
-            .from('socios')
-            .select('*')
-            .eq('dni', profile.dni)
-            .maybeSingle();
+        if (socioByDni) {
           socio = socioByDni;
         }
+      }
 
-        // 3. Si no se encontró por DNI, buscar por correo (para cuentas Google que coincidan con socios registrados)
-        if (!socio) {
-          const { data: userProfile } = await supabase
+      // 2. Si no se encontró por DNI y hay UUID válido de usuario, buscar por user_id o profile
+      if (!socio && isUuid(params.userId)) {
+        const { data: socioByUid } = await supabase
+          .from('socios')
+          .select('*')
+          .eq('user_id', params.userId!)
+          .maybeSingle();
+
+        if (socioByUid) {
+          socio = socioByUid;
+        } else {
+          // Buscar DNI registrado en su perfil
+          const { data: profile } = await supabase
             .from('profiles')
-            .select('email, dni')
-            .eq('id', userId)
+            .select('dni, email')
+            .eq('id', params.userId!)
             .maybeSingle();
 
-          const candidateEmail = userProfile?.email;
-          if (
-            candidateEmail &&
-            candidateEmail.includes('@') &&
-            !candidateEmail.endsWith('@socio.trankilandia.pe') &&
-            !candidateEmail.endsWith('@cliente.trankilandia.pe')
-          ) {
-            const { data: socioByEmail } = await supabase
+          if (profile?.dni) {
+            const { data: socioFromProf } = await supabase
               .from('socios')
               .select('*')
-              .ilike('email', candidateEmail.toLowerCase().trim())
+              .eq('dni', profile.dni)
               .maybeSingle();
-
-            if (socioByEmail) {
-              socio = socioByEmail;
-              // Auto-vincular de forma permanente
-              try {
-                await supabase.from('socios').update({ user_id: userId }).eq('id', socioByEmail.id);
-                if (socioByEmail.dni) {
-                  await supabase.from('profiles').update({ dni: socioByEmail.dni }).eq('id', userId);
-                }
-              } catch {}
+            if (socioFromProf) {
+              socio = socioFromProf;
             }
           }
         }
       }
 
-      if (socio) {
-        if (socio.dni === '70447087' || socio.email?.toLowerCase() === 'luisgerardolloccllasaune@gmail.com') {
-          if (!socio.plan || socio.plan === 'Sin Membresía Activa' || Number(socio.precio_plan) === 0 || (socio.fecha_fin && socio.fecha_fin < '2027-01-01')) {
-            socio.plan = 'Combo Musculación + Escuela de Boxeo';
-            socio.precio_plan = 140;
-            socio.adelanto_pagado = 140;
-            socio.saldo_pendiente = 0;
-            socio.fecha_fin = '2027-11-01';
-            socio.celular = socio.celular || '958183360';
+      // 3. Si no se encontró y hay correo de Google real, buscar por email en socios
+      if (!socio && isRealEmail) {
+        const { data: socioByEmail } = await supabase
+          .from('socios')
+          .select('*')
+          .ilike('email', cleanEmail)
+          .maybeSingle();
+
+        if (socioByEmail) {
+          socio = socioByEmail;
+          // Si tenemos UUID, vincular user_id
+          if (isUuid(params.userId)) {
             try {
-              await supabase.from('socios').update({
-                plan: 'Combo Musculación + Escuela de Boxeo',
-                precio_plan: 140,
-                adelanto_pagado: 140,
-                saldo_pendiente: 0,
-                fecha_fin: '2027-11-01',
-                celular: socio.celular || '958183360',
-              }).eq('id', socio.id);
-              await supabase.from('profiles').update({
-                plan: 'Combo Musculación + Escuela de Boxeo',
-                membership_status: 'activo',
-              }).eq('id', userId);
+              await supabase.from('socios').update({ user_id: params.userId }).eq('id', socioByEmail.id);
             } catch {}
           }
+        }
+      }
+
+      if (socio) {
+        // Si el socio tiene user_id pendiente de vincular y tenemos un UUID autenticado
+        if (isUuid(params.userId) && (!socio.user_id || socio.user_id !== params.userId)) {
+          try {
+            await supabase.from('socios').update({ user_id: params.userId }).eq('id', socio.id);
+            if (socio.dni) {
+              await supabase.from('profiles').update({ dni: socio.dni, full_name: socio.nombre }).eq('id', params.userId!);
+            }
+          } catch {}
         }
 
         const isExpired = socio.fecha_fin
@@ -614,7 +622,7 @@ export async function obtenerSocioPorUserId(userId: string): Promise<GymMember |
           id: socio.id,
           name: socio.nombre,
           dni: socio.dni,
-          email: socio.email || '',
+          email: socio.email || cleanEmail || '',
           phone: socio.celular || '',
           plan: socio.plan,
           planPrice: Number(socio.precio_plan) || 80,
@@ -645,10 +653,27 @@ export async function obtenerSocioPorUserId(userId: string): Promise<GymMember |
 
         return mapped;
       }
-    } catch {}
+    } catch (err) {
+      console.warn('Error en obtenerSocioActivo Supabase:', err);
+    }
+  }
+
+  // Fallback local: Buscar en getStoredMembers() por DNI o correo
+  const current = getStoredMembers();
+  if (cleanDni && cleanDni.length === 8) {
+    const local = current.find((m) => m.dni && m.dni.trim() === cleanDni);
+    if (local) return local;
+  }
+  if (isRealEmail) {
+    const local = current.find((m) => m.email && m.email.toLowerCase().trim() === cleanEmail);
+    if (local) return local;
   }
 
   return null;
+}
+
+export async function obtenerSocioPorUserId(userId: string): Promise<GymMember | null> {
+  return obtenerSocioActivo({ userId });
 }
 
 /**

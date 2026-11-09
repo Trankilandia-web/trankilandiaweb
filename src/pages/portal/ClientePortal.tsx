@@ -50,9 +50,11 @@ import {
   vincularDniCliente,
   vincularCorreoASocio,
   obtenerSocioPorUserId,
+  obtenerSocioActivo,
   updateMemberProfile,
   subscribeToGymRealtime,
 } from '../../lib/supabaseDb';
+import { GYM_CONTACT } from '../../data/gymData';
 import {
   actualizarPasswordSocio,
   getStoredCustomPassword,
@@ -381,8 +383,14 @@ export function FirstLoginPasswordModal({
 }
 
 export default function ClientePortal() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const [members, setMembers] = useState<GymMember[]>(getStoredMembers());
+
+  // Socio activo determinado por correo personal o DNI vinculado
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const userDni = (user?.user_metadata?.dni || '').trim();
+  const canonicalDniMatch = userEmail.match(/^(\d{8})@socio\.trankilandia\.pe$/);
+  const effectiveDni = userDni || (canonicalDniMatch ? canonicalDniMatch[1] : '');
 
   // Identificador de socio en sesión activa
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
@@ -399,7 +407,7 @@ export default function ClientePortal() {
 
   // Estados para vinculación manual de DNI por parte del cliente
   const [inputDni, setInputDni] = useState('');
-  const [inputName, setInputName] = useState(user?.user_metadata?.full_name || '');
+  const inputName = user?.user_metadata?.full_name || '';
   const [isLinkingDni, setIsLinkingDni] = useState(false);
   const [linkError, setLinkError] = useState<string | null>(null);
   const [showPlansModal, setShowPlansModal] = useState(false);
@@ -446,10 +454,13 @@ export default function ClientePortal() {
   useEffect(() => {
     let isMounted = true;
     async function sincronizarSocioOnline() {
-      if (!user?.id) return;
       setIsLoadingSocioOnline(true);
       try {
-        const onlineMember = await obtenerSocioPorUserId(user.id);
+        const onlineMember = await obtenerSocioActivo({
+          userId: user?.id,
+          dni: effectiveDni,
+          email: userEmail,
+        });
         if (onlineMember && isMounted) {
           setMembers((prev) => {
             const exists = prev.some(
@@ -465,20 +476,17 @@ export default function ClientePortal() {
           });
           setSelectedMemberId(onlineMember.id);
         }
-      } catch {}
-      if (isMounted) setIsLoadingSocioOnline(false);
+      } catch (err) {
+        console.warn('Error en sincronizarSocioOnline:', err);
+      } finally {
+        if (isMounted) setIsLoadingSocioOnline(false);
+      }
     }
     sincronizarSocioOnline();
     return () => {
       isMounted = false;
     };
-  }, [user]);
-
-  // Socio activo determinado por correo personal o DNI vinculado
-  const userEmail = (user?.email || '').toLowerCase().trim();
-  const userDni = (user?.user_metadata?.dni || '').trim();
-  const canonicalDniMatch = userEmail.match(/^(\d{8})@socio\.trankilandia\.pe$/);
-  const effectiveDni = userDni || (canonicalDniMatch ? canonicalDniMatch[1] : '');
+  }, [user?.id, effectiveDni, userEmail]);
 
   const linkedMember = members.find(
     (m) =>
@@ -987,77 +995,112 @@ export default function ClientePortal() {
             <p className="text-xs text-zinc-400">Verificando tu membresía en el padrón...</p>
           </div>
         ) : !currentMember ? (
-          /* FORMULARIO DE REGISTRO / VINCULACIÓN UNIVERSAL PARA CLIENTES CON DNI */
-          <div className="max-w-md mx-auto py-8">
-            <div className="bg-zinc-900 border border-amber-400/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-              <div className="w-12 h-12 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400 mb-4">
-                <CreditCard className="w-6 h-6" />
+          effectiveDni ? (
+            /* CASO A: EL USUARIO INICIÓ CON DNI PERO NO SE ENCUENTRA EN EL PADRÓN */
+            <div className="max-w-md mx-auto py-8">
+              <div className="bg-zinc-900 border border-amber-400/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden text-center">
+                <div className="w-14 h-14 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 mx-auto mb-4">
+                  <CreditCard className="w-7 h-7" />
+                </div>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight font-display">
+                  DNI no registrado en el Padrón
+                </h2>
+                <p className="text-xs text-zinc-300 mt-3 leading-relaxed">
+                  El DNI <strong className="text-amber-400 font-mono text-sm tracking-wider">{effectiveDni}</strong> aún no cuenta con una membresía activa registrada en el sistema oficial de Trankilandia Gym.
+                </p>
+                <div className="mt-5 p-4 rounded-2xl bg-zinc-950/80 border border-white/5 text-xs text-zinc-400 text-left space-y-2">
+                  <p className="flex items-start gap-2">
+                    <span className="text-amber-400 font-bold">•</span>
+                    <span>Si ya te inscribiste en recepción, pide en caja que confirmen tu DNI para que tu carnet aparezca al instante.</span>
+                  </p>
+                  <p className="flex items-start gap-2">
+                    <span className="text-amber-400 font-bold">•</span>
+                    <span>Si deseas afiliarte o consultar horarios y promociones, contáctanos directamente.</span>
+                  </p>
+                </div>
+                <div className="mt-6 flex flex-col gap-2.5">
+                  <a
+                    href={`https://wa.me/${GYM_CONTACT.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(`Hola Trankilandia Gym, deseo activar mi carnet digital con DNI ${effectiveDni}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold uppercase tracking-wider text-xs transition-all shadow-lg hover:shadow-amber-400/20 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <MessageCircle className="w-4 h-4" />
+                    <span>Consultar por WhatsApp</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await signOut();
+                      window.location.reload();
+                    }}
+                    className="w-full py-2.5 rounded-xl border border-white/10 hover:border-white/20 text-zinc-400 hover:text-white text-xs transition-colors cursor-pointer"
+                  >
+                    Probar con otro DNI / Cerrar Sesión
+                  </button>
+                </div>
               </div>
-              <h2 className="text-xl font-black text-white uppercase tracking-tight font-display">
-                Genera tu Tarjeta de Ingreso
-              </h2>
-              <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
-                Ingresa tu nombre y número de DNI para vincular tu carnet oficial de Trankilandia Gym con código de acceso:
-              </p>
-
-              <form onSubmit={handleVincularDni} className="mt-5 space-y-4">
-                <div>
-                  <label className="block text-xs uppercase text-zinc-400 mb-1.5 font-bold">
-                    Nombre Completo
-                  </label>
-                  <input
-                    type="text"
-                    value={inputName}
-                    onChange={(e) => setInputName(e.target.value)}
-                    placeholder="Ej: Juan Pérez"
-                    className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl px-4 py-3 text-sm text-white outline-none transition-colors"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs uppercase text-zinc-400 mb-1.5 font-bold">
-                    Número de DNI (8 dígitos)
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={8}
-                    value={inputDni}
-                    onChange={(e) => setInputDni(e.target.value.replace(/\D/g, ''))}
-                    placeholder="87654321"
-                    className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl px-4 py-3 text-lg text-white font-mono tracking-widest outline-none transition-colors"
-                    required
-                  />
-                </div>
-
-                {linkError && (
-                  <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
-                    <AlertTriangle className="w-4 h-4 shrink-0" />
-                    <span>{linkError}</span>
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={isLinkingDni || inputDni.length < 8}
-                  className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold uppercase tracking-wider text-xs transition-all shadow-lg hover:shadow-amber-400/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-2"
-                >
-                  {isLinkingDni ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                      <span>Generando Carnet...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-4 h-4 stroke-[3]" />
-                      <span>Activar Carnet Digital</span>
-                    </>
-                  )}
-                </button>
-              </form>
             </div>
-          </div>
+          ) : (
+            /* CASO B: EL USUARIO INICIÓ CON GOOGLE Y AÚN NO HA VINCULADO SU DNI */
+            <div className="max-w-md mx-auto py-8">
+              <div className="bg-zinc-900 border border-amber-400/30 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
+                <div className="w-12 h-12 rounded-2xl bg-amber-400/20 border border-amber-400/40 flex items-center justify-center text-amber-400 mb-4">
+                  <CreditCard className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight font-display">
+                  Conecta tu Carnet de Socio
+                </h2>
+                <p className="text-xs text-zinc-400 mt-2 leading-relaxed">
+                  Hola <strong className="text-white">{user?.user_metadata?.full_name || 'Atleta'}</strong>. Ingresa tu número de DNI para vincular tu membresía oficial de Trankilandia Gym con tu cuenta de Google:
+                </p>
+
+                <form onSubmit={handleVincularDni} className="mt-5 space-y-4">
+                  <div>
+                    <label className="block text-xs uppercase text-zinc-400 mb-1.5 font-bold">
+                      Número de DNI (8 dígitos)
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={8}
+                      value={inputDni}
+                      onChange={(e) => setInputDni(e.target.value.replace(/\D/g, ''))}
+                      placeholder="87654321"
+                      className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl px-4 py-3 text-lg text-white font-mono tracking-widest outline-none transition-colors"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  {linkError && (
+                    <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
+                      <span>{linkError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={isLinkingDni || inputDni.length < 8}
+                    className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold uppercase tracking-wider text-xs transition-all shadow-lg hover:shadow-amber-400/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer mt-2"
+                  >
+                    {isLinkingDni ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Buscando en Padrón...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        <span>Activar Carnet Digital</span>
+                      </>
+                    )}
+                  </button>
+                </form>
+              </div>
+            </div>
+          )
         ) : (
           <>
             {/* ALERTA DE SIN MEMBRESÍA O SALDO PENDIENTE */}
