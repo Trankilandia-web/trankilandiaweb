@@ -27,7 +27,7 @@ function AppContent() {
   const location = useLocation();
 
   // Check if current route is a management portal route
-  const isPortalRoute = ['/portal', '/admin', '/caja', '/entrenador', '/cliente'].some(
+  const isPortalRoute = ['/portal', '/hub', '/admin', '/caja', '/entrenador', '/cliente'].some(
     (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
   );
 
@@ -91,6 +91,14 @@ function AppContent() {
 
             {/* Role Index & Management Portal Routes con Protección de Roles Estricta */}
             <Route path="/portal" element={<PortalRedirect />} />
+            <Route
+              path="/hub"
+              element={
+                <ProtectedRoute allowedRoles={['admin', 'caja']}>
+                  <CajaDashboard />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/admin"
               element={
