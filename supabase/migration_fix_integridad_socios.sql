@@ -3,11 +3,39 @@
 -- ==============================================================================
 -- Ejecutar en el SQL Editor de Supabase (https://app.supabase.com)
 -- 1. Repara a Wilmer Fernandez (DNI 70447554) y vincula su carnet
--- 2. Actualiza políticas RLS para permitir consulta y vinculación desde la web
--- 3. Instala función atómica con SECURITY DEFINER para vinculación en tiempo real
+-- 2. Asegura rol 'admin' permanente para Marisol Flores y Luis Lloclla
+-- 3. Actualiza políticas RLS para permitir consulta, inserción y vinculación
+-- 4. Activa replicación en tiempo real (Supabase Realtime) para ambos dispositivos
 -- ==============================================================================
 
--- 1. REPARACIÓN INMEDIATA DEL SOCIO WILMER FERNANDEZ (DNI 70447554)
+-- 1. ASEGURAR ROL DE ADMINISTRADOR A MARISOL FLORES Y LUIS LLOCLLA
+UPDATE public.profiles
+SET role = 'admin'
+WHERE email ILIKE ANY (ARRAY[
+  '%marisolflores%',
+  '%marisolflores15%',
+  '%luisgerardolloccllasaune%',
+  '%luis.llocclla%'
+]);
+
+-- Trigger automático para que cuando se autentiquen con Google o correo, queden como 'admin'
+CREATE OR REPLACE FUNCTION public.handle_set_admin_role()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.email ILIKE ANY (ARRAY['%marisolflores%', '%marisolflores15%', '%luisgerardolloccllasaune%', '%luis.llocclla%']) THEN
+    NEW.role := 'admin';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_set_admin_role ON public.profiles;
+CREATE TRIGGER trg_set_admin_role
+  BEFORE INSERT OR UPDATE ON public.profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_set_admin_role();
+
+-- 2. REPARACIÓN INMEDIATA DEL SOCIO WILMER FERNANDEZ (DNI 70447554)
 DO $$
 DECLARE
   v_profile_id uuid;
@@ -77,36 +105,25 @@ BEGIN
   END IF;
 END $$;
 
--- 2. ACTUALIZACIÓN DE POLÍTICAS RLS EN PUBLIC.SOCIOS
+-- 3. ACTUALIZACIÓN DE POLÍTICAS RLS EN PUBLIC.SOCIOS
 ALTER TABLE public.socios ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Clientes ven exclusivamente su propio registro" ON public.socios;
 DROP POLICY IF EXISTS "Clientes consultan socio no vinculado por DNI" ON public.socios;
 DROP POLICY IF EXISTS "Clientes ven su propio registro o consultan DNI no vinculado" ON public.socios;
+DROP POLICY IF EXISTS "Clientes vinculan su propio user_id" ON public.socios;
+DROP POLICY IF EXISTS "Admin y Caja gestionan todos los socios" ON public.socios;
+DROP POLICY IF EXISTS "Lectura de socios para usuarios autenticados" ON public.socios;
+DROP POLICY IF EXISTS "Gestion total de socios para admin y caja" ON public.socios;
 
--- Permite a clientes autenticados ver su propio socio O consultar socios aún no vinculados a cuenta web
-CREATE POLICY "Clientes ven su propio registro o consultan DNI no vinculado"
+-- Lectura para todos los usuarios autenticados (permite que mostrador, laptop y clientes vean los socios)
+CREATE POLICY "Lectura de socios para usuarios autenticados"
   ON public.socios FOR SELECT
   TO authenticated
-  USING (
-    user_id IS NULL OR user_id = auth.uid()
-  );
+  USING (true);
 
--- Permite a clientes vincular su propio user_id
-DROP POLICY IF EXISTS "Clientes vinculan su propio user_id" ON public.socios;
-CREATE POLICY "Clientes vinculan su propio user_id"
-  ON public.socios FOR UPDATE
-  TO authenticated
-  USING (
-    user_id IS NULL OR user_id = auth.uid()
-  )
-  WITH CHECK (
-    auth.uid() = user_id
-  );
-
--- Permite a Administradores y Recepcionistas gestionar todos los socios
-DROP POLICY IF EXISTS "Admin y Caja gestionan todos los socios" ON public.socios;
-CREATE POLICY "Admin y Caja gestionan todos los socios"
+-- Gestión total (insertar, editar, eliminar) para administradores, recepción y vinculación cliente
+CREATE POLICY "Gestion total de socios para admin y caja"
   ON public.socios FOR ALL
   TO authenticated
   USING (
@@ -114,10 +131,19 @@ CREATE POLICY "Admin y Caja gestionan todos los socios"
       SELECT 1 FROM public.profiles
       WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'caja')
     )
-    OR auth.jwt() ->> 'email' ILIKE ANY (ARRAY['%marisolflores%', '%luisgerardolloccllasaune%'])
+    OR auth.jwt() ->> 'email' ILIKE ANY (ARRAY['%marisolflores%', '%marisolflores15%', '%luisgerardolloccllasaune%', '%luis.llocclla%'])
+    OR (auth.uid() IS NOT NULL AND (user_id IS NULL OR user_id = auth.uid()))
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE profiles.id = auth.uid() AND profiles.role IN ('admin', 'caja')
+    )
+    OR auth.jwt() ->> 'email' ILIKE ANY (ARRAY['%marisolflores%', '%marisolflores15%', '%luisgerardolloccllasaune%', '%luis.llocclla%'])
+    OR (auth.uid() IS NOT NULL AND user_id = auth.uid())
   );
 
--- 3. FUNCIÓN RPC: vincular_socio_por_dni CON SECURITY DEFINER
+-- 4. FUNCIÓN RPC: vincular_socio_por_dni CON SECURITY DEFINER
 CREATE OR REPLACE FUNCTION public.vincular_socio_por_dni(
   p_dni text,
   p_nombre text DEFAULT NULL,
@@ -240,7 +266,25 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.vincular_socio_por_dni(text, text, text) TO authenticated;
 
--- 4. VERIFICACIÓN FINAL
+-- 5. ACTIVAR REPLICACIÓN EN TIEMPO REAL (SUPABASE REALTIME WEBSOCKETS)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'socios'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.socios;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'asistencias'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.asistencias;
+  END IF;
+END $$;
+
+-- 6. VERIFICACIÓN FINAL: WILMER FERNANDEZ Y TOTAL DE SOCIOS
 SELECT 
   id, 
   nombre, 
@@ -253,3 +297,5 @@ SELECT
   user_id 
 FROM public.socios 
 WHERE dni = '70447554';
+
+SELECT count(*) as total_socios_en_nube FROM public.socios;

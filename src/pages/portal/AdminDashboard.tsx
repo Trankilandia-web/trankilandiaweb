@@ -68,6 +68,7 @@ import {
   validarDocumentoSocio,
   registerGymMember,
   normalizeDateToISO,
+  subscribeToGymRealtime,
 } from '../../lib/supabaseDb';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
@@ -331,6 +332,17 @@ export default function AdminDashboard() {
   useEffect(() => {
     cargarSociosEnMemoria();
     cargarInventario();
+
+    // Sincronización en tiempo real multi-dispositivo con Supabase
+    const unsubscribe = subscribeToGymRealtime({
+      onSociosChange: () => {
+        cargarSociosEnMemoria();
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [cargarSociosEnMemoria, cargarInventario]);
 
   useEffect(() => {
