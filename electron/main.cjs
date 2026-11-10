@@ -18,12 +18,21 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true,
+      sandbox: false, // Asegurar que preload se ejecute limpiamente en Windows
       preload: path.join(__dirname, 'preload.cjs'),
     },
   });
 
   mainWindow.maximize();
+
+  // Marcar User-Agent de aplicación de escritorio oficial
+  const baseUA = mainWindow.webContents.getUserAgent();
+  mainWindow.webContents.setUserAgent(`${baseUA} TrankilandiaDesktopApp/1.0 Electron`);
+
+  // Asegurar título formal de la aplicación
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.setTitle('Trankilandia Gym · Central Hub Operativo');
+  });
 
   // Abrir enlaces externos (como WhatsApp wa.me) en el navegador predeterminado del sistema
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -35,7 +44,7 @@ function createWindow() {
   });
 
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173/';
+  const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173/#/';
 
   if (isDev) {
     mainWindow.loadURL(devUrl);

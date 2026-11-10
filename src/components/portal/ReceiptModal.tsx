@@ -44,18 +44,18 @@ export default function ReceiptModal({
   const targetPhone = cleanPhone.length >= 9 ? cleanPhone : '51999999999';
 
   const whatsappMessage = encodeURIComponent(
-    `🥊 *TRANKILANDIA GYM · COMPROBANTE DE PAGO*\n\n` +
-      `¡Hola ${member.name}!\n` +
-      `Te enviamos la constancia de tu membresía:\n\n` +
-      `📄 *Boleta:* ${member.receiptNumber}\n` +
-      `📅 *Fecha:* ${receiptDate} ${receiptTime}\n` +
-      `🏋️ *Plan:* ${member.plan}\n` +
-      `💵 *Monto Abonado:* S/. ${paymentAmount}.00 (${paymentMethod.toUpperCase()})\n` +
+    `*TRANKILANDIA GYM · CONSTANCIA DE PAGO*\n\n` +
+      `Estimado(a) ${member.name},\n` +
+      `Le adjuntamos la constancia de su membresía:\n\n` +
+      `*N° Comprobante:* ${member.receiptNumber}\n` +
+      `*Fecha:* ${receiptDate} ${receiptTime}\n` +
+      `*Plan:* ${member.plan}\n` +
+      `*Monto Abonado:* S/. ${paymentAmount}.00 (${paymentMethod.toUpperCase()})\n` +
       (member.balanceDue > 0
-        ? `⚠️ *Saldo Pendiente:* S/. ${member.balanceDue}.00 (Fecha límite: ${member.paymentDueDate})\n`
-        : `✅ *Estado:* Membresía cancelada al 100%\n`) +
-      `📍 *Sede:* Emadi (José Olaya N° 640, Huamanga)\n\n` +
-      `¡A darle con todo al entrenamiento!`
+        ? `*Saldo Pendiente:* S/. ${member.balanceDue}.00 (Fecha límite: ${member.paymentDueDate})\n`
+        : `*Estado:* Membresía cancelada al 100%\n`) +
+      `*Sede:* Jr. José Olaya N° 640, Huamanga, Ayacucho\n\n` +
+      `Agradecemos su preferencia.`
   );
 
   const whatsappUrl = `https://wa.me/51${targetPhone.replace(/^51/, '')}?text=${whatsappMessage}`;

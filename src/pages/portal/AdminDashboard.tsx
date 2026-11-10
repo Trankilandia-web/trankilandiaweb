@@ -1529,19 +1529,19 @@ export default function AdminDashboard() {
                           <div className="text-white font-medium">{m.plan || 'Sin Membresía Activa'}</div>
                           {isSinPlan ? (
                             <span className="inline-flex items-center gap-1 text-zinc-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 mt-1">
-                              ⚪ Sin Membresía
+                              Sin Membresía
                             </span>
                           ) : isInactive ? (
                             <span className="inline-flex items-center gap-1 text-red-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/30 mt-1">
-                              🔴 Vencida ({m.expiresAt})
+                              Vencida ({m.expiresAt})
                             </span>
                           ) : hasDebt ? (
                             <span className="inline-flex items-center gap-1 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 mt-1">
-                              🟡 Debe: S/. {m.balanceDue.toFixed(2)}
+                              Debe: S/. {m.balanceDue.toFixed(2)}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 mt-1">
-                              🟢 100% Al Día
+                              Al Día
                             </span>
                           )}
                         </td>
@@ -1555,8 +1555,8 @@ export default function AdminDashboard() {
                               </span>
                             ) : m.documentStatus === 'pendiente' ? (
                               <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse">
-                                  🟡 Pendiente
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                  Pendiente
                                 </span>
                                 <button
                                   type="button"
@@ -1772,19 +1772,19 @@ export default function AdminDashboard() {
                       <div className="py-2.5">
                         {plan.requiresDocument === 'dni_escolar' && (
                           <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-mono flex items-center gap-2">
-                            <span>🎒</span>
+                            <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20">ESCOLAR</span>
                             <span>Requiere DNI escolar (14 a 17 años) acreditado en mostrador o web.</span>
                           </div>
                         )}
                         {plan.requiresDocument === 'carnet_estudiante' && (
                           <div className="p-2 rounded-xl bg-sky-500/10 border border-sky-500/30 text-sky-300 text-xs font-mono flex items-center gap-2">
-                            <span>🎓</span>
+                            <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20">UNIVERSITARIO</span>
                             <span>Requiere Carnet de Universidad / Instituto vigente o constancia.</span>
                           </div>
                         )}
                         {!plan.requiresDocument && (
                           <div className="p-2 rounded-xl bg-zinc-950/60 border border-white/5 text-zinc-400 text-xs font-mono flex items-center gap-2">
-                            <span>✓</span>
+                            <span className="font-bold text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300">LIBRE</span>
                             <span>Ingreso Libre sin requisito de documento estudiantil.</span>
                           </div>
                         )}
@@ -2163,12 +2163,12 @@ export default function AdminDashboard() {
                             />
                             <button
                               type="button"
-                              onClick={() => {
+                              onClick={async () => {
                                 if (newStaffPinInput.length !== 4) {
                                   alert('El PIN debe tener exactamente 4 dígitos.');
                                   return;
                                 }
-                                updateStaffPin(staff.id, newStaffPinInput);
+                                await updateStaffPin(staff.id, newStaffPinInput);
                                 setStaffList(getStaffList());
                                 setEditingPinStaffId(null);
                                 setNewStaffPinInput('');
@@ -2180,9 +2180,10 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               onClick={() => setEditingPinStaffId(null)}
-                              className="px-2 py-1.5 rounded-xl bg-white/5 text-zinc-400 text-xs cursor-pointer"
+                              className="px-2 py-1.5 rounded-xl bg-white/5 text-zinc-400 text-xs cursor-pointer flex items-center justify-center"
+                              title="Cancelar"
                             >
-                              ✕
+                              <X className="w-3.5 h-3.5" />
                             </button>
                           </div>
                         ) : (
@@ -2238,13 +2239,13 @@ export default function AdminDashboard() {
             </div>
 
             <form
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (!newStaffNombre.trim() || newStaffPin.length !== 4) {
                   alert('Ingresa el nombre y un PIN de exactamente 4 dígitos.');
                   return;
                 }
-                saveStaffUser({
+                await saveStaffUser({
                   nombre: newStaffNombre.trim(),
                   rol: newStaffRol,
                   turno: newStaffTurno,
@@ -2616,14 +2617,18 @@ export default function AdminDashboard() {
               <div className="p-2.5 rounded-xl bg-zinc-950/60 border border-white/5 text-[11px]">
                 {customAbonoAmount >= liquidatingMember.balanceDue ? (
                   <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-                    <span>✅</span> El socio quedará 100% AL DÍA (Saldo restante: S/. 0.00)
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>El socio quedará al día (Saldo restante: S/. 0.00)</span>
                   </span>
                 ) : (
                   <span className="text-amber-400 flex items-center gap-1.5">
-                    <span>⚠️</span> Quedará un saldo de:{' '}
-                    <strong className="text-white">
-                      S/. {(liquidatingMember.balanceDue - (customAbonoAmount || 0)).toFixed(2)}
-                    </strong>
+                    <AlertTriangle className="w-3.5 h-3.5" />
+                    <span>
+                      Quedará un saldo de:{' '}
+                      <strong className="text-white">
+                        S/. {(liquidatingMember.balanceDue - (customAbonoAmount || 0)).toFixed(2)}
+                      </strong>
+                    </span>
                   </span>
                 )}
               </div>

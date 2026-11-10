@@ -80,7 +80,7 @@ test.describe('Pruebas de Sistema E2E · Trankilandia Gym', () => {
     await expect(page.getByText(/1\. MARCAR INGRESO/i)).toBeVisible();
 
     // Validar buscador rápido de atletas
-    const searchInput = page.getByPlaceholder(/ESCANEA EL CARNET O ESCRIBE DNI/i);
+    const searchInput = page.getByPlaceholder(/ESCANEE? EL CARNET/i);
     await expect(searchInput).toBeVisible();
     await searchInput.fill('Betty Romero Gavilan');
     await searchInput.press('Enter');

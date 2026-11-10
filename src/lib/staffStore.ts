@@ -1,7 +1,7 @@
 /**
- * TRANKILANDIA GYM · SISTEMA DE PERSONAL Y GESTIÓN DE TURNOS (PIN RÁPIDO)
- * Almacena los perfiles de trabajadores y administradores sincronizados con Supabase
- * y con persistencia Local-First para alta disponibilidad en mostrador.
+ * TRANKILANDIA GYM · SISTEMA DE PERSONAL Y AUTENTICACIÓN SEGURA EN SUPABASE
+ * Autenticación estricta en la nube: las cuentas de personal residen en Supabase.
+ * No se permiten ingresos sin que la base de datos oficial esté inicializada.
  */
 
 import { supabase, isSupabaseConfigured } from './supabase';
@@ -11,7 +11,7 @@ export interface StaffUser {
   nombre: string;
   rol: 'admin' | 'cajero';
   turno: 'manana' | 'tarde' | 'noche' | 'completo';
-  pin: string; // 4 dígitos numéricos
+  pin: string;
   avatarColor: string;
   iniciales: string;
   activo: boolean;
@@ -19,80 +19,25 @@ export interface StaffUser {
   createdAt: string;
 }
 
-const STORAGE_KEY_STAFF = 'trankilandia_staff_users_v2';
-const STORAGE_KEY_ACTIVE_STAFF = 'trankilandia_staff_active_session_v2';
-
-// Personal predeterminado oficial
-export const DEFAULT_STAFF: StaffUser[] = [
-  {
-    id: 'staff-marisol',
-    nombre: 'Marisol',
-    rol: 'admin',
-    turno: 'completo',
-    pin: '1234',
-    avatarColor: 'from-amber-400 to-amber-600 text-black',
-    iniciales: 'M',
-    activo: true,
-    telefono: '999787489',
-    createdAt: '2026-11-01T00:00:00Z',
-  },
-  {
-    id: 'staff-luis',
-    nombre: 'Luis Lloclla',
-    rol: 'admin',
-    turno: 'completo',
-    pin: '2026',
-    avatarColor: 'from-purple-500 to-indigo-600 text-white',
-    iniciales: 'LL',
-    activo: true,
-    telefono: '958183360',
-    createdAt: '2026-11-01T00:00:00Z',
-  },
-  {
-    id: 'staff-recepcion-m',
-    nombre: 'Recepción Mañana',
-    rol: 'cajero',
-    turno: 'manana',
-    pin: '1111',
-    avatarColor: 'from-emerald-400 to-teal-600 text-black',
-    iniciales: 'RM',
-    activo: true,
-    createdAt: '2026-11-01T00:00:00Z',
-  },
-  {
-    id: 'staff-recepcion-t',
-    nombre: 'Recepción Tarde',
-    rol: 'cajero',
-    turno: 'tarde',
-    pin: '2222',
-    avatarColor: 'from-blue-400 to-indigo-600 text-white',
-    iniciales: 'RT',
-    activo: true,
-    createdAt: '2026-11-01T00:00:00Z',
-  },
-];
-
-export function getStaffList(): StaffUser[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_STAFF);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(DEFAULT_STAFF));
-      syncStaffWithSupabase();
-      return DEFAULT_STAFF;
-    }
-    const list: StaffUser[] = JSON.parse(raw);
-    syncStaffWithSupabase();
-    return list.filter((u) => u.activo !== false);
-  } catch {
-    return DEFAULT_STAFF;
-  }
-}
+const STORAGE_KEY_STAFF_CACHE = 'trankilandia_staff_verified_v3';
+const STORAGE_KEY_ACTIVE_STAFF = 'trankilandia_staff_active_session_v3';
 
 /**
- * Sincroniza la lista de personal en segundo plano con Supabase Cloud
+ * Consulta en tiempo real las cuentas de personal autorizadas en Supabase Cloud.
+ * Si la tabla 'personal' no existe o está vacía, retorna configurado: false.
  */
-export async function syncStaffWithSupabase(): Promise<StaffUser[]> {
-  if (!isSupabaseConfigured()) return getStaffList();
+export async function fetchStaffFromSupabase(): Promise<{
+  configured: boolean;
+  users: StaffUser[];
+  error?: string;
+}> {
+  if (!isSupabaseConfigured()) {
+    return {
+      configured: false,
+      users: [],
+      error: 'Supabase Cloud no está configurado en las variables de entorno.',
+    };
+  }
 
   try {
     const { data, error } = await supabase
@@ -101,30 +46,138 @@ export async function syncStaffWithSupabase(): Promise<StaffUser[]> {
       .eq('activo', true)
       .order('created_at', { ascending: true });
 
-    if (!error && data && data.length > 0) {
-      const mapped: StaffUser[] = data.map((d: any) => ({
-        id: d.id,
-        nombre: d.nombre,
-        rol: d.rol,
-        turno: d.turno,
-        pin: d.pin,
-        avatarColor: d.avatar_color || 'from-amber-400 to-amber-600 text-black',
-        iniciales: d.iniciales || d.nombre.slice(0, 2).toUpperCase(),
-        activo: d.activo !== false,
-        telefono: d.telefono,
-        createdAt: d.created_at,
-      }));
-
-      localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(mapped));
-      return mapped;
+    if (error) {
+      // PGRST205: Tabla no encontrada en la base de datos
+      return {
+        configured: false,
+        users: [],
+        error: `Tabla 'personal' no encontrada en Supabase (${error.message}). Es necesario ejecutar el script SQL de inicialización.`,
+      };
     }
-  } catch {}
 
-  return getStaffList();
+    if (!data || data.length === 0) {
+      return {
+        configured: false,
+        users: [],
+        error: 'No se encontraron cuentas de personal registradas en Supabase.',
+      };
+    }
+
+    const mapped: StaffUser[] = data.map((d: any) => ({
+      id: d.id,
+      nombre: d.nombre,
+      rol: d.rol,
+      turno: d.turno,
+      pin: d.pin,
+      avatarColor: d.avatar_color || 'from-amber-400 to-amber-600 text-black',
+      iniciales: d.iniciales || d.nombre.slice(0, 2).toUpperCase(),
+      activo: d.activo !== false,
+      telefono: d.telefono,
+      createdAt: d.created_at,
+    }));
+
+    localStorage.setItem(STORAGE_KEY_STAFF_CACHE, JSON.stringify(mapped));
+    return {
+      configured: true,
+      users: mapped,
+    };
+  } catch (err: any) {
+    return {
+      configured: false,
+      users: [],
+      error: err.message || 'Error de conexión con Supabase Cloud.',
+    };
+  }
 }
 
-export function saveStaffUser(user: Omit<StaffUser, 'id' | 'createdAt' | 'iniciales'>): StaffUser {
+/**
+ * Obtiene la lista actual de personal (utilizada en componentes síncronos).
+ */
+export function getStaffList(): StaffUser[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_STAFF_CACHE);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch {}
+  return [];
+}
+
+/**
+ * Valida de forma estricta el PIN contra Supabase Cloud.
+ * Si la cuenta no existe en Supabase o el PIN es incorrecto, deniega el acceso.
+ */
+export async function verifyStaffPin(
+  staffId: string,
+  enteredPin: string
+): Promise<{ success: boolean; user?: StaffUser; error?: string }> {
+  if (!/^\d{4}$/.test(enteredPin)) {
+    return { success: false, error: 'El PIN debe contener exactamente 4 dígitos numéricos.' };
+  }
+
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase
+        .from('personal')
+        .select('*')
+        .eq('id', staffId)
+        .eq('pin', enteredPin)
+        .eq('activo', true)
+        .maybeSingle();
+
+      if (error) {
+        return {
+          success: false,
+          error: `Error al verificar en Supabase: ${error.message}. Verifique que ejecutó la migración SQL.`,
+        };
+      }
+
+      if (!data) {
+        return {
+          success: false,
+          error: 'PIN incorrecto o cuenta no autorizada en la base de datos.',
+        };
+      }
+
+      const user: StaffUser = {
+        id: data.id,
+        nombre: data.nombre,
+        rol: data.rol,
+        turno: data.turno,
+        pin: data.pin,
+        avatarColor: data.avatar_color || 'from-amber-400 to-amber-600 text-black',
+        iniciales: data.iniciales || data.nombre.slice(0, 2).toUpperCase(),
+        activo: data.activo !== false,
+        telefono: data.telefono,
+        createdAt: data.created_at,
+      };
+
+      setActiveStaffSession(user);
+      return { success: true, user };
+    } catch (err: any) {
+      return {
+        success: false,
+        error: err.message || 'Error de comunicación con Supabase.',
+      };
+    }
+  }
+
+  // Fallback seguro solo si Supabase no está configurado (entorno de pruebas aislado)
   const current = getStaffList();
+  const match = current.find((u) => u.id === staffId && u.pin === enteredPin);
+  if (match) {
+    setActiveStaffSession(match);
+    return { success: true, user: match };
+  }
+  return { success: false, error: 'PIN incorrecto.' };
+}
+
+/**
+ * Guarda o actualiza un nuevo colaborador directamente en Supabase Cloud.
+ */
+export async function saveStaffUser(
+  user: Omit<StaffUser, 'id' | 'createdAt' | 'iniciales'>
+): Promise<StaffUser> {
   const id = `staff-${Date.now().toString(36)}`;
   const iniciales = user.nombre
     .split(' ')
@@ -141,68 +194,70 @@ export function saveStaffUser(user: Omit<StaffUser, 'id' | 'createdAt' | 'inicia
     createdAt: new Date().toISOString(),
   };
 
-  const updated = [...current, newUser];
-  localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(updated));
-
-  // Persistir en Supabase
   if (isSupabaseConfigured()) {
-    supabase
-      .from('personal')
-      .insert({
-        id: newUser.id,
-        nombre: newUser.nombre,
-        rol: newUser.rol,
-        turno: newUser.turno,
-        pin: newUser.pin,
-        avatar_color: newUser.avatarColor,
-        iniciales: newUser.iniciales,
-        telefono: newUser.telefono,
-        activo: true,
-      })
-      .then(() => {});
+    await supabase.from('personal').insert({
+      id: newUser.id,
+      nombre: newUser.nombre,
+      rol: newUser.rol,
+      turno: newUser.turno,
+      pin: newUser.pin,
+      avatar_color: newUser.avatarColor,
+      iniciales: newUser.iniciales,
+      telefono: newUser.telefono || null,
+      activo: true,
+    });
   }
 
+  const current = getStaffList();
+  const updated = [...current, newUser];
+  localStorage.setItem(STORAGE_KEY_STAFF_CACHE, JSON.stringify(updated));
   return newUser;
 }
 
-export function updateStaffPin(staffId: string, newPin: string): boolean {
+/**
+ * Actualiza el PIN de un colaborador en Supabase Cloud.
+ */
+export async function updateStaffPin(staffId: string, newPin: string): Promise<boolean> {
   if (!/^\d{4}$/.test(newPin)) return false;
+
   const current = getStaffList();
   const updated = current.map((u) => (u.id === staffId ? { ...u, pin: newPin } : u));
-  localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(updated));
+  localStorage.setItem(STORAGE_KEY_STAFF_CACHE, JSON.stringify(updated));
 
-  // Actualizar en Supabase
   if (isSupabaseConfigured()) {
-    supabase
-      .from('personal')
-      .update({
-        pin: newPin,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', staffId)
-      .then(() => {});
+    try {
+      await supabase
+        .from('personal')
+        .update({
+          pin: newPin,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', staffId);
+    } catch {}
   }
 
   return true;
 }
 
-export function deleteStaffUser(staffId: string): boolean {
-  const current = getStaffList();
+/**
+ * Da de baja a un colaborador en Supabase Cloud (soft delete).
+ */
+export async function deleteStaffUser(staffId: string): Promise<boolean> {
   if (staffId === 'staff-marisol' || staffId === 'staff-luis') return false;
-  const updated = current.filter((u) => u.id !== staffId);
-  localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(updated));
 
   if (isSupabaseConfigured()) {
-    supabase
+    await supabase
       .from('personal')
       .update({
         activo: false,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', staffId)
-      .then(() => {});
+      .eq('id', staffId);
   }
 
+  const current = getStaffList();
+  const updated = current.filter((u) => u.id !== staffId);
+  localStorage.setItem(STORAGE_KEY_STAFF_CACHE, JSON.stringify(updated));
   return true;
 }
 
@@ -224,17 +279,4 @@ export function setActiveStaffSession(staff: StaffUser | null): void {
     sessionStorage.setItem(STORAGE_KEY_ACTIVE_STAFF, JSON.stringify(staff));
     localStorage.setItem(STORAGE_KEY_ACTIVE_STAFF, JSON.stringify(staff));
   }
-}
-
-export function verifyStaffPin(staffId: string, enteredPin: string): { success: boolean; user?: StaffUser; error?: string } {
-  const list = getStaffList();
-  const user = list.find((u) => u.id === staffId);
-  if (!user) {
-    return { success: false, error: 'Usuario no encontrado.' };
-  }
-  if (user.pin !== enteredPin) {
-    return { success: false, error: 'PIN incorrecto. Intenta nuevamente.' };
-  }
-  setActiveStaffSession(user);
-  return { success: true, user };
 }

@@ -1,7 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, UserPlus, AlertCircle, Delete, ArrowRight, ShieldCheck, Receipt, Dumbbell, Sparkles } from 'lucide-react';
-import { StaffUser, getStaffList, verifyStaffPin, saveStaffUser } from '../../lib/staffStore';
+import {
+  Lock,
+  UserPlus,
+  AlertCircle,
+  Delete,
+  ArrowRight,
+  ShieldCheck,
+  Receipt,
+  Dumbbell,
+  ShieldAlert,
+  RefreshCw,
+  X,
+} from 'lucide-react';
+import {
+  StaffUser,
+  fetchStaffFromSupabase,
+  verifyStaffPin,
+  saveStaffUser,
+} from '../../lib/staffStore';
 import { useAuth } from '../../context/AuthContext';
 
 export default function DesktopStaffLogin() {
@@ -13,15 +30,40 @@ export default function DesktopStaffLogin() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
-  // Modal para que Marisol / Admin agregue un nuevo cajero
+  // Estado de validación con Supabase
+  const [isCheckingSupabase, setIsCheckingSupabase] = useState(true);
+  const [dbConfigured, setDbConfigured] = useState<boolean>(true);
+  const [dbError, setDbError] = useState<string | null>(null);
+
+  // Modal para agregar colaborador
   const [showAddModal, setShowAddModal] = useState(false);
   const [newNombre, setNewNombre] = useState('');
   const [newRol, setNewRol] = useState<'admin' | 'cajero'>('cajero');
   const [newTurno, setNewTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
   const [newPin, setNewPin] = useState('');
 
+  const loadStaffFromDatabase = async () => {
+    setIsCheckingSupabase(true);
+    setDbError(null);
+    const result = await fetchStaffFromSupabase();
+    if (result.configured && result.users.length > 0) {
+      setStaffList(result.users);
+      setDbConfigured(true);
+    } else {
+      setStaffList([]);
+      setDbConfigured(false);
+      setDbError(
+        result.error ||
+          'No se encontraron cuentas autorizadas en la tabla public.personal de Supabase.'
+      );
+    }
+    setIsCheckingSupabase(false);
+  };
+
   useEffect(() => {
-    setStaffList(getStaffList());
+    document.title = 'Trankilandia Gym · Central Hub Operativo';
+    sessionStorage.setItem('trankilandia_desktop_mode', 'true');
+    loadStaffFromDatabase();
   }, []);
 
   // Soporte para escribir con el teclado físico / NumPad
@@ -56,7 +98,7 @@ export default function DesktopStaffLogin() {
     setPin(newPinStr);
     setErrorMsg(null);
 
-    // Si ya completó los 4 dígitos, validar automáticamente
+    // Validación automática al ingresar los 4 dígitos
     if (newPinStr.length === 4 && selectedStaff) {
       submitPin(selectedStaff, newPinStr);
     }
@@ -69,32 +111,31 @@ export default function DesktopStaffLogin() {
 
   const submitPin = async (staff: StaffUser, enteredPin: string) => {
     setIsAuthenticating(true);
-    const result = verifyStaffPin(staff.id, enteredPin);
+    const result = await verifyStaffPin(staff.id, enteredPin);
 
     if (result.success && result.user) {
-      // Iniciar sesión con el rol asignado en AuthContext
       const authRes = loginStaff(result.user);
       setTimeout(() => {
         setIsAuthenticating(false);
         navigate(authRes.redirectPath);
-      }, 200);
+      }, 150);
     } else {
       setTimeout(() => {
         setIsAuthenticating(false);
         setErrorMsg(result.error || 'PIN incorrecto.');
         setPin('');
-      }, 200);
+      }, 150);
     }
   };
 
-  const handleCreateStaff = (e: React.FormEvent) => {
+  const handleCreateStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNombre.trim() || newPin.length !== 4) {
-      alert('Ingresa el nombre y un PIN de exactamente 4 dígitos.');
+      alert('Debe ingresar el nombre y un PIN de exactamente 4 dígitos.');
       return;
     }
 
-    const created = saveStaffUser({
+    const created = await saveStaffUser({
       nombre: newNombre.trim(),
       rol: newRol,
       turno: newTurno,
@@ -106,7 +147,7 @@ export default function DesktopStaffLogin() {
       activo: true,
     });
 
-    setStaffList(getStaffList());
+    await loadStaffFromDatabase();
     setShowAddModal(false);
     setNewNombre('');
     setNewPin('');
@@ -119,7 +160,7 @@ export default function DesktopStaffLogin() {
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[1000px] h-[400px] bg-amber-400/5 blur-[120px] pointer-events-none rounded-full" />
 
       {/* Cabecera de la Terminal */}
-      <header className="px-6 sm:px-12 py-6 border-b border-white/10 flex items-center justify-between z-10 backdrop-blur-md bg-zinc-950/80">
+      <header className="px-6 sm:px-12 py-5 border-b border-white/10 flex items-center justify-between z-10 backdrop-blur-md bg-zinc-950/80">
         <div className="flex items-center gap-3.5">
           <div className="w-11 h-11 rounded-2xl bg-amber-400 text-black flex items-center justify-center font-black shadow-lg shadow-amber-400/20">
             <Dumbbell className="w-6 h-6" />
@@ -139,28 +180,91 @@ export default function DesktopStaffLogin() {
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-mono text-zinc-300">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Base Supabase en Vivo</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                dbConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+              }`}
+            />
+            <span>{dbConfigured ? 'Supabase Conectado' : 'Supabase Desconectado'}</span>
           </div>
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-300 hover:bg-amber-400 hover:text-black text-xs font-bold font-mono transition-all cursor-pointer"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>+ Nuevo Personal</span>
-          </button>
+          {dbConfigured && (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-400/10 border border-amber-400/30 text-amber-300 hover:bg-amber-400 hover:text-black text-xs font-bold font-mono transition-all cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Nuevo Personal</span>
+            </button>
+          )}
         </div>
       </header>
 
       {/* Contenido Principal */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 z-10 max-w-5xl mx-auto w-full">
-        {selectedStaff ? (
+        {isCheckingSupabase ? (
+          /* PANTALLA DE CARGA Y VERIFICACIÓN EN LA NUBE */
+          <div className="text-center space-y-3 font-mono">
+            <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-sm text-zinc-300 font-bold">Verificando cuentas autorizadas en Supabase Cloud...</p>
+            <p className="text-xs text-zinc-500">Conectando con base de datos en Huamanga, Ayacucho</p>
+          </div>
+        ) : !dbConfigured ? (
+          /* PANTALLA DE BLOQUEO DE SEGURIDAD SI LA TABLA NO EXISTE EN SUPABASE */
+          <div className="w-full max-w-lg bg-zinc-900/90 border border-red-500/40 rounded-3xl p-8 shadow-2xl space-y-6 animate-scale-up">
+            <div className="flex items-center gap-4 pb-4 border-b border-white/10">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white font-display uppercase tracking-tight">
+                  Inicialización de Seguridad Requerida
+                </h3>
+                <p className="text-xs text-zinc-400 font-mono mt-0.5">
+                  Base de datos en la nube sin cuentas de personal
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs font-mono text-zinc-300 leading-relaxed">
+              <p>
+                Por razones de seguridad e integridad, la aplicación no permite el acceso con usuarios locales temporales. Las cuentas de acceso de Marisol, Luis y Mostrador deben residir en Supabase Cloud.
+              </p>
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-2 text-zinc-400">
+                <div className="font-bold text-white uppercase text-[11px]">Pasos de Habilitación:</div>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Abra el SQL Editor en su consola de Supabase.</li>
+                  <li>
+                    Ejecute el script:{' '}
+                    <code className="text-amber-400 bg-black/40 px-1 py-0.5 rounded">
+                      supabase/SOLUCION_COMPLETA_SUPABASE.sql
+                    </code>
+                  </li>
+                  <li>Presione el botón inferior para verificar la conexión.</li>
+                </ol>
+              </div>
+              {dbError && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-[11px]">
+                  Detalle del servidor: {dbError}
+                </div>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={loadStaffFromDatabase}
+              className="w-full py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black font-mono text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-amber-400/20 active:scale-98"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Verificar Cuentas en Supabase</span>
+            </button>
+          </div>
+        ) : selectedStaff ? (
           /* PANTALLA 2: INGRESO DE PIN NUMÉRICO */
           <div className="w-full max-w-md bg-zinc-900/90 border border-amber-400/40 rounded-3xl p-8 shadow-2xl shadow-amber-400/10 flex flex-col items-center animate-scale-up">
             <div className="flex items-center gap-4 p-3.5 pr-6 rounded-2xl bg-zinc-950 border border-white/10 mb-6 w-full">
               <div
-                className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${selectedStaff.avatarColor} font-black text-xl flex items-center justify-center shadow-lg flex-shrink-0`}
+                className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${selectedStaff.avatarColor} font-black text-xl flex items-center justify-center shadow-lg flex-shrink-0 text-white`}
               >
                 {selectedStaff.iniciales}
               </div>
@@ -176,7 +280,7 @@ export default function DesktopStaffLogin() {
                   >
                     {selectedStaff.rol === 'admin' ? 'Administrador' : 'Recepción / Caja'}
                   </span>
-                  <span className="text-zinc-500">· {selectedStaff.turno}</span>
+                  <span className="text-zinc-500">Turno: {selectedStaff.turno}</span>
                 </div>
               </div>
               <button
@@ -193,7 +297,7 @@ export default function DesktopStaffLogin() {
             </div>
 
             <p className="text-xs font-mono text-zinc-400 uppercase tracking-wider font-bold mb-3">
-              Digita tu PIN de 4 números:
+              Ingrese su PIN de 4 dígitos:
             </p>
 
             {/* Display de 4 dígitos */}
@@ -260,22 +364,22 @@ export default function DesktopStaffLogin() {
             </div>
 
             <p className="text-[11px] font-mono text-zinc-500 text-center">
-              Puedes teclear directamente en el teclado numérico de la PC.
+              Puede escribir directamente desde el teclado numérico físico.
             </p>
           </div>
         ) : (
-          /* PANTALLA 1: SELECCIÓN DE VIÑETA DE PERSONAL */
+          /* PANTALLA 1: SELECCIÓN DE PERSONAL EN TURNO */
           <div className="w-full flex flex-col items-center">
             <div className="text-center mb-10">
               <span className="text-amber-400 font-mono text-xs uppercase font-extrabold tracking-widest inline-flex items-center gap-1.5 mb-2">
-                <Sparkles className="w-3.5 h-3.5" />
+                <ShieldCheck className="w-3.5 h-3.5" />
                 Control de Personal & Turnos
               </span>
               <h2 className="text-3xl sm:text-4xl font-black font-display tracking-tight text-white uppercase">
                 ¿Quién está en turno hoy?
               </h2>
               <p className="text-zinc-400 text-sm max-w-md mx-auto mt-2">
-                Toca tu perfil e ingresa tu PIN para acceder directamente a tus herramientas de trabajo.
+                Seleccione su perfil e ingrese su PIN de 4 dígitos para acceder al sistema.
               </p>
             </div>
 
@@ -289,7 +393,7 @@ export default function DesktopStaffLogin() {
                 >
                   <div className="flex items-start justify-between w-full">
                     <div
-                      className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${staff.avatarColor} font-black text-2xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform`}
+                      className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${staff.avatarColor} font-black text-2xl flex items-center justify-center shadow-lg group-hover:scale-105 transition-transform text-white`}
                     >
                       {staff.iniciales}
                     </div>
@@ -331,9 +435,9 @@ export default function DesktopStaffLogin() {
 
       {/* Pie de Página de la Terminal */}
       <footer className="px-6 sm:px-12 py-4 border-t border-white/5 flex flex-col sm:flex-row items-center justify-between text-xs font-mono text-zinc-500 z-10 bg-zinc-950/80">
-        <div>Trankilandia Gym Hub v1.0 · Huamanga, Ayacucho</div>
+        <div>Trankilandia Gym Hub · Huamanga, Ayacucho</div>
         <div className="flex items-center gap-4 mt-2 sm:mt-0">
-          <span>Sincronización en tiempo real</span>
+          <span>Autenticación en tiempo real con Supabase Cloud</span>
           <span className="text-zinc-600">·</span>
           <span>417 Socios Oficiales</span>
         </div>
@@ -343,9 +447,18 @@ export default function DesktopStaffLogin() {
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
           <div className="w-full max-w-md bg-zinc-900 border border-white/20 rounded-3xl p-6 shadow-2xl">
-            <h3 className="text-lg font-black text-white font-display uppercase pb-3 border-b border-white/10 mb-4">
-              Registrar Nuevo Personal
-            </h3>
+            <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
+              <h3 className="text-base font-black text-white font-display uppercase">
+                Registrar Nuevo Personal
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
             <form onSubmit={handleCreateStaff} className="space-y-4">
               <div>
                 <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Nombre Completo</label>
@@ -365,18 +478,19 @@ export default function DesktopStaffLogin() {
                   <select
                     value={newRol}
                     onChange={(e) => setNewRol(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none font-mono"
                   >
                     <option value="cajero">Recepción / Caja</option>
                     <option value="admin">Administrador</option>
                   </select>
                 </div>
+
                 <div>
                   <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Turno</label>
                   <select
                     value={newTurno}
                     onChange={(e) => setNewTurno(e.target.value as any)}
-                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none font-mono"
                   >
                     <option value="manana">Mañana</option>
                     <option value="tarde">Tarde</option>
@@ -387,37 +501,24 @@ export default function DesktopStaffLogin() {
               </div>
 
               <div>
-                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN Numérico (4 dígitos)</label>
+                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN de 4 Números</label>
                 <input
-                  type="password"
+                  type="text"
                   maxLength={4}
                   required
-                  pattern="[0-9]{4}"
                   value={newPin}
-                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                  placeholder="••••"
-                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-center text-xl tracking-widest text-white font-mono focus:outline-none focus:border-amber-400"
+                  onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ej. 1234"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 font-mono tracking-widest text-center"
                 />
-                <span className="text-[11px] font-mono text-zinc-500 mt-1 block">
-                  El trabajador solo recordará este PIN para operar la PC.
-                </span>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 text-xs font-bold hover:bg-zinc-700"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-400 text-black text-xs font-black hover:bg-amber-300 shadow-md"
-                >
-                  Guardar Personal
-                </button>
-              </div>
+              <button
+                type="submit"
+                className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs uppercase font-mono transition-transform active:scale-95 cursor-pointer shadow-lg mt-2"
+              >
+                Guardar en Supabase
+              </button>
             </form>
           </div>
         </div>

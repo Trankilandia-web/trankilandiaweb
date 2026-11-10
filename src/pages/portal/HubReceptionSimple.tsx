@@ -288,11 +288,11 @@ export default function HubReceptionSimple() {
 
     let mensaje = '';
     if (diffDays < 0) {
-      mensaje = `¡Hola ${socio.name}! Te saluda Trankilandia Gym 💪. Queremos recordarte que tu plan de ${socio.plan} finalizó el ${socio.expiresAt}. Tenemos promociones especiales este mes para que continúes entrenando con nosotros. ¿Deseas que te renovemos tu cupo por Yape/Plin al 999 787 489 o te esperamos en el gimnasio?`;
+      mensaje = `Estimado(a) ${socio.name}, le saludamos de Trankilandia Gym. Le informamos cordialmente que su membresía de ${socio.plan} finalizó el ${socio.expiresAt}. Si desea renovar su inscripción, puede responder a este mensaje para coordinar su pago vía Yape o Plin al 999 787 489 o acercarse a nuestra sede en Huamanga. Atentamente, Administración Trankilandia Gym.`;
     } else if (socio.balanceDue > 0) {
-      mensaje = `Estimado(a) ${socio.name}, un saludo de Trankilandia Gym. Le recordamos cordialmente que tiene un saldo pendiente de S/. ${socio.balanceDue}.00 de su membresía. Puede cancelarlo en recepción o por Yape/Plin al 999 787 489. ¡Muchas gracias!`;
+      mensaje = `Estimado(a) ${socio.name}, le saludamos cordialmente de Trankilandia Gym. Le recordamos que mantiene un saldo pendiente de S/. ${socio.balanceDue}.00 correspondiente a su membresía. Puede cancelarlo en recepción o mediante Yape o Plin al 999 787 489. Muchas gracias por su atención.`;
     } else {
-      mensaje = `¡Hola ${socio.name}! Te saludamos de Trankilandia Gym. Te recordamos que tu membresía vence en ${diffDays} días (${socio.expiresAt}). ¡Renueva con anticipación y asegura tu turno de entrenamiento!`;
+      mensaje = `Estimado(a) ${socio.name}, le saludamos de Trankilandia Gym. Le recordamos que su membresía finaliza en ${diffDays} días (${socio.expiresAt}). Lo invitamos a renovar con anticipación en recepción para asegurar la continuidad de su entrenamiento. Atentamente, Trankilandia Gym.`;
     }
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
@@ -493,15 +493,15 @@ export default function HubReceptionSimple() {
           id: p.id,
           nombre: p.nombre,
           precio: Number(p.precio_venta || p.precio),
-          icon: p.categoria === 'Bebidas' ? '💧' : p.categoria === 'Suplementos' ? '🥤' : '⚡',
+          categoria: p.categoria || 'Producto',
         }))
       : [
-          { id: 'prod-agua', nombre: 'Agua Mineral San Mateo', precio: 2.5, icon: '💧' },
-          { id: 'prod-gatorade', nombre: 'Gatorade / Powerade', precio: 4.0, icon: '⚡' },
-          { id: 'prod-proteina', nombre: 'Batido de Proteína Whey', precio: 8.0, icon: '🥤' },
-          { id: 'prod-barra', nombre: 'Barra Proteica', precio: 3.5, icon: '🍫' },
-          { id: 'prod-creatina', nombre: 'Scoop de Creatina', precio: 5.0, icon: '💥' },
-          { id: 'prod-preentreno', nombre: 'Pre-Entreno C4 Scoop', precio: 6.0, icon: '🔥' },
+          { id: 'prod-agua', nombre: 'Agua Mineral San Mateo', precio: 2.5, categoria: 'Bebida' },
+          { id: 'prod-gatorade', nombre: 'Gatorade / Powerade', precio: 4.0, categoria: 'Rehidratante' },
+          { id: 'prod-proteina', nombre: 'Batido de Proteína Whey', precio: 8.0, categoria: 'Suplemento' },
+          { id: 'prod-barra', nombre: 'Barra Proteica', precio: 3.5, categoria: 'Snack' },
+          { id: 'prod-creatina', nombre: 'Scoop de Creatina', precio: 5.0, categoria: 'Suplemento' },
+          { id: 'prod-preentreno', nombre: 'Pre-Entreno C4 Scoop', precio: 6.0, categoria: 'Suplemento' },
         ];
 
   return (
@@ -605,7 +605,7 @@ export default function HubReceptionSimple() {
                 type="text"
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
-                placeholder="👉 ESCANEA EL CARNET O ESCRIBE DNI / NOMBRE..."
+                placeholder="ESCANEE EL CARNET O INGRESE DNI / NOMBRE..."
                 className="w-full bg-zinc-900 border-2 border-amber-400/60 focus:border-amber-400 rounded-3xl py-6 px-8 text-xl sm:text-2xl font-black text-white placeholder-zinc-500 shadow-2xl focus:outline-none tracking-wide text-center uppercase font-display"
               />
               <button
@@ -642,11 +642,11 @@ export default function HubReceptionSimple() {
                     </div>
                     <div>
                       <span className="text-xs font-mono uppercase font-bold tracking-widest block mb-1">
-                        {lastScanStatus === 'activo' && '✅ PASE LIBRE'}
-                        {lastScanStatus === 'por_vencer' && '⚠️ MEMBRESÍA POR VENCER'}
-                        {lastScanStatus === 'vencido' && '⛔ ACCESO DENEGADO · MEMBRESÍA VENCIDA'}
-                        {lastScanStatus === 'deuda' && '🟠 ATENCIÓN · DEUDA PENDIENTE'}
-                        {lastScanStatus === 'no_inscrito' && '❓ DNI NO REGISTRADO'}
+                        {lastScanStatus === 'activo' && 'PASE LIBRE · AUTORIZADO'}
+                        {lastScanStatus === 'por_vencer' && 'MEMBRESÍA POR VENCER'}
+                        {lastScanStatus === 'vencido' && 'ACCESO DENEGADO · MEMBRESÍA VENCIDA'}
+                        {lastScanStatus === 'deuda' && 'SALDO PENDIENTE DE COBRO'}
+                        {lastScanStatus === 'no_inscrito' && 'ATLETA NO REGISTRADO'}
                       </span>
                       <h2 className="text-2xl sm:text-4xl font-black text-white font-display uppercase tracking-tight">
                         {lastScannedSocio ? lastScannedSocio.nombre : 'No Registrado'}
@@ -673,7 +673,7 @@ export default function HubReceptionSimple() {
                         }}
                         className="px-6 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm uppercase shadow-xl cursor-pointer"
                       >
-                        🔄 Renovar Membresía Ahora
+                        Renovar Membresía
                       </button>
                     )}
                     {lastScanStatus === 'no_inscrito' && (
@@ -682,7 +682,7 @@ export default function HubReceptionSimple() {
                         onClick={() => setActiveTab('inscripcion')}
                         className="px-6 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm uppercase shadow-xl cursor-pointer"
                       >
-                        📝 Inscribir como Nuevo Socio
+                        Registrar Nuevo Socio
                       </button>
                     )}
                   </div>
@@ -744,9 +744,9 @@ export default function HubReceptionSimple() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {[
                 { id: 'todos', label: `Todos (${crmCounts.total})`, color: 'text-white' },
-                { id: 'vencidos', label: `🔴 Vencidos (${crmCounts.vencidos})`, color: 'text-red-400' },
-                { id: 'por_vencer', label: `🟡 Vencen en 7 Días (${crmCounts.porVencer})`, color: 'text-amber-400' },
-                { id: 'deudas', label: `🟠 Con Deuda (${crmCounts.deudas})`, color: 'text-orange-400' },
+                { id: 'vencidos', label: `Vencidos (${crmCounts.vencidos})`, color: 'text-red-400' },
+                { id: 'por_vencer', label: `Por Vencer 7 Días (${crmCounts.porVencer})`, color: 'text-amber-400' },
+                { id: 'deudas', label: `Con Saldo (${crmCounts.deudas})`, color: 'text-orange-400' },
               ].map((f) => (
                 <button
                   key={f.id}
@@ -857,7 +857,7 @@ export default function HubReceptionSimple() {
           <div className="max-w-2xl mx-auto bg-zinc-900 border border-white/10 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6">
             <div>
               <span className="text-amber-400 font-mono text-xs font-bold uppercase tracking-wider">
-                {formIsRenewal ? '🔄 Modo Renovación Automática' : '📝 Registro de Nuevo Socio'}
+                {formIsRenewal ? 'Modo Renovación Automática' : 'Registro de Nuevo Socio'}
               </span>
               <h2 className="text-2xl font-black text-white font-display uppercase tracking-tight mt-1">
                 {formIsRenewal ? 'Renovar Membresía del Atleta' : 'Nueva Inscripción en el Gimnasio'}
@@ -1049,7 +1049,7 @@ export default function HubReceptionSimple() {
                 type="submit"
                 className="w-full py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-base transition-transform active:scale-95 cursor-pointer shadow-xl uppercase mt-4"
               >
-                💾 Guardar e Inscribir (S/. {formPrecio}.00)
+                Registrar Inscripción (S/. {formPrecio}.00)
               </button>
             </form>
           </div>
@@ -1074,10 +1074,14 @@ export default function HubReceptionSimple() {
                     onClick={() => agregarAlCarrito(p)}
                     className="p-5 rounded-3xl bg-zinc-900 border border-white/10 hover:border-amber-400 hover:bg-zinc-800 text-left transition-all active:scale-95 cursor-pointer shadow-lg flex flex-col justify-between min-h-[130px]"
                   >
-                    <div className="text-3xl">{p.icon}</div>
-                    <div className="mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-1 rounded-lg bg-zinc-800 text-zinc-400 font-mono text-[10px] uppercase font-bold tracking-wider">
+                        {p.categoria}
+                      </span>
+                    </div>
+                    <div className="mt-4">
                       <div className="font-bold text-white text-sm">{p.nombre}</div>
-                      <div className="text-amber-400 font-black text-base mt-0.5">S/. {p.precio.toFixed(2)}</div>
+                      <div className="text-amber-400 font-mono font-black text-lg mt-1">S/. {p.precio.toFixed(2)}</div>
                     </div>
                   </button>
                 ))}
@@ -1099,7 +1103,7 @@ export default function HubReceptionSimple() {
 
                 {carrito.length === 0 ? (
                   <p className="text-zinc-500 text-xs font-mono py-12 text-center">
-                    Toca un producto para cobrar.
+                    Seleccione un producto para cobrar.
                   </p>
                 ) : (
                   <div className="divide-y divide-white/5 my-4 max-h-[220px] overflow-y-auto">
@@ -1150,7 +1154,7 @@ export default function HubReceptionSimple() {
                         : 'bg-zinc-950 border-white/10 text-zinc-400'
                     }`}
                   >
-                    💵 Efectivo
+                    Efectivo
                   </button>
                   <button
                     type="button"
@@ -1161,7 +1165,7 @@ export default function HubReceptionSimple() {
                         : 'bg-zinc-950 border-white/10 text-zinc-400'
                     }`}
                   >
-                    📱 Yape / Plin
+                    Yape / Plin
                   </button>
                 </div>
 

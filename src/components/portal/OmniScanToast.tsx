@@ -297,7 +297,7 @@ export default function OmniScanToast({
                 }`}
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>{status === 'por_vencer' ? 'Renovar con Anticipación' : '🔄 Renovar Membresía Ahora'}</span>
+                <span>{status === 'por_vencer' ? 'Renovar con Anticipación' : 'Renovar Membresía'}</span>
               </button>
             )}
 
@@ -312,10 +312,10 @@ export default function OmniScanToast({
                   }
                   onClose();
                 }}
-                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-400/25 ring-2 ring-amber-400/60"
+                className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:from-amber-400 text-black font-black text-xs font-mono uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-md shadow-amber-400/25 ring-2 ring-amber-400/60"
               >
                 <User className="w-3.5 h-3.5" />
-                <span>📝 Inscribir Atleta con este DNI</span>
+                <span>Inscribir Atleta con este DNI</span>
               </button>
             )}
 

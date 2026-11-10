@@ -549,7 +549,7 @@ export default function LoginModal({
                       </button>
                     </div>
                     <p className="text-[11px] text-amber-400/90 font-mono mt-1.5 flex items-center gap-1.5">
-                      <span>💡 ¿Primer ingreso? Tu contraseña inicial es tu mismo número de DNI.</span>
+                      <span>Primer ingreso: Su contraseña inicial corresponde a su número de DNI.</span>
                     </p>
                   </div>
 
@@ -606,7 +606,7 @@ export default function LoginModal({
                       className="px-3 py-2.5 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-300 text-xs font-mono font-bold transition-all text-left flex items-center justify-between cursor-pointer group"
                     >
                       <span className="truncate">Marisol Flores</span>
-                      <span className="text-[10px] text-amber-400 font-mono shrink-0 ml-1">ADMIN ⚡</span>
+                      <span className="text-[10px] text-amber-400 font-mono shrink-0 ml-1">ADMIN</span>
                     </button>
                     <button
                       type="button"
@@ -614,7 +614,7 @@ export default function LoginModal({
                       className="px-3 py-2.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 border border-white/10 text-zinc-200 text-xs font-mono font-bold transition-all text-left flex items-center justify-between cursor-pointer group"
                     >
                       <span className="truncate">Luis Lloclla</span>
-                      <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">ADMIN ⚡</span>
+                      <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">ADMIN</span>
                     </button>
                   </div>
                 </div>

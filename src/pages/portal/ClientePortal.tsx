@@ -260,7 +260,8 @@ export function FirstLoginPasswordModal({
 
         {/* Título */}
         <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-          <span>🔒</span> Actualiza tu Contraseña de Ingreso
+          <Lock className="w-5 h-5 text-amber-400" />
+          <span>Actualiza tu Contraseña de Ingreso</span>
         </h2>
 
         {/* Subtítulo */}
@@ -2077,7 +2078,7 @@ export default function ClientePortal() {
                         </span>
                         {plan.popular && (
                           <span className="text-[9px] font-mono font-black uppercase text-amber-400">
-                            ★ POPULAR
+                            DESTACADO
                           </span>
                         )}
                       </div>
@@ -2143,10 +2144,10 @@ export default function ClientePortal() {
                     }`}
                   >
                     {currentMember.documentStatus === 'verificado'
-                      ? '✓ Documento Aprobado'
+                      ? 'Documento Aprobado'
                       : currentMember.documentStatus === 'pendiente'
-                      ? '🟡 Foto en Revisión'
-                      : '⚪ Foto Pendiente'}
+                      ? 'Foto en Revisión'
+                      : 'Foto Pendiente'}
                   </span>
                 </div>
 
@@ -2171,7 +2172,7 @@ export default function ClientePortal() {
                           Estado:{' '}
                           <span className="text-amber-400 font-bold">
                             {currentMember.documentStatus === 'verificado'
-                              ? 'Verificado ✓'
+                              ? 'Verificado'
                               : 'Pendiente de validación'}
                           </span>
                         </div>

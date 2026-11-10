@@ -20,6 +20,17 @@ const PlansPage = lazy(() => import('./pages/PlansPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const FacilitiesPage = lazy(() => import('./pages/FacilitiesPage'));
 
+// Utilidad infalible para detectar entorno de escritorio (Electron App / Desktop Hub)
+export function isDesktopEnvironment(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.location.protocol === 'file:' ||
+    /electron|trankilandiadesktopapp/i.test(navigator.userAgent) ||
+    Boolean((window as any).electronAPI?.isElectron) ||
+    sessionStorage.getItem('trankilandia_desktop_mode') === 'true'
+  );
+}
+
 function AppContent() {
   const [isTourModalOpen, setIsTourModalOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -27,11 +38,7 @@ function AppContent() {
   const location = useLocation();
 
   // Detectar modo escritorio (ejecutable Electron o acceso a /hub en navegador)
-  const isDesktopMode =
-    typeof window !== 'undefined' &&
-    (window.location.protocol === 'file:' ||
-      Boolean((window as any).electronAPI?.isElectron) ||
-      sessionStorage.getItem('trankilandia_desktop_mode') === 'true');
+  const isDesktopMode = isDesktopEnvironment();
 
   // En modo escritorio NUNCA se muestran Navbar ni Footer públicos
   const isPortalRoute =
@@ -185,11 +192,8 @@ function AppContent() {
 }
 
 export default function App() {
-  const isDesktopOrFile =
-    typeof window !== 'undefined' &&
-    (window.location.protocol === 'file:' || Boolean((window as any).electronAPI?.isElectron));
-
-  const Router = isDesktopOrFile ? HashRouter : BrowserRouter;
+  const isDesktop = isDesktopEnvironment();
+  const Router = isDesktop ? HashRouter : BrowserRouter;
 
   return (
     <Router>

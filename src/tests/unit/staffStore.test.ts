@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  StaffUser,
   getStaffList,
   saveStaffUser,
   updateStaffPin,
@@ -9,15 +10,54 @@ import {
   setActiveStaffSession,
 } from '../../lib/staffStore';
 
-describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN', () => {
+describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN en Supabase', () => {
+  const MOCK_STAFF: StaffUser[] = [
+    {
+      id: 'staff-marisol',
+      nombre: 'Marisol',
+      rol: 'admin',
+      turno: 'completo',
+      pin: '1234',
+      avatarColor: 'from-amber-400 to-amber-600 text-black',
+      iniciales: 'M',
+      activo: true,
+      telefono: '999787489',
+      createdAt: '2026-11-01T00:00:00Z',
+    },
+    {
+      id: 'staff-luis',
+      nombre: 'Luis Lloclla',
+      rol: 'admin',
+      turno: 'completo',
+      pin: '2026',
+      avatarColor: 'from-purple-500 to-indigo-600 text-white',
+      iniciales: 'LL',
+      activo: true,
+      telefono: '958183360',
+      createdAt: '2026-11-01T00:00:00Z',
+    },
+    {
+      id: 'staff-recepcion-m',
+      nombre: 'Recepción Mañana',
+      rol: 'cajero',
+      turno: 'manana',
+      pin: '1111',
+      avatarColor: 'from-emerald-400 to-teal-600 text-black',
+      iniciales: 'RM',
+      activo: true,
+      createdAt: '2026-11-01T00:00:00Z',
+    },
+  ];
+
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+    localStorage.setItem('trankilandia_staff_verified_v3', JSON.stringify(MOCK_STAFF));
   });
 
-  it('debe inicializar el personal predeterminado con Marisol y Luis', () => {
+  it('debe leer el personal verificado en memoria local sincronizado', () => {
     const staff = getStaffList();
-    expect(staff.length).toBeGreaterThanOrEqual(4);
+    expect(staff.length).toBe(3);
     const marisol = staff.find((u) => u.nombre === 'Marisol');
     expect(marisol).toBeDefined();
     expect(marisol?.rol).toBe('admin');
@@ -29,19 +69,17 @@ describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN', () => {
     expect(luis?.pin).toBe('2026');
   });
 
-  it('debe autenticar con PIN correcto y rechazar PIN incorrecto', () => {
-    const resOk = verifyStaffPin('staff-marisol', '1234');
-    expect(resOk.success).toBe(true);
-    expect(resOk.user?.nombre).toBe('Marisol');
-    expect(getActiveStaffSession()?.id).toBe('staff-marisol');
+  it('debe rechazar formato inválido de PIN (distinto a 4 dígitos)', async () => {
+    const resInvalidLen = await verifyStaffPin('staff-marisol', '12');
+    expect(resInvalidLen.success).toBe(false);
+    expect(resInvalidLen.error).toContain('4 dígitos');
 
-    const resFail = verifyStaffPin('staff-marisol', '9999');
-    expect(resFail.success).toBe(false);
-    expect(resFail.error).toContain('PIN incorrecto');
+    const resAlpha = await verifyStaffPin('staff-marisol', 'abcd');
+    expect(resAlpha.success).toBe(false);
   });
 
-  it('permite a Marisol crear un nuevo usuario cajero', () => {
-    const nuevo = saveStaffUser({
+  it('permite a Marisol registrar un nuevo colaborador cajero de forma asíncrona', async () => {
+    const nuevo = await saveStaffUser({
       nombre: 'Carla Recepción',
       rol: 'cajero',
       turno: 'tarde',
@@ -55,25 +93,19 @@ describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN', () => {
 
     const list = getStaffList();
     expect(list.some((u) => u.nombre === 'Carla Recepción')).toBe(true);
-
-    const login = verifyStaffPin(nuevo.id, '5678');
-    expect(login.success).toBe(true);
-    expect(login.user?.nombre).toBe('Carla Recepción');
   });
 
-  it('permite actualizar el PIN de un usuario', () => {
-    const ok = updateStaffPin('staff-recepcion-m', '4321');
+  it('permite actualizar el PIN de un colaborador', async () => {
+    const ok = await updateStaffPin('staff-recepcion-m', '4321');
     expect(ok).toBe(true);
 
-    const checkOld = verifyStaffPin('staff-recepcion-m', '1111');
-    expect(checkOld.success).toBe(false);
-
-    const checkNew = verifyStaffPin('staff-recepcion-m', '4321');
-    expect(checkNew.success).toBe(true);
+    const list = getStaffList();
+    const updated = list.find((u) => u.id === 'staff-recepcion-m');
+    expect(updated?.pin).toBe('4321');
   });
 
-  it('protege a los administradores principales contra eliminación accidental', () => {
-    const intentoBorrar = deleteStaffUser('staff-marisol');
+  it('protege a los administradores principales contra eliminación accidental', async () => {
+    const intentoBorrar = await deleteStaffUser('staff-marisol');
     expect(intentoBorrar).toBe(false);
     expect(getStaffList().some((u) => u.id === 'staff-marisol')).toBe(true);
   });

@@ -190,8 +190,7 @@ export function broadcastLiveScan(event: LiveScanEvent): void {
 
     // 3. Notificación del sistema si los permisos están concedidos
     if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
-      const badgeIcon = event.status === 'vencido' ? '🔴' : event.status === 'por_vencer' ? '🟡' : '🟢';
-      new Notification(`${badgeIcon} ${event.alertTitle}`, {
+      new Notification(`Trankilandia Gym: ${event.alertTitle}`, {
         body: `${event.athleteName} - ${event.plan}. ${event.spokenText}`,
         icon: '/favicon.svg',
         tag: 'gym-access-alert',

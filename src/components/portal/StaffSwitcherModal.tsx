@@ -76,8 +76,8 @@ export default function StaffSwitcherModal({
 
     // Si ya completó los 4 dígitos, validar automáticamente
     if (newPinStr.length === 4 && selectedStaff) {
-      setTimeout(() => {
-        const result = verifyStaffPin(selectedStaff.id, newPinStr);
+      setTimeout(async () => {
+        const result = await verifyStaffPin(selectedStaff.id, newPinStr);
         if (result.success && result.user) {
           onStaffAuthenticated(result.user);
           if (onClose) onClose();
@@ -93,14 +93,14 @@ export default function StaffSwitcherModal({
     setPin((prev) => prev.slice(0, -1));
   };
 
-  const handleCreateStaff = (e: React.FormEvent) => {
+  const handleCreateStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNombre.trim() || newPin.length !== 4) {
       alert('Por favor ingresa un nombre y un PIN de exactamente 4 dígitos.');
       return;
     }
 
-    const created = saveStaffUser({
+    const created = await saveStaffUser({
       nombre: newNombre.trim(),
       rol: newRol,
       turno: newTurno,

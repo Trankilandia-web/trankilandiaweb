@@ -168,19 +168,19 @@ export default function MemberProfileModal({
                 </span>
                 {isSinPlan ? (
                   <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-zinc-800 text-amber-300 border border-amber-400/30 font-bold">
-                    ⚪ Sin Membresía
+                    Sin Membresía
                   </span>
                 ) : isInactive ? (
                   <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/40 font-bold">
-                    🔴 Membresía Vencida
+                    Membresía Vencida
                   </span>
                 ) : hasDebt ? (
                   <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">
-                    🟡 Debe S/. {formData.balanceDue.toFixed(2)}
+                    Debe S/. {formData.balanceDue.toFixed(2)}
                   </span>
                 ) : (
                   <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold">
-                    🟢 100% Al Día
+                    Al Día
                   </span>
                 )}
               </div>
@@ -466,7 +466,7 @@ export default function MemberProfileModal({
                 >
                   {(formData.plan === 'Sin Membresía Activa' || !gymPlans.some((p) => p.name === formData.plan)) && (
                     <option value={formData.plan}>
-                      {formData.plan === 'Sin Membresía Activa' ? '⚪ Sin Membresía Activa (Seleccionar Plan)' : formData.plan}
+                      {formData.plan === 'Sin Membresía Activa' ? 'Sin Membresía Activa (Seleccionar Plan)' : formData.plan}
                     </option>
                   )}
                   {gymPlans.map((p) => (
@@ -717,7 +717,7 @@ export default function MemberProfileModal({
                 />
                 <label htmlFor="freeze-membership" className="cursor-pointer text-xs font-mono">
                   <span className="font-bold text-cyan-300 flex items-center gap-1.5">
-                    ❄️ Congelar Membresía (Pausa por viaje, lesión o salud)
+                    Congelar Membresía (Pausa por viaje, lesión o salud)
                   </span>
                   <p className="text-zinc-400 font-sans mt-0.5 text-[11px] leading-relaxed">
                     Pausa temporal de acceso. Bloquea el ingreso en recepción hasta que el administrador o caja lo reactive.
@@ -769,7 +769,7 @@ export default function MemberProfileModal({
                   <optgroup label="Entrenadores del Turno Seleccionado">
                     {OFFICIAL_COACHES.filter((c) => c.shift === formData.shift).map((c) => (
                       <option key={c.id} value={c.name}>
-                        ★ {c.name} — {c.specialty} ({c.gender === 'mujer' ? 'Coach Mujer' : 'Coach Varón'})
+                        {c.name} — {c.specialty} ({c.gender === 'mujer' ? 'Coach Mujer' : 'Coach Varón'})
                       </option>
                     ))}
                   </optgroup>
@@ -806,12 +806,12 @@ export default function MemberProfileModal({
                     }`}
                   >
                     {formData.documentStatus === 'verificado'
-                      ? '✓ Verificado'
+                      ? 'Verificado'
                       : formData.documentStatus === 'pendiente'
-                      ? '🟡 Pendiente de Aprobación'
+                      ? 'Pendiente de Aprobación'
                       : formData.documentStatus === 'rechazado'
-                      ? '✕ Rechazado'
-                      : '⚪ Sin Documento Adjunto'}
+                      ? 'Rechazado'
+                      : 'Sin Documento Adjunto'}
                   </span>
                 </div>
 
