@@ -49,6 +49,8 @@ CREATE POLICY "Acceso total personal"
   USING (true)
   WITH CHECK (true);
 
+GRANT ALL ON TABLE public.personal TO anon, authenticated, service_role;
+
 -- 3. INSERCIÓN DE CUENTAS OFICIALES DE PERSONAL EN PUBLIC.PERSONAL
 INSERT INTO public.personal (id, nombre, rol, turno, pin, avatar_color, iniciales, telefono)
 VALUES
@@ -64,16 +66,5 @@ ON CONFLICT (id) DO UPDATE SET
   telefono = EXCLUDED.telefono,
   updated_at = now();
 
--- 4. INSERTAR/ACTUALIZAR EN PUBLIC.PROFILES TAMBIÉN PARA RESPALDO TOTAL
-INSERT INTO public.profiles (id, email, full_name, role)
-VALUES
-  ('staff-marisol', 'marisol@trankilandia.pe', 'Marisol Flores', 'admin'),
-  ('staff-luis', 'luisgerardolloccllasaune@gmail.com', 'Luis Gerardo Lloclla Sauñe', 'admin'),
-  ('staff-recepcion-m', 'recepcion.manana@trankilandia.pe', 'Recepción Mañana', 'caja'),
-  ('staff-recepcion-t', 'recepcion.tarde@trankilandia.pe', 'Recepción Tarde', 'caja')
-ON CONFLICT (id) DO UPDATE SET
-  role = EXCLUDED.role,
-  full_name = EXCLUDED.full_name;
-
--- 5. CONFIRMACIÓN FINAL DE INTEGRIDAD
-SELECT 'Cuentas creadas y permisos asegurados con éxito en Supabase' AS resultado;
+-- 4. CONFIRMACIÓN FINAL DE INTEGRIDAD
+SELECT 'Cuentas de personal creadas y permisos asegurados con éxito en Supabase' AS resultado;
