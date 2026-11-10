@@ -35,8 +35,17 @@ import {
   Trash2,
   Phone,
   Mail,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
+import {
+  StaffUser,
+  getStaffList,
+  saveStaffUser,
+  updateStaffPin,
+  deleteStaffUser,
+} from '../../lib/staffStore';
 import { UserRole } from '../../types/roles';
 import {
   GymMember,
@@ -105,10 +114,16 @@ const COACHES_BY_SHIFT_OPTIONS = [
 export default function AdminDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryTab = searchParams.get('tab');
-  const validTabs: Array<'kpis' | 'inventario' | 'padron' | 'planes'> = ['kpis', 'inventario', 'padron', 'planes'];
+  const validTabs: Array<'kpis' | 'inventario' | 'padron' | 'planes' | 'personal'> = [
+    'kpis',
+    'inventario',
+    'padron',
+    'planes',
+    'personal',
+  ];
 
   // Pestañas principales (con soporte para enlace directo /admin?tab=planes)
-  const [activeTab, setActiveTab] = useState<'kpis' | 'inventario' | 'padron' | 'planes'>(() => {
+  const [activeTab, setActiveTab] = useState<'kpis' | 'inventario' | 'padron' | 'planes' | 'personal'>(() => {
     if (queryTab && validTabs.includes(queryTab as any)) {
       return queryTab as any;
     }
@@ -122,10 +137,21 @@ export default function AdminDashboard() {
     }
   }, [searchParams]);
 
-  const handleSelectTab = (tab: 'kpis' | 'inventario' | 'padron' | 'planes') => {
+  const handleSelectTab = (tab: 'kpis' | 'inventario' | 'padron' | 'planes' | 'personal') => {
     setActiveTab(tab);
     setSearchParams({ tab });
   };
+
+  // Gestión de Personal & Cuentas con PIN en Supabase
+  const [staffList, setStaffList] = useState<StaffUser[]>(getStaffList);
+  const [editingPinStaffId, setEditingPinStaffId] = useState<string | null>(null);
+  const [newStaffPinInput, setNewStaffPinInput] = useState<string>('');
+  const [showAddStaffModal, setShowAddStaffModal] = useState<boolean>(false);
+  const [newStaffNombre, setNewStaffNombre] = useState<string>('');
+  const [newStaffRol, setNewStaffRol] = useState<'admin' | 'cajero'>('cajero');
+  const [newStaffTurno, setNewStaffTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
+  const [newStaffPin, setNewStaffPin] = useState<string>('');
+  const [showPins, setShowPins] = useState<Record<string, boolean>>({});
 
   // Gestión de Planes y Tarifas en Vivo
   const [storedPlans, setStoredPlans] = useState<GymPlanTier[]>(getStoredMembershipPlans);
@@ -726,6 +752,19 @@ export default function AdminDashboard() {
                   {productosCriticos.length}
                 </span>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSelectTab('personal')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'personal'
+                  ? 'bg-amber-400 text-black shadow-sm'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+              <span>Personal & Turnos ({staffList.length})</span>
             </button>
           </div>
 
@@ -1994,7 +2033,298 @@ export default function AdminDashboard() {
             </div>
           </div>
         )}
+
+        {/* =========================================================================
+            PESTAÑA 5: GESTIÓN DE PERSONAL & TURNOS CON PIN EN SUPABASE
+            ========================================================================= */}
+        {activeTab === 'personal' && (
+          <div className="space-y-6">
+            {/* Banner de Cabecera */}
+            <div className="bg-gradient-to-r from-purple-500/10 via-zinc-900 to-zinc-900 border border-purple-500/30 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 text-purple-400 font-mono text-xs uppercase font-bold tracking-wider mb-1">
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Seguridad & Permisos · Base Supabase</span>
+                </div>
+                <h3 className="text-xl sm:text-2xl font-black text-white font-display uppercase tracking-tight">
+                  Personal, Turnos & PINs de Acceso
+                </h3>
+                <p className="text-zinc-400 text-xs sm:text-sm font-sans mt-1 max-w-2xl">
+                  Supervisa a los administradores y recepcionistas. Puedes cambiar PINs de 4 dígitos en cualquier momento y agregar nuevos colaboradores para los turnos de mostrador.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewStaffNombre('');
+                  setNewStaffPin('');
+                  setShowAddStaffModal(true);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-400/20 shrink-0"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>+ Registrar Colaborador</span>
+              </button>
+            </div>
+
+            {/* Cuadrícula de Personal */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {staffList.map((staff) => {
+                const isEditingThisPin = editingPinStaffId === staff.id;
+                const isPinVisible = showPins[staff.id];
+
+                return (
+                  <div
+                    key={staff.id}
+                    className="p-6 rounded-3xl bg-zinc-900/90 border border-white/10 hover:border-purple-400/40 transition-all shadow-xl flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Cabecera del Perfil */}
+                      <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${staff.avatarColor} font-black text-xl flex items-center justify-center shadow-lg text-white`}
+                          >
+                            {staff.iniciales}
+                          </div>
+                          <div>
+                            <h4 className="text-base font-black text-white font-sans">{staff.nombre}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span
+                                className={`px-2 py-0.5 rounded-full font-mono text-[10px] font-bold uppercase ${
+                                  staff.rol === 'admin'
+                                    ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40'
+                                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                }`}
+                              >
+                                {staff.rol === 'admin' ? 'Administrador' : 'Recepción / Caja'}
+                              </span>
+                              <span className="text-[11px] font-mono text-zinc-400 capitalize">
+                                {staff.turno}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {staff.id !== 'staff-marisol' && staff.id !== 'staff-luis' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`¿Dar de baja a ${staff.nombre}?`)) {
+                                deleteStaffUser(staff.id);
+                                setStaffList(getStaffList());
+                              }
+                            }}
+                            className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors cursor-pointer"
+                            title="Eliminar personal"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Información de Contacto */}
+                      {staff.telefono && (
+                        <div className="text-xs font-mono text-zinc-400 flex items-center gap-1.5 mb-3">
+                          <Phone className="w-3.5 h-3.5 text-zinc-500" />
+                          <span>Cel: {staff.telefono}</span>
+                        </div>
+                      )}
+
+                      {/* Visualización y Edición de PIN */}
+                      <div className="p-3.5 rounded-2xl bg-zinc-950 border border-white/10 space-y-2 mt-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] font-mono text-zinc-400 font-bold uppercase flex items-center gap-1.5">
+                            <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+                            PIN de Acceso:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowPins((prev) => ({ ...prev, [staff.id]: !prev[staff.id] }))
+                            }
+                            className="text-[11px] font-mono text-amber-400 hover:underline cursor-pointer"
+                          >
+                            {isPinVisible ? 'Ocultar' : 'Mostrar'}
+                          </button>
+                        </div>
+
+                        {isEditingThisPin ? (
+                          <div className="flex items-center gap-2 pt-1">
+                            <input
+                              type="text"
+                              maxLength={4}
+                              value={newStaffPinInput}
+                              onChange={(e) => setNewStaffPinInput(e.target.value.replace(/\D/g, ''))}
+                              placeholder="4 dígitos"
+                              className="w-24 bg-zinc-900 border border-amber-400 rounded-xl px-2.5 py-1.5 text-center font-mono text-sm font-bold text-white focus:outline-none"
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (newStaffPinInput.length !== 4) {
+                                  alert('El PIN debe tener exactamente 4 dígitos.');
+                                  return;
+                                }
+                                updateStaffPin(staff.id, newStaffPinInput);
+                                setStaffList(getStaffList());
+                                setEditingPinStaffId(null);
+                                setNewStaffPinInput('');
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-amber-400 text-black font-bold text-xs uppercase cursor-pointer"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPinStaffId(null)}
+                              className="px-2 py-1.5 rounded-xl bg-white/5 text-zinc-400 text-xs cursor-pointer"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="font-mono text-base font-black tracking-widest text-white">
+                              {isPinVisible ? staff.pin : '••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingPinStaffId(staff.id);
+                                setNewStaffPinInput(staff.pin);
+                              }}
+                              className="px-3 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono font-bold cursor-pointer transition-colors"
+                            >
+                              Cambiar PIN
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-white/5 flex items-center justify-between text-[11px] font-mono text-zinc-500">
+                      <span className="flex items-center gap-1.5 text-emerald-400">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                        Activo en Turno
+                      </span>
+                      <span>Sincronizado</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </main>
+
+      {/* MODAL PARA REGISTRAR NUEVO PERSONAL */}
+      {showAddStaffModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+          <div className="w-full max-w-md bg-zinc-900 border border-purple-500/40 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <h3 className="text-base font-black text-white font-display uppercase tracking-tight">
+                Registrar Nuevo Personal
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowAddStaffModal(false)}
+                className="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newStaffNombre.trim() || newStaffPin.length !== 4) {
+                  alert('Ingresa el nombre y un PIN de exactamente 4 dígitos.');
+                  return;
+                }
+                saveStaffUser({
+                  nombre: newStaffNombre.trim(),
+                  rol: newStaffRol,
+                  turno: newStaffTurno,
+                  pin: newStaffPin,
+                  avatarColor:
+                    newStaffRol === 'admin'
+                      ? 'from-purple-500 to-indigo-600 text-white'
+                      : 'from-emerald-400 to-teal-600 text-black',
+                  activo: true,
+                });
+                setStaffList(getStaffList());
+                setShowAddStaffModal(false);
+                setNewStaffNombre('');
+                setNewStaffPin('');
+              }}
+              className="space-y-4 font-mono text-xs"
+            >
+              <div>
+                <label className="block text-zinc-400 uppercase font-bold mb-1">Nombre Completo</label>
+                <input
+                  type="text"
+                  required
+                  value={newStaffNombre}
+                  onChange={(e) => setNewStaffNombre(e.target.value)}
+                  placeholder="Ej. Carla Méndez"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-400 uppercase font-bold mb-1">Rol</label>
+                  <select
+                    value={newStaffRol}
+                    onChange={(e) => setNewStaffRol(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                  >
+                    <option value="cajero">Recepción / Caja</option>
+                    <option value="admin">Administrador</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-zinc-400 uppercase font-bold mb-1">Turno</label>
+                  <select
+                    value={newStaffTurno}
+                    onChange={(e) => setNewStaffTurno(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none"
+                  >
+                    <option value="manana">Mañana</option>
+                    <option value="tarde">Tarde</option>
+                    <option value="noche">Noche</option>
+                    <option value="completo">Completo</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 uppercase font-bold mb-1">PIN de Acceso (4 Dígitos)</label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  required
+                  value={newStaffPin}
+                  onChange={(e) => setNewStaffPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="Ej. 5566"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-base font-bold text-white tracking-widest text-center focus:outline-none focus:border-amber-400"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs uppercase cursor-pointer shadow-lg mt-2"
+              >
+                Guardar Personal en Supabase
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL PARA CREAR O EDITAR PRODUCTO */}
       {showProductModal && editingProduct && (

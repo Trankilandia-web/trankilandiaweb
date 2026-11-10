@@ -76,15 +76,16 @@ test.describe('Pruebas de Sistema E2E · Trankilandia Gym', () => {
     await page.goto('/caja');
 
     // Validar encabezado de recepción
-    await expect(page.getByText(/RECEPCIÓN, ACCESO 1D & POS/i)).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(/Padrón/i).first()).toBeVisible();
+    await expect(page.getByText(/Recepción & Caja/i)).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/1\. MARCAR INGRESO/i)).toBeVisible();
 
     // Validar buscador rápido de atletas
-    const searchInput = page.getByPlaceholder(/Escanear carnet o escribir DNI/i);
+    const searchInput = page.getByPlaceholder(/ESCANEA EL CARNET O ESCRIBE DNI/i);
     await expect(searchInput).toBeVisible();
-    await searchInput.fill('Betty');
+    await searchInput.fill('Betty Romero Gavilan');
+    await searchInput.press('Enter');
 
-    // Debe mostrar la coincidencia inmediata (< 2ms)
+    // Debe mostrar la tarjeta de estado con el nombre del atleta
     await expect(page.getByText(/Betty Romero Gavilan/i).first()).toBeVisible({ timeout: 5000 });
   });
 

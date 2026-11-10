@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Dumbbell,
   ShieldCheck,
   Receipt,
   User,
   LogOut,
-  ArrowLeft,
   Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -43,10 +42,6 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
     return null;
   });
 
-  const isDesktopApp =
-    typeof window !== 'undefined' &&
-    (window.location.protocol === 'file:' || Boolean((window as any).electronAPI?.isElectron));
-
   const [isSwitcherOpen, setIsSwitcherOpen] = useState(false);
 
   useEffect(() => {
@@ -71,8 +66,8 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
 
   const ActiveIcon = roleIcons[currentRole];
 
-  // Módulos operativos principales (excluyendo entrenador temporalmente por simplificación)
-  const allowedRoles: UserRole[] = ['caja', 'admin', 'cliente'];
+  // Módulos operativos exclusivos de la app (Caja & Administración únicamente)
+  const allowedRoles: UserRole[] = ['caja', 'admin'];
 
   return (
     <>
@@ -122,13 +117,12 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             {/* Gym Brand + Role Identity */}
             <div className="flex items-center gap-3.5">
-              <Link
-                to="/"
-                className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 hover:bg-amber-400/20 transition-colors flex-shrink-0"
-                title="Volver a la página principal"
+              <div
+                className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 flex-shrink-0"
+                title="Trankilandia Gym"
               >
                 <Dumbbell className="w-5 h-5" />
-              </Link>
+              </div>
 
               <div>
                 <div className="flex items-center gap-2.5 flex-wrap">
@@ -175,18 +169,6 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
                 </button>
               )}
 
-              {/* Botón de acceso a la web de socios (solo en navegador web, oculto en app de escritorio) */}
-              {!isDesktopApp && (
-                <Link
-                  to="/"
-                  className="inline-flex items-center gap-1.5 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-white px-3 py-1.5 rounded-xl text-xs font-medium border border-white/10 transition-colors"
-                  title="Ver web pública del gimnasio"
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Web Clientes</span>
-                </Link>
-              )}
-
               {/* Salir / Bloquear Turno */}
               <button
                 type="button"
@@ -199,7 +181,7 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
                 title="Cerrar turno y bloquear terminal"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span>{isDesktopApp ? 'Bloquear Terminal' : 'Salir'}</span>
+                <span>Bloquear Terminal</span>
               </button>
             </div>
           </div>

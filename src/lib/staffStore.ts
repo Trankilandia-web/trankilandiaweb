@@ -1,8 +1,10 @@
 /**
  * TRANKILANDIA GYM · SISTEMA DE PERSONAL Y GESTIÓN DE TURNOS (PIN RÁPIDO)
- * Almacena los perfiles de trabajadores y administradores para cambio rápido
- * de turno con viñeta y PIN numérico de 4 dígitos.
+ * Almacena los perfiles de trabajadores y administradores sincronizados con Supabase
+ * y con persistencia Local-First para alta disponibilidad en mostrador.
  */
+
+import { supabase, isSupabaseConfigured } from './supabase';
 
 export interface StaffUser {
   id: string;
@@ -17,11 +19,11 @@ export interface StaffUser {
   createdAt: string;
 }
 
-const STORAGE_KEY_STAFF = 'trankilandia_staff_users_v1';
-const STORAGE_KEY_ACTIVE_STAFF = 'trankilandia_staff_active_session_v1';
+const STORAGE_KEY_STAFF = 'trankilandia_staff_users_v2';
+const STORAGE_KEY_ACTIVE_STAFF = 'trankilandia_staff_active_session_v2';
 
 // Personal predeterminado oficial
-const DEFAULT_STAFF: StaffUser[] = [
+export const DEFAULT_STAFF: StaffUser[] = [
   {
     id: 'staff-marisol',
     nombre: 'Marisol',
@@ -75,13 +77,50 @@ export function getStaffList(): StaffUser[] {
     const raw = localStorage.getItem(STORAGE_KEY_STAFF);
     if (!raw) {
       localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(DEFAULT_STAFF));
+      syncStaffWithSupabase();
       return DEFAULT_STAFF;
     }
     const list: StaffUser[] = JSON.parse(raw);
+    syncStaffWithSupabase();
     return list.filter((u) => u.activo !== false);
   } catch {
     return DEFAULT_STAFF;
   }
+}
+
+/**
+ * Sincroniza la lista de personal en segundo plano con Supabase Cloud
+ */
+export async function syncStaffWithSupabase(): Promise<StaffUser[]> {
+  if (!isSupabaseConfigured()) return getStaffList();
+
+  try {
+    const { data, error } = await supabase
+      .from('personal')
+      .select('*')
+      .eq('activo', true)
+      .order('created_at', { ascending: true });
+
+    if (!error && data && data.length > 0) {
+      const mapped: StaffUser[] = data.map((d: any) => ({
+        id: d.id,
+        nombre: d.nombre,
+        rol: d.rol,
+        turno: d.turno,
+        pin: d.pin,
+        avatarColor: d.avatar_color || 'from-amber-400 to-amber-600 text-black',
+        iniciales: d.iniciales || d.nombre.slice(0, 2).toUpperCase(),
+        activo: d.activo !== false,
+        telefono: d.telefono,
+        createdAt: d.created_at,
+      }));
+
+      localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(mapped));
+      return mapped;
+    }
+  } catch {}
+
+  return getStaffList();
 }
 
 export function saveStaffUser(user: Omit<StaffUser, 'id' | 'createdAt' | 'iniciales'>): StaffUser {
@@ -104,6 +143,25 @@ export function saveStaffUser(user: Omit<StaffUser, 'id' | 'createdAt' | 'inicia
 
   const updated = [...current, newUser];
   localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(updated));
+
+  // Persistir en Supabase
+  if (isSupabaseConfigured()) {
+    supabase
+      .from('personal')
+      .insert({
+        id: newUser.id,
+        nombre: newUser.nombre,
+        rol: newUser.rol,
+        turno: newUser.turno,
+        pin: newUser.pin,
+        avatar_color: newUser.avatarColor,
+        iniciales: newUser.iniciales,
+        telefono: newUser.telefono,
+        activo: true,
+      })
+      .then(() => {});
+  }
+
   return newUser;
 }
 
@@ -112,15 +170,39 @@ export function updateStaffPin(staffId: string, newPin: string): boolean {
   const current = getStaffList();
   const updated = current.map((u) => (u.id === staffId ? { ...u, pin: newPin } : u));
   localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(updated));
+
+  // Actualizar en Supabase
+  if (isSupabaseConfigured()) {
+    supabase
+      .from('personal')
+      .update({
+        pin: newPin,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', staffId)
+      .then(() => {});
+  }
+
   return true;
 }
 
 export function deleteStaffUser(staffId: string): boolean {
   const current = getStaffList();
-  // No permitir borrar los administradores principales
   if (staffId === 'staff-marisol' || staffId === 'staff-luis') return false;
   const updated = current.filter((u) => u.id !== staffId);
   localStorage.setItem(STORAGE_KEY_STAFF, JSON.stringify(updated));
+
+  if (isSupabaseConfigured()) {
+    supabase
+      .from('personal')
+      .update({
+        activo: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', staffId)
+      .then(() => {});
+  }
+
   return true;
 }
 

@@ -12,7 +12,7 @@ import ProtectedRoute from './components/portal/ProtectedRoute';
 
 // Code-Splitting: Carga diferida de portales y páginas secundarias (< 250 KB initial bundle)
 const AdminDashboard = lazy(() => import('./pages/portal/AdminDashboard'));
-const CajaDashboard = lazy(() => import('./pages/portal/CajaDashboard'));
+const HubReceptionSimple = lazy(() => import('./pages/portal/HubReceptionSimple'));
 const ClientePortal = lazy(() => import('./pages/portal/ClientePortal'));
 const PortalRedirect = lazy(() => import('./pages/portal/PortalRedirect'));
 const DesktopStaffLogin = lazy(() => import('./pages/portal/DesktopStaffLogin'));
@@ -93,7 +93,7 @@ function AppContent() {
                   path="/caja"
                   element={
                     <ProtectedRoute allowedRoles={['admin', 'caja']}>
-                      <CajaDashboard />
+                      <HubReceptionSimple />
                     </ProtectedRoute>
                   }
                 />
@@ -144,7 +144,7 @@ function AppContent() {
                   path="/caja"
                   element={
                     <ProtectedRoute allowedRoles={['admin', 'caja']}>
-                      <CajaDashboard />
+                      <HubReceptionSimple />
                     </ProtectedRoute>
                   }
                 />
