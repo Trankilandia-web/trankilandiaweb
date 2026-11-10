@@ -3,8 +3,16 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase, isSupabaseConfigured, signOut as supabaseSignOut } from '../lib/supabase';
 import { UserRole, ROLES_CONFIG, getRoleRedirectPath } from '../types/roles';
 import { extraerDniPeru } from '../lib/dniParser';
-import { getStoredMembers } from '../data/gymStore';
+import { getStoredMembers, GymMember } from '../data/gymStore';
 import { StaffUser, setActiveStaffSession } from '../lib/staffStore';
+import { getStoredCustomPassword } from '../lib/authPasswords';
+
+export interface LoginUserResult {
+  success: boolean;
+  role: UserRole;
+  redirectPath: string;
+  error?: string;
+}
 
 interface AuthContextType {
   user: User | null;
@@ -16,7 +24,11 @@ interface AuthContextType {
   isAdmin: boolean;
   switchRole: (newRole: UserRole) => Promise<void>;
   getRedirectPath: () => string;
-  loginUser: (identifier: string, name?: string) => Promise<{ success: boolean; role: UserRole; redirectPath: string }>;
+  loginUser: (
+    identifier: string,
+    name?: string,
+    password?: string
+  ) => Promise<LoginUserResult>;
   loginStaff: (staff: StaffUser) => { success: boolean; role: UserRole; redirectPath: string };
   logoutStaff: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -225,13 +237,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }, [isConfigured]);
 
   /**
-   * Inicio de sesión universal (DNI o Correo de Administrador)
-   * Garantiza autenticación persistente inmediata en móvil y escritorio
+   * Inicio de sesión de socios y administradores
+   * - Administradores maestros acceden directamente.
+   * - Los socios DEBEN estar registrados previamente en el padrón del club (no se permite auto-creación).
+   * - Su DNI es su usuario y su contraseña inicial (a menos que la hayan modificado).
    */
   const loginUser = async (
     identifier: string,
-    name?: string
-  ): Promise<{ success: boolean; role: UserRole; redirectPath: string }> => {
+    name?: string,
+    password?: string
+  ): Promise<LoginUserResult> => {
     const rawInput = identifier.trim();
     const isEmail = rawInput.includes('@');
     const parsedDni = isEmail ? null : (extraerDniPeru(rawInput) || rawInput.replace(/\D/g, '').slice(0, 8));
@@ -240,63 +255,125 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     const userEmail = isEmail ? rawInput.toLowerCase() : `${cleanDni}@socio.trankilandia.pe`;
 
     const isMasterAdmin = SUPER_ADMIN_EMAILS.some((admin) => admin.toLowerCase() === userEmail);
-    const assignedRole: UserRole = isMasterAdmin ? 'admin' : 'cliente';
 
-    // Buscar socio local o en Supabase para unificar DNI, nombre oficial y correo
+    // 1. Administrador Maestro
+    if (isMasterAdmin) {
+      const displayName =
+        name ||
+        (userEmail.includes('marisol') ? 'Marisol Flores' : 'Luis Gerardo Lloclla');
+
+      const authUserObj = {
+        id: `admin-${cleanDni || 'master'}`,
+        email: userEmail,
+        app_metadata: {},
+        user_metadata: {
+          full_name: displayName,
+          dni: isDni ? cleanDni : undefined,
+          role: 'admin',
+        },
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+      } as unknown as User;
+
+      setUser(authUserObj);
+      setActualRole('admin');
+      setRoleState('admin');
+      try {
+        localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(authUserObj));
+        localStorage.setItem(ROLE_STORAGE_KEY, 'admin');
+      } catch {}
+
+      return { success: true, role: 'admin', redirectPath: '/admin' };
+    }
+
+    // 2. Validación de formato para clientes
+    if (!isDni && !isEmail) {
+      return {
+        success: false,
+        role: 'cliente',
+        redirectPath: '',
+        error: 'Por favor ingresa un número de DNI válido de 8 dígitos.',
+      };
+    }
+
+    // 3. Buscar socio en caché local (padrón oficial de 417 socios)
     const stored = getStoredMembers();
-    let matchedMember = isDni
+    let matchedMember: GymMember | undefined = isDni
       ? stored.find((m) => m.dni && m.dni.trim() === cleanDni)
-      : isEmail
-      ? stored.find((m) => m.email && m.email.toLowerCase().trim() === userEmail)
-      : null;
+      : stored.find((m) => m.email && m.email.toLowerCase().trim() === userEmail);
 
-    let memberOfficialName = name || matchedMember?.name;
-    let memberPersonalEmail = matchedMember?.email;
-
-    // Si es login por DNI y no estaba en caché local, consultar en Supabase
-    if (isDni && !matchedMember && isSupabaseConfigured()) {
+    // 4. Si no se encontró en local y Supabase está configurado, consultar en tiempo real
+    if (!matchedMember && isSupabaseConfigured() && isDni) {
       try {
         const { data: dbSocio } = await supabase
           .from('socios')
-          .select('nombre, email, dni')
+          .select('*')
           .eq('dni', cleanDni)
           .maybeSingle();
 
         if (dbSocio) {
-          if (!memberOfficialName && dbSocio.nombre) {
-            memberOfficialName = dbSocio.nombre;
-          }
-          if (dbSocio.email) {
-            memberPersonalEmail = dbSocio.email;
-          }
+          matchedMember = {
+            id: dbSocio.id,
+            dni: dbSocio.dni,
+            name: dbSocio.nombre,
+            phone: dbSocio.celular || '',
+            email: dbSocio.email || `${cleanDni}@socio.trankilandia.pe`,
+            plan: dbSocio.plan,
+            planPrice: dbSocio.precio_plan,
+            paymentType: dbSocio.tipo_pago,
+            advancePaid: dbSocio.adelanto_pagado,
+            balanceDue: dbSocio.saldo_pendiente,
+            paymentDueDate: dbSocio.fecha_limite_pago,
+            paymentMethod: 'efectivo',
+            receiptNumber: dbSocio.numero_boleta,
+            membershipStatus: dbSocio.estado_calculado === 'vencido' ? 'inactive' : 'active',
+            expiresAt: dbSocio.fecha_fin,
+            coachName: dbSocio.coach_asignado,
+            shift: dbSocio.turno,
+            registeredAt: dbSocio.fecha_inicio || new Date().toISOString().slice(0, 10),
+          };
         }
       } catch {}
     }
 
-    const resolvedDni = isDni ? cleanDni : matchedMember?.dni || undefined;
-    const resolvedEmail = isEmail
-      ? userEmail
-      : memberPersonalEmail && !memberPersonalEmail.endsWith('@socio.trankilandia.pe')
-      ? memberPersonalEmail
-      : userEmail;
+    // REGLA ESTRICTA: Solo los socios inscritos en el sistema pueden ingresar
+    if (!matchedMember) {
+      return {
+        success: false,
+        role: 'cliente',
+        redirectPath: '',
+        error: `El DNI ${cleanDni || rawInput} no pertenece a ningún cliente registrado en Trankilandia Gym. No es posible crear cuentas directamente desde la web; las inscripciones se realizan en recepción.`,
+      };
+    }
 
-    const displayName =
-      memberOfficialName ||
-      (isMasterAdmin
-        ? userEmail.includes('marisol')
-          ? 'Marisol Flores'
-          : 'Luis Gerardo Lloclla'
-        : `Socio ${resolvedDni || cleanDni || rawInput}`);
+    // 5. VALIDACIÓN DE CONTRASEÑA:
+    // DNI sirve como usuario y primera contraseña. Si el socio la cambió, se valida la personalizada.
+    const expectedPassword = getStoredCustomPassword(cleanDni) || cleanDni;
+    if (password !== undefined && password !== null && password !== '') {
+      const cleanEnteredPassword = password.trim();
+      if (cleanEnteredPassword !== expectedPassword) {
+        return {
+          success: false,
+          role: 'cliente',
+          redirectPath: '',
+          error: 'Contraseña incorrecta. Recuerda que si es tu primer ingreso, tu contraseña inicial es tu mismo número de DNI.',
+        };
+      }
+    }
+
+    const resolvedDni = matchedMember.dni || cleanDni;
+    const resolvedEmail = matchedMember.email || `${resolvedDni}@socio.trankilandia.pe`;
+    const displayName = matchedMember.name || name || `Socio ${resolvedDni}`;
 
     const authUserObj = {
-      id: isMasterAdmin ? `admin-${cleanDni || 'master'}` : `socio-${resolvedDni || cleanDni || 'cliente'}`,
+      id: matchedMember.id || `socio-${resolvedDni}`,
       email: resolvedEmail,
       app_metadata: {},
       user_metadata: {
         full_name: displayName,
-        dni: resolvedDni || cleanDni,
-        personal_email: memberPersonalEmail,
-        role: assignedRole,
+        dni: resolvedDni,
+        personal_email: matchedMember.email,
+        role: 'cliente',
       },
       aud: 'authenticated',
       created_at: new Date().toISOString(),
@@ -304,15 +381,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
     // Persistir localmente
     setUser(authUserObj);
-    setActualRole(assignedRole);
-    setRoleState(assignedRole);
+    setActualRole('cliente');
+    setRoleState('cliente');
     try {
       localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(authUserObj));
-      localStorage.setItem(ROLE_STORAGE_KEY, assignedRole);
+      localStorage.setItem(ROLE_STORAGE_KEY, 'cliente');
     } catch {}
 
-    const redirectPath = getRoleRedirectPath(assignedRole);
-    return { success: true, role: assignedRole, redirectPath };
+    return { success: true, role: 'cliente', redirectPath: '/cliente' };
   };
 
   const switchRole = async (newRole: UserRole) => {

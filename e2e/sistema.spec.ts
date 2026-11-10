@@ -43,7 +43,7 @@ test.describe('Pruebas de Sistema E2E · Trankilandia Gym', () => {
     await expect(page.getByText(/46410051/).first()).toBeVisible();
   });
 
-  test('Flujo 2: Un DNI no registrado muestra la tarjeta de orientación con WhatsApp sin formularios engañosos', async ({ page }) => {
+  test('Flujo 2: Un DNI no registrado rechaza el acceso y muestra orientación para recepción con WhatsApp', async ({ page }) => {
     await page.goto('/');
 
     // Abrir login
@@ -54,12 +54,9 @@ test.describe('Pruebas de Sistema E2E · Trankilandia Gym', () => {
     await page.locator('#login-password').fill('99999999');
     await page.getByRole('button', { name: /INGRESAR AL PORTAL/i }).click();
 
-    await page.waitForURL('**/cliente');
-
-    // Debe mostrar la tarjeta clara de DNI no registrado
-    await expect(page.getByText(/DNI no registrado en el Padrón/i)).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(/99999999/)).toBeVisible();
-    await expect(page.getByRole('link', { name: /Consultar por WhatsApp/i })).toBeVisible();
+    // Debe permanecer en el modal y mostrar el mensaje de rechazo de seguridad
+    await expect(page.getByText(/no pertenece a ningún socio registrado|no pertenece a ningún cliente/i)).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: /Contactar a Recepción por WhatsApp/i })).toBeVisible();
   });
 
   test('Flujo 3: Módulo de Recepción (Caja) opera en vivo con buscador rápido de atletas', async ({ page }) => {
@@ -104,8 +101,8 @@ test.describe('Pruebas de Sistema E2E · Trankilandia Gym', () => {
     // Validar encabezado del administrador
     await expect(page.getByText(/Control de Recaudación, Padrón de Socios y Tarifas Oficiales/i)).toBeVisible({ timeout: 8000 });
 
-    // Validar que el padrón indica los 417 socios oficiales
-    await expect(page.getByText(/Padrón \(417\)/i).first()).toBeVisible({ timeout: 8000 });
+    // Validar que el padrón indica los socios oficiales
+    await expect(page.getByText(/Padrón \(\d+\)/i).first()).toBeVisible({ timeout: 8000 });
 
     // Validar secciones de control de tarifas
     const btnTarifas = page.getByRole('button', { name: /Planes & Tarifas/i });

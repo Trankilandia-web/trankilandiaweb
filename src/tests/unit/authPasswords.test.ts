@@ -45,4 +45,16 @@ describe('Pruebas Unitarias · Gestión de Contraseñas de Socios', () => {
     expect(res.success).toBe(false);
     expect(res.message).toContain('no es correcta');
   });
+
+  it('DNI sirve como usuario y primera contraseña por defecto para el primer acceso', () => {
+    const defaultPassword = getStoredCustomPassword(TEST_DNI) || TEST_DNI;
+    expect(defaultPassword).toBe(TEST_DNI);
+  });
+
+  it('tras actualizar la contraseña, la clave esperada ya no es el DNI sino la personalizada', async () => {
+    await actualizarPasswordSocio(TEST_DNI, 'contrasenaPersonalizada', TEST_DNI);
+    const updatedPw = getStoredCustomPassword(TEST_DNI);
+    expect(updatedPw).toBe('contrasenaPersonalizada');
+    expect(updatedPw).not.toBe(TEST_DNI);
+  });
 });

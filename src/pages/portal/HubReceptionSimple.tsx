@@ -16,6 +16,8 @@ import {
   Sun,
   Sunset,
   Moon,
+  IdCard,
+  X,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import {
@@ -25,6 +27,7 @@ import {
   registerGymMember,
   obtenerProductosInventario,
   registrarVentaPOS,
+  updateMemberProfile,
   SocioRecepcion,
   AsistenciaActiva,
 } from '../../lib/supabaseDb';
@@ -71,6 +74,53 @@ export default function HubReceptionSimple() {
   const [carrito, setCarrito] = useState<{ id: string; nombre: string; precio: number; cantidad: number }[]>([]);
   const [posMetodoPago, setPosMetodoPago] = useState<'efectivo' | 'yape'>('efectivo');
   const [posSuccessMsg, setPosSuccessMsg] = useState<string | null>(null);
+
+  // Modal para Asignar DNI a un socio buscado por nombre
+  const [socioParaAsignarDni, setSocioParaAsignarDni] = useState<GymMember | null>(null);
+  const [nuevoDniInput, setNuevoDniInput] = useState('');
+  const [dniAsignadoSuccess, setDniAsignadoSuccess] = useState<string | null>(null);
+  const [dniAsignadoError, setDniAsignadoError] = useState<string | null>(null);
+  const [isSavingDni, setIsSavingDni] = useState(false);
+
+  const handleGuardarNuevoDni = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!socioParaAsignarDni) return;
+    const clean = extraerDniPeru(nuevoDniInput) || nuevoDniInput.replace(/\D/g, '').slice(0, 8);
+    if (!clean || clean.length !== 8) {
+      setDniAsignadoError('El DNI debe tener exactamente 8 dígitos numéricos.');
+      return;
+    }
+
+    // Verificar que otro socio no tenga ya este DNI
+    const conflict = members.find((m) => m.id !== socioParaAsignarDni.id && m.dni && m.dni.trim() === clean);
+    if (conflict) {
+      setDniAsignadoError(`El DNI ${clean} ya pertenece al socio ${conflict.name}.`);
+      return;
+    }
+
+    setIsSavingDni(true);
+    setDniAsignadoError(null);
+    try {
+      const updatedList = await updateMemberProfile(socioParaAsignarDni.id, {
+        dni: clean,
+        email: `${clean}@socio.trankilandia.pe`,
+      });
+      setMembers(updatedList);
+      if (lastScannedSocio && lastScannedSocio.id === socioParaAsignarDni.id) {
+        setLastScannedSocio((prev) => (prev ? { ...prev, dni: clean } : null));
+      }
+      setDniAsignadoSuccess(`DNI ${clean} asignado a ${socioParaAsignarDni.name}. Ya puede ingresar a la web.`);
+      setTimeout(() => {
+        setSocioParaAsignarDni(null);
+        setNuevoDniInput('');
+        setDniAsignadoSuccess(null);
+      }, 1500);
+    } catch {
+      setDniAsignadoError('Error al guardar el DNI en la base de datos.');
+    } finally {
+      setIsSavingDni(false);
+    }
+  };
 
   // 1. CARGA INICIAL DE DATOS DESDE SUPABASE
   const cargarDatos = async () => {
@@ -657,6 +707,13 @@ export default function HubReceptionSimple() {
                           <span className="bg-black/40 px-3 py-1 rounded-xl">Plan: {lastScannedSocio.plan}</span>
                           <span className="bg-black/40 px-3 py-1 rounded-xl">Vence: {lastScannedSocio.fecha_fin}</span>
                           <span className="bg-black/40 px-3 py-1 rounded-xl">Turno: {lastScannedSocio.turno}</span>
+                          {lastScannedSocio.dni ? (
+                            <span className="bg-black/40 px-3 py-1 rounded-xl font-bold">DNI: {lastScannedSocio.dni}</span>
+                          ) : (
+                            <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-xl font-bold">
+                              Sin DNI Oficial
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
@@ -664,6 +721,23 @@ export default function HubReceptionSimple() {
 
                   {/* Acciones Rápidas con Botones Grandes */}
                   <div className="flex items-center gap-3 flex-wrap">
+                    {lastScannedSocio && !lastScannedSocio.dni && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const m = members.find((x) => x.id === lastScannedSocio.id);
+                          if (m) {
+                            setSocioParaAsignarDni(m);
+                            setNuevoDniInput('');
+                            setDniAsignadoError(null);
+                          }
+                        }}
+                        className="px-6 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm uppercase shadow-xl cursor-pointer flex items-center gap-2"
+                      >
+                        <IdCard className="w-5 h-5" />
+                        <span>Asignar DNI a este Socio</span>
+                      </button>
+                    )}
                     {(lastScanStatus === 'vencido' || lastScanStatus === 'por_vencer') && lastScannedSocio && (
                       <button
                         type="button"
@@ -807,8 +881,24 @@ export default function HubReceptionSimple() {
                           <tr key={socio.id} className="hover:bg-zinc-800/40 transition-colors">
                             <td className="py-4 px-6">
                               <div className="font-bold text-white text-sm font-sans">{socio.name}</div>
-                              <div className="text-[11px] text-zinc-400">
-                                DNI: {socio.dni || 'Sin DNI'} · Tel: {socio.phone || 'Sin número'}
+                              <div className="text-[11px] text-zinc-400 flex items-center gap-2 mt-0.5">
+                                {socio.dni ? (
+                                  <span>DNI: {socio.dni}</span>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSocioParaAsignarDni(socio);
+                                      setNuevoDniInput('');
+                                      setDniAsignadoError(null);
+                                    }}
+                                    className="px-2 py-0.5 rounded-lg bg-amber-400/20 border border-amber-400/40 text-amber-300 hover:bg-amber-400 hover:text-black font-bold font-mono text-[10px] cursor-pointer transition-colors"
+                                  >
+                                    + Asignar DNI
+                                  </button>
+                                )}
+                                <span>·</span>
+                                <span>Tel: {socio.phone || 'Sin número'}</span>
                               </div>
                             </td>
                             <td className="py-4 px-6 text-zinc-300 font-semibold">{socio.plan}</td>
@@ -1182,6 +1272,79 @@ export default function HubReceptionSimple() {
           </div>
         )}
       </main>
+
+      {/* Modal para Asignar DNI a Socio Buscado por Nombre */}
+      {socioParaAsignarDni && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-md bg-zinc-900 border border-amber-400/40 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div>
+                <h3 className="text-base font-black text-white font-display uppercase">
+                  Asignar DNI a Socio
+                </h3>
+                <p className="text-xs text-zinc-400 font-mono mt-0.5">{socioParaAsignarDni.name}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSocioParaAsignarDni(null)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+              Al asignar su número de DNI, el socio podrá ingresar de inmediato al portal web de clientes utilizando su DNI como usuario y primera contraseña.
+            </p>
+
+            {dniAsignadoError && (
+              <div className="p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-mono">
+                {dniAsignadoError}
+              </div>
+            )}
+
+            {dniAsignadoSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
+                {dniAsignadoSuccess}
+              </div>
+            )}
+
+            <form onSubmit={handleGuardarNuevoDni} className="space-y-4">
+              <div>
+                <label className="block text-xs font-mono uppercase text-zinc-300 mb-1.5 font-bold">
+                  Número de DNI (8 dígitos)
+                </label>
+                <input
+                  type="text"
+                  maxLength={8}
+                  autoFocus
+                  value={nuevoDniInput}
+                  onChange={(e) => setNuevoDniInput(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                  placeholder="Ej: 70447554"
+                  className="w-full bg-zinc-950 border border-white/20 focus:border-amber-400 rounded-xl px-4 py-3 text-lg font-mono font-bold text-white placeholder-zinc-600 focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSocioParaAsignarDni(null)}
+                  className="w-1/2 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono font-bold uppercase transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingDni || nuevoDniInput.length !== 8}
+                  className="w-1/2 py-3 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black text-xs font-mono font-black uppercase transition-all shadow-md cursor-pointer"
+                >
+                  {isSavingDni ? 'Guardando...' : 'Guardar DNI'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

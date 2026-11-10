@@ -268,7 +268,7 @@ export default function UserProfileDropdown() {
                       <KeyRound className="w-4 h-4 text-amber-400" />
                       <span>Seguridad &amp; Cambiar Clave</span>
                     </span>
-                    <span className="text-[10px] font-mono text-zinc-400 font-bold">DNI / Google</span>
+                    <span className="text-[10px] font-mono text-zinc-400 font-bold">DNI / Clave</span>
                   </button>
                 </>
               )}
