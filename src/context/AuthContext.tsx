@@ -6,6 +6,7 @@ import { extraerDniPeru } from '../lib/dniParser';
 import { getStoredMembers, GymMember } from '../data/gymStore';
 import { StaffUser, setActiveStaffSession } from '../lib/staffStore';
 import { getStoredCustomPassword } from '../lib/authPasswords';
+import { getLocalPeruDateString } from '../lib/dateUtils';
 
 export interface LoginUserResult {
   success: boolean;
@@ -67,19 +68,7 @@ function resolveDefaultRole(user: User | null): UserRole {
     return 'admin';
   }
 
-  // 1. Saved role in local testing storage (only if explicitly set by role switcher)
-  const savedRole = localStorage.getItem(ROLE_STORAGE_KEY) as UserRole | null;
-  if (savedRole && ROLES_CONFIG[savedRole]) {
-    return savedRole;
-  }
-
-  // 2. Role in Supabase user metadata
-  const metaRole = user?.user_metadata?.role as UserRole | undefined;
-  if (metaRole && ROLES_CONFIG[metaRole]) {
-    return metaRole;
-  }
-
-  // 3. Default for ALL users is strictly 'cliente'
+  // En la plataforma web pública, todos los socios tienen estrictamente rol 'cliente'
   return 'cliente';
 }
 
@@ -156,18 +145,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           .then(() => {});
       }
     } else if (isConfigured) {
-      try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', currentUser.id)
-          .maybeSingle();
+      // Si el usuario es un colaborador de personal autenticado por terminal (ID staff- o correo caja)
+      if (
+        currentUser.id.startsWith('staff-') ||
+        (currentUser.email && currentUser.email.endsWith('@caja.trankilandia.pe')) ||
+        currentUser.user_metadata?.role === 'admin' ||
+        currentUser.user_metadata?.role === 'caja'
+      ) {
+        const metaRole = currentUser.user_metadata?.role as UserRole | undefined;
+        dbRole =
+          metaRole && ROLES_CONFIG[metaRole]
+            ? metaRole
+            : currentUser.id === 'staff-marisol' || currentUser.id === 'staff-luis'
+            ? 'admin'
+            : 'caja';
+      } else {
+        try {
+          const { data, error } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', currentUser.id)
+            .maybeSingle();
 
-        if (!error && data?.role && ROLES_CONFIG[data.role as UserRole]) {
-          dbRole = data.role as UserRole;
+          if (!error && data?.role && ROLES_CONFIG[data.role as UserRole]) {
+            dbRole = data.role as UserRole;
+          } else {
+            dbRole = resolveDefaultRole(currentUser);
+          }
+        } catch {
+          dbRole = resolveDefaultRole(currentUser);
         }
-      } catch {
-        // Table may not be created yet in Supabase
       }
     } else {
       dbRole = resolveDefaultRole(currentUser);
@@ -330,7 +337,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
             expiresAt: dbSocio.fecha_fin,
             coachName: dbSocio.coach_asignado,
             shift: dbSocio.turno,
-            registeredAt: dbSocio.fecha_inicio || new Date().toISOString().slice(0, 10),
+            registeredAt: dbSocio.fecha_inicio || getLocalPeruDateString(),
           };
         }
       } catch {}

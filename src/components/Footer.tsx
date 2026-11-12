@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Dumbbell,
   Mail,
   Phone,
   MapPin,
@@ -13,6 +12,7 @@ import {
   X,
 } from 'lucide-react';
 import { GYM_CONTACT } from '../data/gymData';
+import trankilandiaLogo from '../assets/trankilandia-logo.png';
 
 export interface FooterProps {
   onOpenTourModal?: () => void;
@@ -72,8 +72,12 @@ export default function Footer({ onOpenTourModal }: FooterProps = {}): React.JSX
               to="/"
               className="inline-flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-xl"
             >
-              <div className="bg-amber-400/10 border border-amber-400/20 p-2.5 rounded-xl text-amber-400 transition-transform duration-300 group-hover:scale-105 group-hover:border-amber-400/40">
-                <Dumbbell className="w-6 h-6" strokeWidth={1.75} />
+              <div className="w-11 h-11 rounded-full overflow-hidden border border-amber-400/30 shadow-md shadow-amber-400/10 transition-transform duration-300 group-hover:scale-105 group-hover:border-amber-400 shrink-0">
+                <img
+                  src={trankilandiaLogo}
+                  alt="Logo Trankilandia Gym"
+                  className="w-full h-full object-cover"
+                />
               </div>
               <div className="flex flex-col text-left">
                 <span className="text-white font-black tracking-tight text-xl font-display leading-tight">

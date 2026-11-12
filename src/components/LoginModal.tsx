@@ -73,21 +73,6 @@ export default function LoginModal({
     }, 250);
   };
 
-  const handleAdminQuickLogin = async (email: string, name: string) => {
-    setErrorMessage('');
-    setIsLoading(true);
-    try {
-      const res = await loginUser(email, name);
-      setIsLoading(false);
-      handleModalClose();
-      // Marisol va directo al panel de control de acceso en mostrador
-      navigate(email.toLowerCase().includes('marisol') ? '/caja' : (res.redirectPath || '/admin'));
-    } catch {
-      setIsLoading(false);
-      setErrorMessage('Error al acceder. Inténtalo nuevamente.');
-    }
-  };
-
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const clean = extraerDniPeru(resetDni) || resetDni.replace(/\D/g, '').slice(0, 8);
@@ -503,35 +488,6 @@ export default function LoginModal({
                     </motion.button>
                   </div>
                 </form>
-
-                {/* Accesos Rápidos para Administradores (Marisol Flores / Luis Lloclla) */}
-                <div className="mt-5 pt-4 border-t border-white/10">
-                  <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 font-bold mb-2 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                      Acceso Rápido Administradores
-                    </span>
-                    <span className="text-[10px] text-zinc-500 font-normal">1 Clic</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleAdminQuickLogin('marisolflores@gmail.com', 'Marisol Flores')}
-                      className="px-3 py-2.5 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-300 text-xs font-mono font-bold transition-all text-left flex items-center justify-between cursor-pointer group"
-                    >
-                      <span className="truncate">Marisol Flores</span>
-                      <span className="text-[10px] text-amber-400 font-mono shrink-0 ml-1">ADMIN</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAdminQuickLogin('luisgerardolloccllasaune@gmail.com', 'Luis Gerardo Lloclla')}
-                      className="px-3 py-2.5 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 border border-white/10 text-zinc-200 text-xs font-mono font-bold transition-all text-left flex items-center justify-between cursor-pointer group"
-                    >
-                      <span className="truncate">Luis Lloclla</span>
-                      <span className="text-[10px] text-zinc-400 font-mono shrink-0 ml-1">ADMIN</span>
-                    </button>
-                  </div>
-                </div>
 
                 {/* Footer Switcher to Courtesy Pass / Non-Members */}
                 <div className="mt-6 pt-5 border-t border-white/10 text-center">

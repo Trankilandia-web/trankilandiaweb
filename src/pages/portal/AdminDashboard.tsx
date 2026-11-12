@@ -42,15 +42,18 @@ import PortalHeader from '../../components/portal/PortalHeader';
 import {
   StaffUser,
   getStaffList,
+  fetchStaffFromSupabase,
   saveStaffUser,
   updateStaffPin,
   deleteStaffUser,
+  getActiveStaffSession,
 } from '../../lib/staffStore';
 import { UserRole } from '../../types/roles';
 import {
   GymMember,
   getStoredMembers,
   saveStoredMembers,
+  generateNextMemberId,
   reloadFreshMembersFromExcel,
   INITIAL_MEMBERS,
   GymPlanTier,
@@ -60,6 +63,7 @@ import {
   getStoredAddonRates,
   saveStoredAddonRates,
   resetMembershipPlansToDefault,
+  fetchPlansFromSupabase,
 } from '../../data/gymStore';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
@@ -68,6 +72,9 @@ import {
   obtenerProductosInventario,
   crearOActualizarProducto,
   ajustarStockProducto,
+  eliminarProductoInventario,
+  eliminarProductosSinStock,
+  eliminarSocio,
   actualizarRolUsuario,
   updateMemberShift,
   updateMemberProfile,
@@ -100,6 +107,7 @@ interface MemberRecord {
   expiresAt?: string;
   expiresIn: string;
   lastVisit: string;
+  registeredAt?: string;
   documentStatus?: 'sin_documento' | 'pendiente' | 'verificado' | 'rechazado';
   documentUrl?: string | null;
 }
@@ -151,7 +159,26 @@ export default function AdminDashboard() {
   const [newStaffRol, setNewStaffRol] = useState<'admin' | 'cajero'>('cajero');
   const [newStaffTurno, setNewStaffTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
   const [newStaffPin, setNewStaffPin] = useState<string>('');
+  const [newStaffAdminPin, setNewStaffAdminPin] = useState<string>('');
   const [showPins, setShowPins] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    fetchStaffFromSupabase().then((res) => {
+      if (res.configured && res.users.length > 0) {
+        setStaffList(res.users);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'personal') {
+      fetchStaffFromSupabase().then((res) => {
+        if (res.configured && res.users.length > 0) {
+          setStaffList(res.users);
+        }
+      });
+    }
+  }, [activeTab]);
 
   // Gestión de Planes y Tarifas en Vivo
   const [storedPlans, setStoredPlans] = useState<GymPlanTier[]>(getStoredMembershipPlans);
@@ -161,6 +188,32 @@ export default function AdminDashboard() {
   const [quickPlanPrices, setQuickPlanPrices] = useState<
     Record<string, { monthly: number; quarterly: number; semiannual: number; annual: number }>
   >({});
+
+  // Sincronización bidireccional con Supabase en montaje y cambio de pestaña
+  useEffect(() => {
+    fetchPlansFromSupabase().then((plans) => {
+      setStoredPlans(plans);
+      setAddonRates(getStoredAddonRates());
+    });
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'planes') {
+      fetchPlansFromSupabase().then((plans) => {
+        setStoredPlans(plans);
+        setAddonRates(getStoredAddonRates());
+      });
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handlePlansUpdated = () => {
+      setStoredPlans(getStoredMembershipPlans());
+      setAddonRates(getStoredAddonRates());
+    };
+    window.addEventListener('gym-plans-updated', handlePlansUpdated);
+    return () => window.removeEventListener('gym-plans-updated', handlePlansUpdated);
+  }, []);
 
   useEffect(() => {
     const map: Record<string, { monthly: number; quarterly: number; semiannual: number; annual: number }> = {};
@@ -193,6 +246,7 @@ export default function AdminDashboard() {
   const [roleFilter, setRoleFilter] = useState<'all' | UserRole>('all');
   const [shiftFilter, setShiftFilter] = useState<'all' | 'manana' | 'tarde' | 'noche'>('all');
   const [debtFilter, setDebtFilter] = useState<'all' | 'con_deuda' | 'al_dia'>('all');
+  const [sortOrder, setSortOrder] = useState<'matricula' | 'alfabetico' | 'deuda'>('matricula');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
@@ -201,10 +255,23 @@ export default function AdminDashboard() {
   const [isNewMemberModal, setIsNewMemberModal] = useState(false);
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
   const [customAbonoAmount, setCustomAbonoAmount] = useState<number>(0);
+  const [isSubmittingLiquidate, setIsSubmittingLiquidate] = useState(false);
   const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
 
-  // Notificación de éxito
+  // Notificaciones y Feedback Visual
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [savedAddonSuccess, setSavedAddonSuccess] = useState(false);
+  const [savedQuickPlanId, setSavedQuickPlanId] = useState<string | null>(null);
+
+  const showToast = useCallback((msg: string, durationMs = 3500) => {
+    setActionSuccess(msg);
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage((prev) => (prev === msg ? null : prev));
+      setActionSuccess((prev) => (prev === msg ? null : prev));
+    }, durationMs);
+  }, []);
 
   // Fallbacks calculados en tiempo real según el rango de fecha activo
   const rawStored = useMemo(() => getStoredMembers(), []);
@@ -296,6 +363,7 @@ export default function AdminDashboard() {
         expiresAt: m.expiresAt,
         expiresIn: m.expiresAt,
         lastVisit: 'Reciente',
+        registeredAt: m.registeredAt,
         documentStatus: m.documentStatus,
         documentUrl: m.documentUrl,
       };
@@ -309,6 +377,21 @@ export default function AdminDashboard() {
       setProductos(prods);
     } catch {}
   }, []);
+
+  // Sincronización automática de inventario en tiempo real y al cambiar a pestaña
+  useEffect(() => {
+    const handleProductsUpdated = () => {
+      cargarInventario();
+    };
+    window.addEventListener('gym-products-updated', handleProductsUpdated);
+    return () => window.removeEventListener('gym-products-updated', handleProductsUpdated);
+  }, [cargarInventario]);
+
+  useEffect(() => {
+    if (activeTab === 'inventario') {
+      cargarInventario();
+    }
+  }, [activeTab, cargarInventario]);
 
   // 2. OBTENER RESUMEN AGREGADO DESDE POSTGRESQL (CERO EGRESS MASIVO)
   const cargarResumenKPIs = useCallback(async (range: 'mes' | 'hoy' | '7dias' | 'anual' | string) => {
@@ -359,17 +442,33 @@ export default function AdminDashboard() {
     cargarSociosEnMemoria();
     cargarInventario();
 
-    // Sincronización en tiempo real multi-dispositivo con Supabase
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const debouncedCargarResumen = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        cargarResumenKPIs(dateRange);
+      }, 1500);
+    };
+
+    // Sincronización en tiempo real multi-dispositivo con Supabase con debounce de 1500ms
     const unsubscribe = subscribeToGymRealtime({
       onSociosChange: () => {
         cargarSociosEnMemoria();
+        debouncedCargarResumen();
+      },
+      onAsistenciasChange: () => {
+        debouncedCargarResumen();
+      },
+      onIngresosChange: () => {
+        debouncedCargarResumen();
       },
     });
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       unsubscribe();
     };
-  }, [cargarSociosEnMemoria, cargarInventario]);
+  }, [cargarSociosEnMemoria, cargarInventario, cargarResumenKPIs, dateRange]);
 
   useEffect(() => {
     cargarResumenKPIs(dateRange);
@@ -431,6 +530,44 @@ export default function AdminDashboard() {
     setTimeout(() => setActionSuccess(null), 3500);
   };
 
+  // 6.b ELIMINAR PRODUCTO DEL INVENTARIO (ADMINISTRACIÓN)
+  const handleDeleteProduct = async (prod: ProductoPOS) => {
+    const confirmMsg =
+      prod.stock_actual > 0
+        ? `¿Confirmas que deseas eliminar el producto "${prod.nombre}"? Aún cuenta con ${prod.stock_actual} unidad(es) en inventario.`
+        : `¿Confirmas que deseas eliminar el producto "${prod.nombre}" (Stock: 0) del inventario?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      await eliminarProductoInventario(prod.id);
+      setProductos((prev) => prev.filter((p) => p.id !== prod.id));
+      if (showProductModal) {
+        setShowProductModal(false);
+        setEditingProduct(null);
+      }
+      setActionSuccess(`Producto "${prod.nombre}" eliminado exitosamente del inventario.`);
+      setTimeout(() => setActionSuccess(null), 3500);
+    } catch {
+      alert('Ocurrió un error al intentar eliminar el producto.');
+    }
+  };
+
+  const handleBulkDeleteSinStock = async () => {
+    if (productosSinStock.length === 0) return;
+    const confirmMsg = `¿Deseas depurar y eliminar los ${productosSinStock.length} producto(s) con stock 0 del inventario?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    try {
+      const eliminados = await eliminarProductosSinStock();
+      setProductos((prev) => prev.filter((p) => p.stock_actual > 0));
+      setActionSuccess(`Se depuraron ${eliminados} producto(s) agotados con stock 0.`);
+      setTimeout(() => setActionSuccess(null), 3500);
+    } catch {
+      alert('Ocurrió un error al depurar los productos sin stock.');
+    }
+  };
+
   // 7. INSCRIBIR NUEVO SOCIO DESDE ADMINISTRACIÓN
   const handleOpenNewMember = () => {
     const today = new Date().toISOString().split('T')[0];
@@ -439,7 +576,7 @@ export default function AdminDashboard() {
     const expiry = expiryDate.toISOString().split('T')[0];
 
     const newMember: GymMember = {
-      id: `MEM-00${members.length + 1}`,
+      id: generateNextMemberId(members as any),
       name: '',
       dni: '',
       email: '',
@@ -465,8 +602,23 @@ export default function AdminDashboard() {
     setProfileModalMember(newMember);
   };
 
+  // 7.1 ELIMINACIÓN DEFINITIVA DE SOCIOS DEL PADRÓN OFICIAL
+  const handleEliminarSocio = async (socio: MemberRecord) => {
+    const confirmMessage = `¿Estás seguro de eliminar permanentemente al socio "${socio.name}" (${socio.dni || socio.id}) del padrón oficial?\n\nEsta acción borrará su carnet, credenciales y registros de la base de datos de Supabase.`;
+    if (!window.confirm(confirmMessage)) return;
+
+    try {
+      setMembers((prev) => prev.filter((m) => m.id !== socio.id));
+      await eliminarSocio(socio.id);
+      showToast(`Socio "${socio.name}" eliminado del padrón exitosamente.`);
+    } catch {
+      showToast('Error al intentar eliminar el socio de la base de datos.');
+      await cargarSociosEnMemoria();
+    }
+  };
+
   // 8. GESTIÓN DE PLANES Y TARIFAS EN VIVO POR ADMINISTRACIÓN
-  const handleSaveQuickPlanPrices = (planId: string) => {
+  const handleSaveQuickPlanPrices = async (planId: string) => {
     const edits = quickPlanPrices[planId];
     if (!edits) return;
 
@@ -484,13 +636,14 @@ export default function AdminDashboard() {
     });
 
     setStoredPlans(next);
-    saveStoredMembershipPlans(next);
+    await saveStoredMembershipPlans(next);
     const targetName = storedPlans.find((p) => p.id === planId)?.name || 'Plan';
-    setActionSuccess(`¡Precios de "${targetName}" actualizados en vivo!`);
-    setTimeout(() => setActionSuccess(null), 3500);
+    setSavedQuickPlanId(planId);
+    showToast(`¡Precios de "${targetName}" guardados y sincronizados en vivo!`);
+    setTimeout(() => setSavedQuickPlanId(null), 2500);
   };
 
-  const handleTogglePlanActive = (planId: string) => {
+  const handleTogglePlanActive = async (planId: string) => {
     const next = storedPlans.map((p) => {
       if (p.id === planId) {
         const nextState = p.isActive === false;
@@ -499,12 +652,11 @@ export default function AdminDashboard() {
       return p;
     });
     setStoredPlans(next);
-    saveStoredMembershipPlans(next);
-    setActionSuccess('Estado del plan actualizado en el portal web y caja.');
-    setTimeout(() => setActionSuccess(null), 3000);
+    await saveStoredMembershipPlans(next);
+    showToast('Estado del plan actualizado en el portal web y caja.');
   };
 
-  const handleResetPlans = () => {
+  const handleResetPlans = async () => {
     if (
       window.confirm(
         '¿Deseas restablecer los planes a las tarifas oficiales recomendadas (Escolar S/. 50, Universitario S/. 60, General S/. 80, Boxeo S/. 120)?'
@@ -513,8 +665,7 @@ export default function AdminDashboard() {
       const defs = resetMembershipPlansToDefault();
       setStoredPlans(defs);
       setAddonRates(getStoredAddonRates());
-      setActionSuccess('¡Tarifas oficiales de Trankilandia Gym restauradas con éxito!');
-      setTimeout(() => setActionSuccess(null), 4000);
+      showToast('¡Tarifas oficiales de Trankilandia Gym restauradas con éxito!');
     }
   };
 
@@ -549,7 +700,7 @@ export default function AdminDashboard() {
     setEditingPlan({ ...plan });
   };
 
-  const handleSaveFullPlanModal = (e: React.FormEvent) => {
+  const handleSaveFullPlanModal = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPlan) return;
 
@@ -561,14 +712,13 @@ export default function AdminDashboard() {
     }
 
     setStoredPlans(next);
-    saveStoredMembershipPlans(next);
+    await saveStoredMembershipPlans(next);
     setEditingPlan(null);
     setIsCreatingPlan(false);
-    setActionSuccess(`¡Plan "${editingPlan.name}" guardado exitosamente!`);
-    setTimeout(() => setActionSuccess(null), 3500);
+    showToast(`¡Plan "${editingPlan.name}" guardado exitosamente!`);
   };
 
-  const handleDeletePlan = (planId: string) => {
+  const handleDeletePlan = async (planId: string) => {
     if (['escolar', 'universitario', 'general', 'combo_boxeo'].includes(planId)) {
       alert('Los planes oficiales base del gimnasio no se pueden eliminar. Puedes pausarlos si no deseas ofrecerlos.');
       return;
@@ -576,16 +726,22 @@ export default function AdminDashboard() {
     if (window.confirm('¿Seguro que deseas eliminar este plan personalizado?')) {
       const next = storedPlans.filter((p) => p.id !== planId);
       setStoredPlans(next);
-      saveStoredMembershipPlans(next);
-      setActionSuccess('Plan eliminado correctamente.');
-      setTimeout(() => setActionSuccess(null), 3000);
+      await saveStoredMembershipPlans(next);
+      showToast('Plan eliminado correctamente.');
     }
   };
 
-  const handleSaveAddonRates = () => {
-    saveStoredAddonRates(addonRates);
-    setActionSuccess('¡Tarifas especiales y Pase Diario guardados con éxito!');
-    setTimeout(() => setActionSuccess(null), 3500);
+  const handleSaveAddonRates = async () => {
+    try {
+      await saveStoredAddonRates(addonRates);
+      setSavedAddonSuccess(true);
+      showToast(
+        `¡Tarifas especiales y Pase Diario (S/. ${addonRates.paseDiario}.00) guardados y sincronizados con éxito!`
+      );
+      setTimeout(() => setSavedAddonSuccess(false), 2500);
+    } catch {
+      showToast('Error al guardar tarifas especiales.');
+    }
   };
 
   // 9. EXPORTACIÓN CONSOLIDADA 100% CLIENT-SIDE (CSV CON BOM UTF-8 PARA EXCEL WINDOWS)
@@ -661,8 +817,23 @@ export default function AdminDashboard() {
         (debtFilter === 'con_deuda' ? m.balanceDue > 0 : m.balanceDue === 0);
 
       return matchSearch && matchRole && matchShift && matchDebt;
+    }).sort((a, b) => {
+      if (sortOrder === 'matricula') {
+        // Orden numérico de matrícula según el ID canónico MEM-XXX (o fecha de registro)
+        const numA = parseInt(a.id?.replace(/\D/g, '') || '0', 10);
+        const numB = parseInt(b.id?.replace(/\D/g, '') || '0', 10);
+        if (numA !== numB) return numB - numA;
+        return (b.registeredAt || '').localeCompare(a.registeredAt || '');
+      }
+      if (sortOrder === 'alfabetico') {
+        return (a.name || '').localeCompare(b.name || '');
+      }
+      if (sortOrder === 'deuda') {
+        return (b.balanceDue || 0) - (a.balanceDue || 0);
+      }
+      return 0;
     });
-  }, [members, searchTerm, roleFilter, shiftFilter, debtFilter]);
+  }, [members, searchTerm, roleFilter, shiftFilter, debtFilter, sortOrder]);
 
   const totalPages = Math.ceil(filteredMembers.length / pageSize) || 1;
   const paginatedMembers = useMemo(() => {
@@ -673,6 +844,11 @@ export default function AdminDashboard() {
   // Productos con stock crítico
   const productosCriticos = useMemo(() => {
     return productos.filter((p) => p.stock_actual <= p.stock_minimo);
+  }, [productos]);
+
+  // Productos agotados (stock 0) listos para depuración
+  const productosSinStock = useMemo(() => {
+    return productos.filter((p) => (p.stock_actual || 0) <= 0);
   }, [productos]);
 
   const productosFiltrados = useMemo(() => {
@@ -1178,26 +1354,40 @@ export default function AdminDashboard() {
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingProduct({
-                    id: `PROD-${Date.now().toString().slice(-4)}`,
-                    nombre: '',
-                    categoria: 'Bebidas',
-                    precio_compra: 0,
-                    precio_venta: 0,
-                    stock_actual: 10,
-                    stock_minimo: 5,
-                    activo: true,
-                  });
-                  setShowProductModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-md"
-              >
-                <Plus className="w-4 h-4" />
-                <span>NUEVO PRODUCTO</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {productosSinStock.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBulkDeleteSinStock}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-mono font-bold cursor-pointer transition-colors"
+                    title="Eliminar todos los productos con stock 0 del inventario"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Eliminar Agotados ({productosSinStock.length})</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingProduct({
+                      id: `PROD-${Date.now().toString().slice(-4)}`,
+                      nombre: '',
+                      categoria: 'Bebidas',
+                      precio_compra: 0,
+                      precio_venta: 0,
+                      stock_actual: 10,
+                      stock_minimo: 5,
+                      activo: true,
+                    });
+                    setShowProductModal(true);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs font-mono uppercase tracking-wider cursor-pointer shadow-md"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>NUEVO PRODUCTO</span>
+                </button>
+              </div>
             </div>
 
             {/* Tabla de Inventario */}
@@ -1278,6 +1468,14 @@ export default function AdminDashboard() {
                               >
                                 <Edit className="w-3.5 h-3.5" />
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteProduct(prod)}
+                                className="p-1 rounded bg-zinc-800 hover:bg-red-500/20 text-red-400 hover:text-red-300 cursor-pointer ml-1 transition-colors"
+                                title={prod.stock_actual <= 0 ? "Eliminar producto sin stock" : "Eliminar producto"}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1356,6 +1554,21 @@ export default function AdminDashboard() {
                   <option value="all">Deuda: Todas</option>
                   <option value="con_deuda">Con Saldo Deudor</option>
                   <option value="al_dia">100% Al Día</option>
+                </select>
+
+                {/* Orden del Padrón: Matrícula / Recientes vs Alfabético */}
+                <select
+                  value={sortOrder}
+                  onChange={(e) => {
+                    setSortOrder(e.target.value as any);
+                    setCurrentPage(1);
+                  }}
+                  className="bg-zinc-950 border border-amber-400/40 text-amber-400 font-bold rounded-xl px-2.5 py-1.5 cursor-pointer hover:border-amber-400 transition-colors"
+                  title="Ordenar socios en el padrón"
+                >
+                  <option value="matricula">Orden: Matrícula (Recientes)</option>
+                  <option value="alfabetico">Orden: Alfabético (A - Z)</option>
+                  <option value="deuda">Orden: Mayor Deuda</option>
                 </select>
 
                 {/* Indicador de Conexión Real a Supabase Cloud */}
@@ -1591,40 +1804,53 @@ export default function AdminDashboard() {
                         </td>
 
                         <td className="py-3 px-4 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const fullMember = getStoredMembers().find((sm) => sm.id === m.id);
-                              if (fullMember) {
-                                setProfileModalMember(fullMember);
-                              } else {
-                                const fallbackMember: GymMember = {
-                                  id: m.id,
-                                  name: m.name,
-                                  dni: m.dni,
-                                  plan: m.plan,
-                                  planPrice: 80,
-                                  paymentType: m.balanceDue === 0 ? 'full' : 'advance',
-                                  advancePaid: m.advancePaid,
-                                  balanceDue: m.balanceDue,
-                                  paymentMethod: (m.paymentMethod as any) || 'efectivo',
-                                  receiptNumber: `B001-${m.id}`,
-                                  membershipStatus: m.status,
-                                  expiresAt: m.expiresIn,
-                                  coachName: m.coachName,
-                                  registeredAt: new Date().toISOString().split('T')[0],
-                                  shift: m.shift,
-                                  documentStatus: m.documentStatus,
-                                  documentUrl: m.documentUrl,
-                                };
-                                setProfileModalMember(fallbackMember);
-                              }
-                            }}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono border border-white/10 transition-colors cursor-pointer"
-                          >
-                            <User className="w-3.5 h-3.5 text-amber-400" />
-                            <span>Gestionar</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsNewMemberModal(false);
+                                const fullMember = getStoredMembers().find((sm) => sm.id === m.id);
+                                if (fullMember) {
+                                  setProfileModalMember(fullMember);
+                                } else {
+                                  const fallbackMember: GymMember = {
+                                    id: m.id,
+                                    name: m.name,
+                                    dni: m.dni,
+                                    plan: m.plan,
+                                    planPrice: 80,
+                                    paymentType: m.balanceDue === 0 ? 'full' : 'advance',
+                                    advancePaid: m.advancePaid,
+                                    balanceDue: m.balanceDue,
+                                    paymentMethod: (m.paymentMethod as any) || 'efectivo',
+                                    receiptNumber: `B001-${m.id}`,
+                                    membershipStatus: m.status,
+                                    expiresAt: m.expiresIn,
+                                    coachName: m.coachName,
+                                    registeredAt: new Date().toISOString().split('T')[0],
+                                    shift: m.shift,
+                                    documentStatus: m.documentStatus,
+                                    documentUrl: m.documentUrl,
+                                  };
+                                  setProfileModalMember(fallbackMember);
+                                }
+                              }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono border border-white/10 transition-colors cursor-pointer"
+                            >
+                              <User className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Gestionar</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleEliminarSocio(m)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs font-mono border border-red-500/20 transition-all cursor-pointer"
+                              title={`Eliminar socio ${m.name}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Eliminar</span>
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -1904,13 +2130,24 @@ export default function AdminDashboard() {
                           type="button"
                           onClick={() => handleSaveQuickPlanPrices(plan.id)}
                           className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                            hasEdits
+                            savedQuickPlanId === plan.id
+                              ? 'bg-emerald-400 text-black shadow-lg shadow-emerald-400/30 scale-105'
+                              : hasEdits
                               ? 'bg-amber-400 hover:bg-amber-300 text-black shadow-lg shadow-amber-400/20'
                               : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-white/10'
                           }`}
                         >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Guardar Precios</span>
+                          {savedQuickPlanId === plan.id ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5 text-black" />
+                              <span>¡Guardado!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Guardar Precios</span>
+                            </>
+                          )}
                         </button>
 
                         <button
@@ -1959,10 +2196,23 @@ export default function AdminDashboard() {
                 <button
                   type="button"
                   onClick={handleSaveAddonRates}
-                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-emerald-500/20"
+                  className={`px-4 py-2 rounded-xl font-mono font-bold text-xs uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-lg ${
+                    savedAddonSuccess
+                      ? 'bg-emerald-400 text-black shadow-emerald-400/40 scale-105'
+                      : 'bg-emerald-500 hover:bg-emerald-400 text-black shadow-emerald-500/20'
+                  }`}
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Guardar Tarifas Especiales</span>
+                  {savedAddonSuccess ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-black animate-pulse" />
+                      <span>¡Tarifas Guardadas!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Guardar Tarifas Especiales</span>
+                    </>
+                  )}
                 </button>
               </div>
 
@@ -2110,10 +2360,21 @@ export default function AdminDashboard() {
                         {staff.id !== 'staff-marisol' && staff.id !== 'staff-luis' && (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (confirm(`¿Dar de baja a ${staff.nombre}?`)) {
-                                deleteStaffUser(staff.id);
-                                setStaffList(getStaffList());
+                            onClick={async () => {
+                              if (window.confirm(`¿Confirmas que deseas eliminar definitivamente a ${staff.nombre}?`)) {
+                                const targetName = staff.nombre.trim().toLowerCase();
+                                setStaffList((prev) =>
+                                  prev.filter(
+                                    (s) => s.id !== staff.id && s.nombre.trim().toLowerCase() !== targetName
+                                  )
+                                );
+                                await deleteStaffUser(staff.id);
+                                const res = await fetchStaffFromSupabase();
+                                if (res.configured && res.users) {
+                                  setStaffList(res.users);
+                                }
+                                setActionSuccess(`Colaborador "${staff.nombre}" eliminado definitivamente.`);
+                                setTimeout(() => setActionSuccess(null), 3000);
                               }
                             }}
                             className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors cursor-pointer"
@@ -2168,10 +2429,32 @@ export default function AdminDashboard() {
                                   alert('El PIN debe tener exactamente 4 dígitos.');
                                   return;
                                 }
-                                await updateStaffPin(staff.id, newStaffPinInput);
-                                setStaffList(getStaffList());
+                                const activeSession = getActiveStaffSession();
+                                let adminPinAuth = activeSession?.pin;
+                                if (!adminPinAuth) {
+                                  adminPinAuth =
+                                    window.prompt(
+                                      'Ingresa el PIN de Administrador (Marisol: 1234 / Luis: 2026) para autorizar:'
+                                    ) || undefined;
+                                }
+                                if (!adminPinAuth || adminPinAuth.length !== 4) {
+                                  alert('Operación cancelada: se requiere el PIN de administrador.');
+                                  return;
+                                }
+                                const res = await updateStaffPin(staff.id, newStaffPinInput, {
+                                  adminPin: adminPinAuth,
+                                });
+                                if (!res.success) {
+                                  alert(`Error: ${res.error}`);
+                                  return;
+                                }
+                                const fresh = await fetchStaffFromSupabase();
+                                if (fresh.configured && fresh.users.length > 0) {
+                                  setStaffList(fresh.users);
+                                }
                                 setEditingPinStaffId(null);
                                 setNewStaffPinInput('');
+                                setShowPins((prev) => ({ ...prev, [staff.id]: true }));
                               }}
                               className="px-3 py-1.5 rounded-xl bg-amber-400 text-black font-bold text-xs uppercase cursor-pointer"
                             >
@@ -2188,14 +2471,14 @@ export default function AdminDashboard() {
                           </div>
                         ) : (
                           <div className="flex items-center justify-between pt-1">
-                            <span className="font-mono text-base font-black tracking-widest text-white">
-                              {isPinVisible ? staff.pin : '••••'}
+                            <span className="font-mono text-base font-black tracking-widest text-amber-400">
+                              {isPinVisible ? (staff.pin || '••••') : '••••'}
                             </span>
                             <button
                               type="button"
                               onClick={() => {
                                 setEditingPinStaffId(staff.id);
-                                setNewStaffPinInput(staff.pin);
+                                setNewStaffPinInput('');
                               }}
                               className="px-3 py-1 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-mono font-bold cursor-pointer transition-colors"
                             >
@@ -2245,21 +2528,40 @@ export default function AdminDashboard() {
                   alert('Ingresa el nombre y un PIN de exactamente 4 dígitos.');
                   return;
                 }
-                await saveStaffUser({
-                  nombre: newStaffNombre.trim(),
-                  rol: newStaffRol,
-                  turno: newStaffTurno,
-                  pin: newStaffPin,
-                  avatarColor:
-                    newStaffRol === 'admin'
-                      ? 'from-purple-500 to-indigo-600 text-white'
-                      : 'from-emerald-400 to-teal-600 text-black',
-                  activo: true,
-                });
-                setStaffList(getStaffList());
+                const activeSession = getActiveStaffSession();
+                const effectiveAdminPin = newStaffAdminPin || activeSession?.pin;
+                if (!effectiveAdminPin || effectiveAdminPin.length !== 4) {
+                  alert('Ingresa el PIN de administrador (Marisol: 1234 o Luis: 2026) para autorizar el registro.');
+                  return;
+                }
+                const res = await saveStaffUser(
+                  {
+                    nombre: newStaffNombre.trim(),
+                    rol: newStaffRol,
+                    turno: newStaffTurno,
+                    pin: newStaffPin,
+                    avatarColor:
+                      newStaffRol === 'admin'
+                        ? 'from-purple-500 to-indigo-600 text-white'
+                        : 'from-emerald-400 to-teal-600 text-black',
+                    activo: true,
+                  },
+                  {
+                    adminPin: effectiveAdminPin,
+                  }
+                );
+                if (!res.success) {
+                  alert(`Error: ${res.error}`);
+                  return;
+                }
+                const fresh = await fetchStaffFromSupabase();
+                if (fresh.configured && fresh.users.length > 0) {
+                  setStaffList(fresh.users);
+                }
                 setShowAddStaffModal(false);
                 setNewStaffNombre('');
                 setNewStaffPin('');
+                setNewStaffAdminPin('');
               }}
               className="space-y-4 font-mono text-xs"
             >
@@ -2314,6 +2616,22 @@ export default function AdminDashboard() {
                   placeholder="Ej. 5566"
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-base font-bold text-white tracking-widest text-center focus:outline-none focus:border-amber-400"
                 />
+              </div>
+
+              <div>
+                <label className="block text-zinc-400 uppercase font-bold mb-1">
+                  PIN de Administrador Autorizador
+                </label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  required
+                  value={newStaffAdminPin}
+                  onChange={(e) => setNewStaffAdminPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="PIN de Marisol (1234) o Luis (2026)"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-base font-bold text-white tracking-widest text-center focus:outline-none focus:border-amber-400"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1">Autoriza el registro de este personal en Supabase</p>
               </div>
 
               <button
@@ -2470,7 +2788,18 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="pt-2 flex gap-2">
+              <div className="pt-2 flex items-center gap-2">
+                {productos.some((p) => p.id === editingProduct.id) && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteProduct(editingProduct)}
+                    className="px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 rounded-xl font-bold cursor-pointer transition-colors flex items-center gap-1.5"
+                    title="Eliminar este producto del inventario"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Eliminar</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowProductModal(false)}
@@ -2499,9 +2828,16 @@ export default function AdminDashboard() {
             setIsNewMemberModal(false);
           }}
           member={profileModalMember}
+          isNew={isNewMemberModal}
           onSave={async (updated) => {
             if (isNewMemberModal) {
-              await registerGymMember(updated);
+              const cleanDni = updated.dni ? updated.dni.replace(/\D/g, '').slice(0, 8) : '';
+              const memberToSave: GymMember = {
+                ...updated,
+                dni: cleanDni,
+                email: updated.email?.trim() || (cleanDni ? `${cleanDni}@cliente.trankilandia.pe` : ''),
+              };
+              await registerGymMember(memberToSave);
               await cargarSociosEnMemoria();
               setActionSuccess(`¡Socio ${updated.name || 'nuevo'} inscrito con éxito en el sistema!`);
             } else {
@@ -2671,29 +3007,38 @@ export default function AdminDashboard() {
               </button>
               <button
                 type="button"
-                disabled={!customAbonoAmount || customAbonoAmount <= 0}
+                disabled={!customAbonoAmount || customAbonoAmount <= 0 || isSubmittingLiquidate}
                 onClick={async () => {
+                  if (isSubmittingLiquidate || !liquidatingMember) return;
                   const amountToCharge =
                     customAbonoAmount > 0
                       ? Math.min(liquidatingMember.balanceDue, customAbonoAmount)
                       : liquidatingMember.balanceDue;
 
-                  const next = await payMemberBalance(
-                    liquidatingMember.id,
-                    liquidateMethod,
-                    amountToCharge
-                  );
-                  saveStoredMembers(next);
-                  cargarSociosEnMemoria();
-                  setActionSuccess(
-                    `¡Abono de S/. ${amountToCharge.toFixed(2)} registrado con éxito a ${liquidatingMember.name}!`
-                  );
-                  setLiquidatingMember(null);
-                  setTimeout(() => setActionSuccess(null), 4000);
+                  try {
+                    setIsSubmittingLiquidate(true);
+                    const next = await payMemberBalance(
+                      liquidatingMember.id,
+                      liquidateMethod,
+                      amountToCharge
+                    );
+                    saveStoredMembers(next);
+                    cargarSociosEnMemoria();
+                    setActionSuccess(
+                      `¡Abono de S/. ${amountToCharge.toFixed(2)} registrado con éxito a ${liquidatingMember.name}!`
+                    );
+                    setLiquidatingMember(null);
+                    setTimeout(() => setActionSuccess(null), 4000);
+                  } catch (err: any) {
+                    console.error('[AdminDashboard] Error liquidando saldo:', err);
+                    alert(`No se pudo procesar el cobro: ${err?.message || 'Error de conexión'}`);
+                  } finally {
+                    setIsSubmittingLiquidate(false);
+                  }
                 }}
                 className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-3 rounded-xl font-black cursor-pointer shadow-lg shadow-emerald-500/20 disabled:opacity-40"
               >
-                CONFIRMAR COBRO
+                {isSubmittingLiquidate ? 'PROCESANDO...' : 'CONFIRMAR COBRO'}
               </button>
             </div>
           </motion.div>
@@ -2894,6 +3239,23 @@ export default function AdminDashboard() {
               </div>
             </form>
           </motion.div>
+        </div>
+      )}
+      {/* NOTIFICACIÓN TOAST FLOTANTE INFERIOR (SIEMPRE VISIBLE EN CUALQUIER PESTAÑA O SCROLL) */}
+      {(toastMessage || actionSuccess) && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-emerald-400 text-black font-black text-xs font-mono shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-200 border-2 border-emerald-300">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+          <span>{toastMessage || actionSuccess}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setToastMessage(null);
+              setActionSuccess(null);
+            }}
+            className="p-1 rounded-lg hover:bg-black/10 transition-colors ml-2 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
     </div>

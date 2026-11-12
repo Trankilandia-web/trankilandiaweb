@@ -16,8 +16,9 @@ import {
 } from '../data/gymData';
 import {
   getStoredMembershipPlans,
+  fetchPlansFromSupabase,
   GymPlanTier,
-} from '../data/gymStore';
+} from '../data/plansStore';
 import type { PlanTier, ComparisonCategory, ComparisonFeature, BillingPeriod } from '../types';
 
 export interface PlansPageProps {
@@ -34,6 +35,7 @@ export default function PlansPage({
   const [plans, setPlans] = useState<GymPlanTier[]>(getStoredMembershipPlans);
 
   useEffect(() => {
+    fetchPlansFromSupabase().then(setPlans);
     const handleUpdate = () => setPlans(getStoredMembershipPlans());
     window.addEventListener('gym-plans-updated', handleUpdate);
     return () => window.removeEventListener('gym-plans-updated', handleUpdate);

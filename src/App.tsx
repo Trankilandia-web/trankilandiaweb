@@ -9,6 +9,7 @@ import LoginModal from './components/LoginModal';
 import FloatingPassBadge from './components/FloatingPassBadge';
 import HomePage from './pages/HomePage';
 import ProtectedRoute from './components/portal/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Code-Splitting: Carga diferida de portales y páginas secundarias (< 250 KB initial bundle)
 const AdminDashboard = lazy(() => import('./pages/portal/AdminDashboard'));
@@ -101,6 +102,14 @@ function AppContent() {
                   element={
                     <ProtectedRoute allowedRoles={['admin', 'caja']}>
                       <HubReceptionSimple />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/cliente"
+                  element={
+                    <ProtectedRoute allowedRoles={['admin', 'caja', 'entrenador', 'cliente']}>
+                      <ClientePortal />
                     </ProtectedRoute>
                   }
                 />
@@ -198,7 +207,9 @@ export default function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppContent />
+        <ErrorBoundary>
+          <AppContent />
+        </ErrorBoundary>
       </AuthProvider>
     </Router>
   );

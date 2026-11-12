@@ -1,10 +1,12 @@
 // ==============================================================================
 // TRANKILANDIA GYM · STORE DE CLIENTES, COBROS CON ADELANTO Y RUTINAS DEL COACH
 // ==============================================================================
+// - Desacoplado de importaciones estáticas masivas de PII (realMembers.json).
+// - El padrón oficial se consulta directamente desde Supabase en la nube.
+// - Carga diferida (lazy dynamic import) disponible para semillas o fallback offline.
+// ==============================================================================
 
-import realMembersData from './realMembers.json';
-import { MEMBERSHIP_PLANS } from './gymData';
-import type { PlanTier } from '../types';
+export * from './plansStore';
 
 export interface GymMember {
   id: string;
@@ -79,27 +81,36 @@ export const LUIS_GERARDO_MEMBER: GymMember = {
   dni: '70447087',
   email: 'luisgerardolloccllasaune@gmail.com',
   phone: '958183360',
-  plan: 'Combo Musculación + Escuela de Boxeo',
-  planPrice: 140,
-  paymentType: 'full',
-  advancePaid: 140,
-  balanceDue: 0,
+  plan: 'Plan Libre Anual (12 Meses)',
+  planPrice: 430,
+  paymentType: 'advance',
+  advancePaid: 100,
+  balanceDue: 330,
   paymentDueDate: null,
-  paymentMethod: 'yape',
-  receiptNumber: 'B001-000492',
+  paymentMethod: 'efectivo',
+  receiptNumber: 'B001-000933',
   membershipStatus: 'active',
-  registeredAt: '2026-11-01',
-  expiresAt: '2027-11-01',
+  registeredAt: '2026-11-10',
+  expiresAt: '2027-11-10',
   coachName: 'Coach Marcos Rivas',
   shift: 'manana',
-  observations: 'Socio activo. Enfoque en hipertrofia y acondicionamiento.',
+  observations: 'Socio Fundador activo. Enfoque en hipertrofia y acondicionamiento.',
   age: 26,
   gender: 'Masculino',
 };
 
-// Initial Real Members Loaded directly from Gym.xlsm (417 socios oficiales)
-const rawList = (realMembersData as unknown) as GymMember[];
-export const INITIAL_MEMBERS: GymMember[] = rawList;
+// Padrón base de demostración (sin PII masivo en el bundle de producción)
+export const INITIAL_MEMBERS: GymMember[] = [LUIS_GERARDO_MEMBER];
+
+/**
+ * Carga bajo demanda y asíncrona de los 417 socios canónicos desde realMembers.json.
+ * Al usar import() dinámico, Vite aísla este archivo en un chunk separado
+ * y NUNCA se descarga en la web pública de clientes.
+ */
+export async function loadCanonicalMembersFromExcel(): Promise<GymMember[]> {
+  const mod = await import('./realMembers.json');
+  return (mod.default as unknown) as GymMember[];
+}
 
 // Initial Custom Routines per Member
 export const INITIAL_ROUTINES: Record<string, MemberRoutine> = {
@@ -200,32 +211,21 @@ export const INITIAL_ROUTINES: Record<string, MemberRoutine> = {
 // Initial Progress Records
 export const INITIAL_PROGRESS: ProgressRecord[] = [
   {
-    id: 'PRG-00',
-    memberId: 'MEM-2713',
-    date: '01 Nov 2026',
-    weightKg: 76.5,
-    benchPressKg: 95,
-    squatKg: 120,
-    deadliftKg: 140,
-    pullupsRep: 14,
-    notes: 'Excelente base de fuerza en empuje y piernas.',
-  },
-  {
     id: 'PRG-01',
     memberId: 'MEM-001',
-    date: '28 Oct 2026',
-    weightKg: 76.5,
+    date: '15 Oct 2026',
+    weightKg: 78.5,
     benchPressKg: 95,
     squatKg: 120,
     deadliftKg: 140,
     pullupsRep: 14,
-    notes: 'Excelente fuerza en sentadilla profunda y mejoría notable en resistencia en saco.',
+    notes: 'Excelente respuesta en el tren superior. Mejorando pegada en guardia zurda.',
   },
   {
     id: 'PRG-02',
-    memberId: 'MEM-001',
-    date: '30 Sep 2026',
-    weightKg: 75.2,
+    memberId: 'MEM-2713',
+    date: '01 Nov 2026',
+    weightKg: 75.0,
     benchPressKg: 90,
     squatKg: 115,
     deadliftKg: 135,
@@ -247,10 +247,9 @@ export const INITIAL_PROGRESS: ProgressRecord[] = [
 
 const STORAGE_KEY = 'trankilandia_members_v6';
 
-// Helper to get members from LocalStorage or Fallback
+// Helper para recuperar socios desde LocalStorage (sincronizados desde Supabase)
 export const getStoredMembers = (): GymMember[] => {
   try {
-    // Si existen claves obsoletas de versiones anteriores, limpiarlas
     ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4', 'trankilandia_members_v5'].forEach((k) => {
       if (localStorage.getItem(k)) {
         localStorage.removeItem(k);
@@ -264,24 +263,57 @@ export const getStoredMembers = (): GymMember[] => {
       }
     }
   } catch {}
-  return INITIAL_MEMBERS;
+  return [];
 };
 
 /**
- * Restablece y fuerza la recarga limpia de todos los 417 socios actualizados desde Gym.xlsm
+ * Restablece y fuerza la recarga limpia de todos los 417 socios de respaldo desde el Excel
  */
-export const reloadFreshMembersFromExcel = (): GymMember[] => {
+export const reloadFreshMembersFromExcel = async (): Promise<GymMember[]> => {
   try {
     ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4', 'trankilandia_members_v5', STORAGE_KEY].forEach((k) => {
       localStorage.removeItem(k);
     });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_MEMBERS));
+    const canonical = await loadCanonicalMembersFromExcel();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(canonical));
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gym-members-updated', { detail: { count: INITIAL_MEMBERS.length } }));
+      window.dispatchEvent(new CustomEvent('gym-members-updated', { detail: { count: canonical.length } }));
     }
+    return canonical;
   } catch {}
-  return INITIAL_MEMBERS;
+  return [];
 };
+
+/**
+ * Genera un ID canónico y único para un nuevo socio (MEM-XXX),
+ * garantizando que nunca colisione ni sobrescriba a ningún socio existente.
+ */
+export function generateNextMemberId(existingMembers?: GymMember[]): string {
+  const list = existingMembers || getStoredMembers();
+  let maxId = 928; // ID base canónico más alto de la migración
+
+  const existingIds = new Set<string>();
+
+  for (const m of list) {
+    if (m && m.id) {
+      existingIds.add(m.id);
+      const match = m.id.match(/^MEM-(\d+)$/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxId && num < 100000) {
+          maxId = num;
+        }
+      }
+    }
+  }
+
+  let nextCandidate = maxId + 1;
+  while (existingIds.has(`MEM-${nextCandidate}`) || existingIds.has(`MEM-00${nextCandidate}`)) {
+    nextCandidate++;
+  }
+
+  return `MEM-${nextCandidate}`;
+}
 
 export const saveStoredMembers = (members: GymMember[]) => {
   try {
@@ -320,225 +352,4 @@ export const saveStoredProgress = (progress: ProgressRecord[]) => {
   try {
     localStorage.setItem('trankilandia_progress', JSON.stringify(progress));
   } catch {}
-};
-
-// ==============================================================================
-// GESTIÓN DINÁMICA DE PLANES Y TARIFAS EN VIVO POR ADMINISTRACIÓN
-// ==============================================================================
-
-export interface GymPlanTier extends PlanTier {
-  isActive?: boolean;
-  requiresDocument?: 'dni_escolar' | 'carnet_estudiante' | null;
-}
-
-export interface AddonRates {
-  paseDiario: number;
-  boxeoAddon: number;
-  mesLibre2M: number;
-}
-
-export const DEFAULT_ADDON_RATES: AddonRates = {
-  paseDiario: 15,
-  boxeoAddon: 50,
-  mesLibre2M: 130,
-};
-
-const PLANS_STORAGE_KEY = 'trankilandia_plans_v2';
-const ADDONS_STORAGE_KEY = 'trankilandia_addon_rates_v1';
-
-export const getStoredMembershipPlans = (): GymPlanTier[] => {
-  try {
-    const raw = localStorage.getItem(PLANS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {}
-  return MEMBERSHIP_PLANS.map((p) => ({
-    ...p,
-    isActive: true,
-    requiresDocument:
-      p.id === 'escolar'
-        ? 'dni_escolar'
-        : p.id === 'universitario'
-        ? 'carnet_estudiante'
-        : null,
-  }));
-};
-
-export const saveStoredMembershipPlans = (plans: GymPlanTier[]) => {
-  try {
-    localStorage.setItem(PLANS_STORAGE_KEY, JSON.stringify(plans));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gym-plans-updated'));
-    }
-  } catch {}
-};
-
-export const resetMembershipPlansToDefault = (): GymPlanTier[] => {
-  const defaults: GymPlanTier[] = MEMBERSHIP_PLANS.map((p) => ({
-    ...p,
-    isActive: true,
-    requiresDocument:
-      p.id === 'escolar'
-        ? 'dni_escolar'
-        : p.id === 'universitario'
-        ? 'carnet_estudiante'
-        : null,
-  }));
-  saveStoredMembershipPlans(defaults);
-  saveStoredAddonRates(DEFAULT_ADDON_RATES);
-  return defaults;
-};
-
-export const getStoredAddonRates = (): AddonRates => {
-  try {
-    const raw = localStorage.getItem(ADDONS_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {}
-  return DEFAULT_ADDON_RATES;
-};
-
-export const saveStoredAddonRates = (rates: AddonRates) => {
-  try {
-    localStorage.setItem(ADDONS_STORAGE_KEY, JSON.stringify(rates));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gym-plans-updated'));
-    }
-  } catch {}
-};
-
-export interface CatalogPlanOption {
-  name: string;
-  price: number;
-  months: number;
-  category: string;
-  requiresDocument?: 'dni_escolar' | 'carnet_estudiante' | null;
-}
-
-export const getStoredCatalogPlans = (): CatalogPlanOption[] => {
-  const plans = getStoredMembershipPlans().filter((p) => p.isActive !== false);
-  const addons = getStoredAddonRates();
-  const catalog: CatalogPlanOption[] = [];
-
-  plans.forEach((p) => {
-    if (p.id === 'escolar') {
-      catalog.push({
-        name: 'Plan Escolar (14-17 años)',
-        price: p.monthlyPrice,
-        months: 1,
-        category: 'escolar',
-        requiresDocument: 'dni_escolar',
-      });
-      if (p.quarterlyPrice > 0) {
-        catalog.push({
-          name: 'Plan Escolar (Trimestral - 3 Meses)',
-          price: p.quarterlyPrice,
-          months: 3,
-          category: 'escolar',
-          requiresDocument: 'dni_escolar',
-        });
-      }
-    } else if (p.id === 'universitario') {
-      catalog.push({
-        name: 'Plan Universitario / Instituto (1 Mes)',
-        price: p.monthlyPrice,
-        months: 1,
-        category: 'universitario',
-        requiresDocument: 'carnet_estudiante',
-      });
-      if (p.quarterlyPrice > 0) {
-        catalog.push({
-          name: 'Plan Universitario (Trimestral - 3 Meses)',
-          price: p.quarterlyPrice,
-          months: 3,
-          category: 'universitario',
-          requiresDocument: 'carnet_estudiante',
-        });
-      }
-    } else if (p.id === 'combo_boxeo') {
-      catalog.push({
-        name: '1 Mes · Combo Musculación + Boxeo',
-        price: p.monthlyPrice,
-        months: 1,
-        category: 'boxeo',
-      });
-      if (p.quarterlyPrice > 0) {
-        catalog.push({
-          name: '3 Meses · Combo Musculación + Boxeo',
-          price: p.quarterlyPrice,
-          months: 3,
-          category: 'boxeo',
-        });
-      }
-      if (p.semiannualPrice > 0) {
-        catalog.push({
-          name: '6 Meses · Combo Musculación + Boxeo',
-          price: p.semiannualPrice,
-          months: 6,
-          category: 'boxeo',
-        });
-      }
-      if (p.annualPrice > 0) {
-        catalog.push({
-          name: '1 Año · Combo Musculación + Boxeo',
-          price: p.annualPrice,
-          months: 12,
-          category: 'boxeo',
-        });
-      }
-    } else {
-      // Plan General Libre u otros planes personalizados
-      catalog.push({
-        name: `1 Mes · ${p.name}`,
-        price: p.monthlyPrice,
-        months: 1,
-        category: 'general',
-      });
-      if (p.id === 'general' && addons.mesLibre2M > 0) {
-        catalog.push({
-          name: '2 Meses · Musculación Libre',
-          price: addons.mesLibre2M,
-          months: 2,
-          category: 'general',
-        });
-      }
-      if (p.quarterlyPrice > 0) {
-        catalog.push({
-          name: `3 Meses · ${p.name}`,
-          price: p.quarterlyPrice,
-          months: 3,
-          category: 'general',
-        });
-      }
-      if (p.semiannualPrice > 0) {
-        catalog.push({
-          name: `6 Meses · ${p.name}`,
-          price: p.semiannualPrice,
-          months: 6,
-          category: 'general',
-        });
-      }
-      if (p.annualPrice > 0) {
-        catalog.push({
-          name: `1 Año · ${p.name}`,
-          price: p.annualPrice,
-          months: 12,
-          category: 'general',
-        });
-      }
-    }
-  });
-
-  // Pase diario
-  if (addons.paseDiario > 0) {
-    catalog.push({
-      name: 'Pase Diario de Entrenamiento',
-      price: addons.paseDiario,
-      months: 0,
-      category: 'diario',
-    });
-  }
-
-  return catalog;
 };

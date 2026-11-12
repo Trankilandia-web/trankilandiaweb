@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Dumbbell, Menu, X, MapPin, User, Ticket, ArrowRight, Tag } from 'lucide-react';
+import { Menu, X, MapPin, User, Ticket, ArrowRight, Tag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { ROLES_CONFIG } from '../types/roles';
 import UserProfileDropdown from './UserProfileDropdown';
+import trankilandiaLogo from '../assets/trankilandia-logo.png';
 
 export interface NavbarProps {
   onOpenLoginModal?: () => void;
@@ -59,11 +60,15 @@ export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProp
           onClick={closeMenu}
         >
           <motion.div
-            whileHover={{ scale: 1.05 }}
+            whileHover={{ scale: 1.08 }}
             whileTap={{ scale: 0.95 }}
-            className="bg-amber-400/10 border border-amber-400/20 p-2 rounded-xl text-amber-400 transition-colors group-hover:border-amber-400/40"
+            className="w-10 h-10 rounded-full overflow-hidden border border-amber-400/30 shadow-md shadow-amber-400/10 transition-colors group-hover:border-amber-400 shrink-0"
           >
-            <Dumbbell className="w-6 h-6" strokeWidth={1.75} />
+            <img
+              src={trankilandiaLogo}
+              alt="Logo Trankilandia Gym"
+              className="w-full h-full object-cover"
+            />
           </motion.div>
           <div className="flex flex-col">
             <span className="text-white font-black tracking-tight text-xl font-display leading-tight">

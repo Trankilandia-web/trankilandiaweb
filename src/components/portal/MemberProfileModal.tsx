@@ -14,6 +14,7 @@ import {
   Sparkles,
   Lock,
   Mail,
+  IdCard,
 } from 'lucide-react';
 import { GymMember, getStoredCatalogPlans, CatalogPlanOption } from '../../data/gymStore';
 import { OFFICIAL_COACHES } from '../../pages/portal/ClientePortal';
@@ -26,6 +27,7 @@ interface MemberProfileModalProps {
   onSave: (updatedMember: GymMember) => Promise<void>;
   onOpenPaymentModal?: (member: GymMember) => void;
   initialTab?: 'personal' | 'membership' | 'shift' | 'documentos';
+  isNew?: boolean;
 }
 
 export default function MemberProfileModal({
@@ -35,6 +37,7 @@ export default function MemberProfileModal({
   onSave,
   onOpenPaymentModal,
   initialTab = 'personal',
+  isNew = false,
 }: MemberProfileModalProps) {
   if (!isOpen || !member) return null;
 
@@ -45,6 +48,7 @@ export default function MemberProfileModal({
   const [isSaving, setIsSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [gymPlans, setGymPlans] = useState<CatalogPlanOption[]>(getStoredCatalogPlans);
+  const [isDniUnlocked, setIsDniUnlocked] = useState(false);
 
   useEffect(() => {
     const handleUpdate = () => setGymPlans(getStoredCatalogPlans());
@@ -58,6 +62,7 @@ export default function MemberProfileModal({
       setActiveTab(initialTab);
     }
     setSuccessMsg(null);
+    setIsDniUnlocked(false);
   }, [member, initialTab]);
 
   const handleInputChange = (field: keyof GymMember, value: any) => {
@@ -132,16 +137,39 @@ export default function MemberProfileModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name || !formData.name.trim()) {
+      alert('Ingresa el nombre completo del socio.');
+      return;
+    }
+
+    const cleanDni = formData.dni ? formData.dni.replace(/\D/g, '').slice(0, 8) : '';
+    if (isNew && (!cleanDni || cleanDni.length !== 8)) {
+      alert('Por favor ingresa un DNI válido de 8 dígitos para inscribir al socio.');
+      return;
+    }
+
+    if (cleanDni && cleanDni.length !== 8) {
+      alert('El DNI ingresado no es válido. Debe contener exactamente 8 dígitos numéricos.');
+      return;
+    }
+
     setIsSaving(true);
     try {
-      await onSave(formData);
-      setSuccessMsg('¡Perfil del socio actualizado correctamente!');
+      await onSave({
+        ...formData,
+        name: formData.name.trim(),
+        dni: cleanDni || formData.dni,
+      });
+      setSuccessMsg(isNew ? '¡Socio inscrito con éxito!' : '¡Perfil del socio actualizado correctamente!');
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch {
       alert('Error al guardar cambios.');
     }
     setIsSaving(false);
   };
+
+  const isDniMissing = !member?.dni || member.dni.trim() === '' || member.dni === 'Sin DNI';
+  const canEditDni = isNew || isDniMissing || isDniUnlocked;
 
   const hasDebt = formData.balanceDue > 0;
   const isSinPlan = !formData.plan || formData.plan === 'Sin Membresía Activa' || formData.planPrice === 0;
@@ -292,22 +320,55 @@ export default function MemberProfileModal({
                     <label className="block text-xs font-mono font-bold text-zinc-400">
                       DNI / Documento Oficial
                     </label>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-white/5 font-bold">
-                      <Lock className="w-2.5 h-2.5 text-amber-400" />
-                      Bloqueado
-                    </span>
+                    {canEditDni ? (
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded border font-bold ${
+                          formData.dni && formData.dni.length === 8
+                            ? 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20'
+                            : 'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                        }`}
+                      >
+                        {formData.dni && formData.dni.length === 8 ? '8 Dígitos ✓' : 'Por Asignar (8 dígitos)'}
+                      </span>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-0.5 rounded border border-white/5 font-bold">
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          Bloqueado
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setIsDniUnlocked(true)}
+                          className="text-[10px] font-mono text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                        >
+                          Modificar
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="relative">
                     <input
                       type="text"
-                      readOnly
-                      value={formData.dni || 'Sin DNI'}
-                      className="w-full bg-zinc-950/70 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-zinc-300 font-mono cursor-not-allowed select-none pl-9"
+                      inputMode="numeric"
+                      readOnly={!canEditDni}
+                      value={formData.dni || ''}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 8);
+                        handleInputChange('dni', val);
+                      }}
+                      placeholder="Ej. 74839201"
+                      className={`w-full rounded-xl px-3.5 py-2 text-sm font-mono pl-9 ${
+                        canEditDni
+                          ? 'bg-zinc-950 border border-amber-400/30 text-white focus:outline-none focus:border-amber-400'
+                          : 'bg-zinc-950/70 border border-white/10 text-zinc-300 cursor-not-allowed select-none'
+                      }`}
                     />
-                    <Lock className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <IdCard className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${canEditDni ? 'text-amber-400' : 'text-zinc-500'}`} />
                   </div>
                   <p className="text-[10px] text-zinc-500 mt-1 font-mono">
-                    DNI oficial no modificable por seguridad de la cuenta.
+                    {canEditDni
+                      ? 'Ingresa el DNI oficial (8 dígitos) para el carnet y lector de código de barras.'
+                      : 'DNI oficial verificado por seguridad de la cuenta.'}
                   </p>
                 </div>
 
@@ -942,7 +1003,7 @@ export default function MemberProfileModal({
               className="px-5 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black transition-colors flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-400/20 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Guardando...' : 'Guardar Cambios'}</span>
+              <span>{isSaving ? 'Guardando...' : isNew ? 'Inscribir Socio / Atleta' : 'Guardar Cambios'}</span>
             </button>
           </div>
         </form>

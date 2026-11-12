@@ -18,7 +18,7 @@ import ProgramsSection from '../components/ProgramsSection';
 import AboutSection from '../components/AboutSection';
 import QuickInfoBar from '../components/QuickInfoBar';
 import { BOXING_ADDON } from '../data/gymData';
-import { getStoredMembershipPlans, GymPlanTier } from '../data/gymStore';
+import { getStoredMembershipPlans, fetchPlansFromSupabase, GymPlanTier } from '../data/plansStore';
 import type { BillingPeriod } from '../types';
 
 export interface HomePageProps {
@@ -30,6 +30,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
   const [plans, setPlans] = useState<GymPlanTier[]>(getStoredMembershipPlans);
 
   useEffect(() => {
+    fetchPlansFromSupabase().then(setPlans);
     const handleUpdate = () => setPlans(getStoredMembershipPlans());
     window.addEventListener('gym-plans-updated', handleUpdate);
     return () => window.removeEventListener('gym-plans-updated', handleUpdate);

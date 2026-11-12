@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { extraerDniPeru } from './dniParser';
+import { getLocalPeruDateString } from './dateUtils';
 import {
   actualizarPasswordSocio,
   restablecerPasswordSocio,
@@ -18,6 +19,7 @@ import {
   ProgressRecord,
   getStoredMembers,
   saveStoredMembers,
+  generateNextMemberId,
   getStoredRoutines,
   saveStoredRoutines,
   getStoredProgress,
@@ -80,10 +82,18 @@ export interface ItemVentaPOS {
   cantidad: number;
 }
 
+export interface DescuentoPOS {
+  monto: number;
+  motivo?: string;
+  autorizadoPor?: string;
+}
+
 export interface ResultadoVentaPOS {
   success: boolean;
   venta_id?: number | string;
   numero_ticket: string;
+  subtotal?: number;
+  descuento?: number;
   total: number;
   metodo_pago: string;
   cliente_nombre?: string;
@@ -92,7 +102,21 @@ export interface ResultadoVentaPOS {
 }
 
 const LOCAL_OFFLINE_QUEUE_KEY = 'trankilandia_asistencias_offline';
+const LOCAL_OFFLINE_SALES_KEY = 'trankilandia_ventas_offline';
 const LOCAL_PRODUCTS_KEY = 'trankilandia_productos_inventario';
+
+export interface VentaOfflineQueued {
+  id: string;
+  items: ItemVentaPOS[];
+  metodo_pago: 'yape' | 'plin' | 'efectivo' | 'tarjeta';
+  cliente_nombre: string;
+  cliente_dni: string;
+  subtotal?: number;
+  descuento?: DescuentoPOS;
+  total: number;
+  numero_ticket: string;
+  fecha: string;
+}
 
 // Catálogo base precargado para contingencia offline / primer arranque
 export const CATALOGO_PRODUCTOS_BASE: ProductoPOS[] = [
@@ -144,8 +168,11 @@ export async function fetchSociosParaRecepcion(): Promise<SocioRecepcion[]> {
           celular: d.celular || null,
         }));
       }
-    } catch {
-      // Fallback a almacenamiento local si Supabase falla
+      if (error) {
+        console.warn('[fetchSociosParaRecepcion] Error en consulta v_socios_estado:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[fetchSociosParaRecepcion] Excepción de conexión con Supabase:', err?.message || err);
     }
   }
 
@@ -202,8 +229,51 @@ export async function fetchSociosParaRecepcion(): Promise<SocioRecepcion[]> {
 }
 
 /**
+ * DEDUPLICAR ASISTENCIAS ACTIVAS (ÚLTIMOS 90 MINUTOS)
+ * Garantiza que ningún atleta aparezca duplicado en sala y purga automáticamente registros > 90 min.
+ */
+export function deduplicarAsistenciasActivas(list: AsistenciaActiva[]): AsistenciaActiva[] {
+  if (!Array.isArray(list) || list.length === 0) return [];
+
+  const seenSocios = new Set<string>();
+  const seenDnis = new Set<string>();
+  const seenNombres = new Set<string>();
+  const result: AsistenciaActiva[] = [];
+  const now = Date.now();
+  const ninetyMinMs = 90 * 60 * 1000;
+
+  // Ordenar siempre de más reciente a más antiguo
+  const sorted = [...list].sort(
+    (a, b) => new Date(b.fecha_ingreso).getTime() - new Date(a.fecha_ingreso).getTime()
+  );
+
+  for (const item of sorted) {
+    const timeMs = new Date(item.fecha_ingreso).getTime();
+    if (isNaN(timeMs) || (now - timeMs) > ninetyMinMs) {
+      continue; // Purga registros que ya superaron los 90 minutos
+    }
+
+    const cleanDni = item.dni?.replace(/\D/g, '').slice(0, 8);
+    const socioId = item.socio_id ? String(item.socio_id).trim() : '';
+    const normNombre = item.nombre ? item.nombre.trim().toLowerCase() : '';
+
+    if (socioId && seenSocios.has(socioId)) continue;
+    if (cleanDni && seenDnis.has(cleanDni)) continue;
+    if (normNombre && seenNombres.has(normNombre)) continue;
+
+    if (socioId) seenSocios.add(socioId);
+    if (cleanDni) seenDnis.add(cleanDni);
+    if (normNombre) seenNombres.add(normNombre);
+
+    result.push(item);
+  }
+
+  return result;
+}
+
+/**
  * 2. CARGAR ASISTENCIAS ACTIVAS DE LOS ÚLTIMOS 90 MINUTOS
- * Permite calcular el aforo en sala sin polling ni COUNT(*) reiterados.
+ * Permite calcular el aforo en sala sin polling ni COUNT(*) reiterados, garantizando 0 nombres repetidos.
  */
 export async function cargarAsistenciasActivas90Min(): Promise<AsistenciaActiva[]> {
   const cutoffTime = new Date(Date.now() - 90 * 60 * 1000).toISOString();
@@ -216,6 +286,10 @@ export async function cargarAsistenciasActivas90Min(): Promise<AsistenciaActiva[
         .gte('fecha_ingreso', cutoffTime)
         .order('fecha_ingreso', { ascending: false });
 
+      if (error) {
+        console.warn('[cargarAsistenciasActivas90Min] Error consultando asistencias en Supabase:', error.message);
+      }
+
       if (!error && data) {
         // Combinar con asistencias locales de la sesión activa para soporte local-first
         try {
@@ -227,12 +301,16 @@ export async function cargarAsistenciasActivas90Min(): Promise<AsistenciaActiva[
               !remoteIds.has(l.id) &&
               new Date(l.fecha_ingreso).getTime() >= Date.now() - 90 * 60 * 1000
             );
-            return [...data, ...pendingLocal] as AsistenciaActiva[];
+            return deduplicarAsistenciasActivas([...data, ...pendingLocal] as AsistenciaActiva[]);
           }
-        } catch {}
-        return data as AsistenciaActiva[];
+        } catch (parseErr) {
+          console.warn('[cargarAsistenciasActivas90Min] Error parseando sesión local:', parseErr);
+        }
+        return deduplicarAsistenciasActivas(data as AsistenciaActiva[]);
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn('[cargarAsistenciasActivas90Min] Excepción consultando Supabase:', err?.message || err);
+    }
   }
 
   // Fallback local: recuperar del sessionStorage o devolver array vacío
@@ -240,9 +318,11 @@ export async function cargarAsistenciasActivas90Min(): Promise<AsistenciaActiva[
     const raw = sessionStorage.getItem('trankilandia_asistencias_sesion') || localStorage.getItem('trankilandia_asistencias_sesion');
     if (raw) {
       const list: AsistenciaActiva[] = JSON.parse(raw);
-      return list.filter((a) => new Date(a.fecha_ingreso).getTime() >= Date.now() - 90 * 60 * 1000);
+      return deduplicarAsistenciasActivas(list);
     }
-  } catch {}
+  } catch (storageErr) {
+    console.warn('[cargarAsistenciasActivas90Min] Error en fallback de almacenamiento local:', storageErr);
+  }
 
   return [];
 }
@@ -274,8 +354,12 @@ export async function registrarAsistencia(asistencia: {
     sessionStorage.setItem('trankilandia_asistencias_sesion', updatedList);
     try {
       localStorage.setItem('trankilandia_asistencias_sesion', updatedList);
-    } catch {}
-  } catch {}
+    } catch (lsErr) {
+      console.warn('[registrarAsistencia] Error al guardar en localStorage:', lsErr);
+    }
+  } catch (sessErr) {
+    console.warn('[registrarAsistencia] Error al guardar en sessionStorage:', sessErr);
+  }
 
   if (isSupabaseConfigured()) {
     try {
@@ -288,12 +372,25 @@ export async function registrarAsistencia(asistencia: {
           turno: asistencia.turno,
         })
         .select('id, socio_id, dni, nombre, turno, fecha_ingreso')
-        .single();
+        .maybeSingle();
 
-      if (!error && data) {
-        return { success: true, data: data as AsistenciaActiva };
+      if (!error) {
+        if (data) {
+          return { success: true, data: data as AsistenciaActiva };
+        }
+        // Si data es null, el trigger trg_evitar_doble_asistencia de PostgreSQL descartó la fila por rebote de escáner (<60s)
+        return { success: true, data: item, offlineQueued: false };
       }
-    } catch {}
+
+      // Si el error fue por coerción a fila única ante descarte del trigger (406 / PGRST116)
+      if (error && (error.code === 'PGRST116' || error.message?.includes('Cannot coerce'))) {
+        return { success: true, data: item, offlineQueued: false };
+      }
+
+      console.warn('[registrarAsistencia] Error al insertar asistencia en Supabase:', error.message);
+    } catch (err: any) {
+      console.warn('[registrarAsistencia] Excepción de conexión al registrar asistencia:', err?.message || err);
+    }
   }
 
   // Si falló el envío o no hay conexión, almacenar en la cola de reintento offline
@@ -307,14 +404,19 @@ function encolarAsistenciaOffline(item: AsistenciaActiva): void {
     const queue: AsistenciaActiva[] = raw ? JSON.parse(raw) : [];
     queue.push(item);
     localStorage.setItem(LOCAL_OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-  } catch {}
+  } catch (err) {
+    console.warn('[encolarAsistenciaOffline] Error encolando asistencia offline:', err);
+  }
 }
+
+let isSyncingOfflineQueue = false;
 
 /**
  * 4. VACIAR Y SINCRONIZAR COLA OFFLINE AL VOLVER LA CONEXIÓN
+ * Implementa control por lote e IDs en tránsito para no borrar escaneos nuevos que lleguen durante el viaje de red.
  */
 export async function procesarColaAsistenciasOffline(): Promise<number> {
-  if (!isSupabaseConfigured() || !navigator.onLine) return 0;
+  if (!isSupabaseConfigured() || !navigator.onLine || isSyncingOfflineQueue) return 0;
 
   try {
     const raw = localStorage.getItem(LOCAL_OFFLINE_QUEUE_KEY);
@@ -322,7 +424,17 @@ export async function procesarColaAsistenciasOffline(): Promise<number> {
     const queue: AsistenciaActiva[] = JSON.parse(raw);
     if (queue.length === 0) return 0;
 
-    const payload = queue.map((q) => ({
+    isSyncingOfflineQueue = true;
+
+    // Asegurar IDs únicos para seguimiento
+    const queueWithIds = queue.map((q, idx) => ({
+      ...q,
+      id: q.id || `offline-${Date.now()}-${idx}`,
+    }));
+
+    const idsEnTransito = new Set(queueWithIds.map((q) => String(q.id)));
+
+    const payload = queueWithIds.map((q) => ({
       socio_id: q.socio_id,
       dni: q.dni,
       nombre: q.nombre,
@@ -332,10 +444,29 @@ export async function procesarColaAsistenciasOffline(): Promise<number> {
 
     const { error } = await supabase.from('asistencias').insert(payload);
     if (!error) {
-      localStorage.removeItem(LOCAL_OFFLINE_QUEUE_KEY);
-      return queue.length;
+      // Al resolver exitosamente, conservar en localStorage únicamente los que NO estaban en este lote
+      try {
+        const actualRaw = localStorage.getItem(LOCAL_OFFLINE_QUEUE_KEY);
+        const actualQueue: AsistenciaActiva[] = actualRaw ? JSON.parse(actualRaw) : [];
+        const restantes = actualQueue.filter((item) => !idsEnTransito.has(String(item.id)));
+
+        if (restantes.length > 0) {
+          localStorage.setItem(LOCAL_OFFLINE_QUEUE_KEY, JSON.stringify(restantes));
+        } else {
+          localStorage.removeItem(LOCAL_OFFLINE_QUEUE_KEY);
+        }
+      } catch (storageErr) {
+        console.warn('[procesarColaAsistenciasOffline] Error actualizando cola offline tras sync:', storageErr);
+      }
+      return queueWithIds.length;
+    } else {
+      console.warn('[procesarColaAsistenciasOffline] Error al sincronizar cola con Supabase:', error.message);
     }
-  } catch {}
+  } catch (err: any) {
+    console.warn('[procesarColaAsistenciasOffline] Excepción procesando cola offline:', err?.message || err);
+  } finally {
+    isSyncingOfflineQueue = false;
+  }
 
   return 0;
 }
@@ -348,58 +479,200 @@ export async function obtenerProductosInventario(): Promise<ProductoPOS[]> {
     try {
       const { data, error } = await supabase
         .from('productos')
-        .select('id, codigo_barras, nombre, categoria, precio_venta, stock_actual, stock_minimo, activo')
+        .select('id, codigo_barras, nombre, categoria, precio_compra, precio_venta, stock_actual, stock_minimo, activo')
         .eq('activo', true)
         .order('categoria', { ascending: true })
         .order('nombre', { ascending: true });
 
-      if (!error && data && data.length > 0) {
+      if (error) {
+        console.warn('[obtenerProductosInventario] Error consultando productos en Supabase:', error.message);
+      }
+
+      if (!error && Array.isArray(data)) {
         try {
           localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(data));
-        } catch {}
+        } catch (cacheErr) {
+          console.warn('[obtenerProductosInventario] Error cacheando productos localmente:', cacheErr);
+        }
         return data as ProductoPOS[];
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn('[obtenerProductosInventario] Excepción consultando inventario en Supabase:', err?.message || err);
+    }
   }
 
   // Fallback con localStorage o catálogo base
   try {
     const cached = localStorage.getItem(LOCAL_PRODUCTS_KEY);
-    if (cached) return JSON.parse(cached);
-  } catch {}
+    if (cached !== null) return JSON.parse(cached);
+  } catch (storageErr) {
+    console.warn('[obtenerProductosInventario] Error leyendo inventario de localStorage:', storageErr);
+  }
 
   return CATALOGO_PRODUCTOS_BASE;
 }
 
 /**
+ * Busca un producto en el inventario por código de barras (soporta múltiples códigos separados por comas/espacios),
+ * coincidencia por SKU/ID, o detección heurística de marcas locales (AJE Sporade / Volt / Agua).
+ */
+export function buscarProductoPorCodigo(
+  productos: ProductoPOS[],
+  rawCode: string
+): ProductoPOS | undefined {
+  const code = rawCode.trim().replace(/^\][A-Za-z0-9]{2}/, ''); // Limpiar prefijos de lectores 2D
+  if (!code) return undefined;
+  const lowerCode = code.toLowerCase();
+
+  // 1. Coincidencia exacta o contenida en lista de códigos separados por coma/espacios
+  const matchExacto = productos.find((p) => {
+    if (p.activo === false) return false;
+    if (!p.codigo_barras) return false;
+    const tokens = p.codigo_barras
+      .split(/[\s,;|]+/)
+      .map((t) => t.trim().toLowerCase())
+      .filter(Boolean);
+    return tokens.includes(lowerCode) || p.codigo_barras.trim().toLowerCase() === lowerCode;
+  });
+  if (matchExacto) return matchExacto;
+
+  // 2. Coincidencia por ID o SKU (ej: PROD-1310, BEB-001)
+  const matchId = productos.find(
+    (p) => p.activo !== false && p.id.toLowerCase() === lowerCode
+  );
+  if (matchId) return matchId;
+
+  // 3. Reconocimiento inteligente de códigos EAN peruanos comunes (Grupo AJE):
+  // Si el código empieza por 775067001 (Rango Sporade) y hay un producto "SPORADE":
+  if (/^775067001\d{4}$/.test(code)) {
+    const sporade = productos.find((p) => p.activo !== false && p.nombre.toLowerCase().includes('sporade'));
+    if (sporade) return sporade;
+  }
+  // Si el código empieza por 775067002 (Rango Volt) y hay un producto "VOLT":
+  if (/^775067002\d{4}$/.test(code)) {
+    const volt = productos.find((p) => p.activo !== false && p.nombre.toLowerCase().includes('volt'));
+    if (volt) return volt;
+  }
+  // Si el código empieza por 775067000 (Rango Agua Cielo/San Mateo) y hay producto "agua":
+  if (/^775067000\d{4}$/.test(code)) {
+    const agua = productos.find((p) => p.activo !== false && p.nombre.toLowerCase().includes('agua'));
+    if (agua) return agua;
+  }
+
+  return undefined;
+}
+
+/**
+ * Asocia un nuevo código de barras escaneado a un producto existente en Supabase y memoria
+ */
+export async function vincularCodigoBarrasAProducto(
+  productoId: string,
+  nuevoCodigo: string
+): Promise<{ success: boolean; producto?: ProductoPOS; message?: string }> {
+  const cleanCode = nuevoCodigo.trim().replace(/^\][A-Za-z0-9]{2}/, '');
+  if (!cleanCode) return { success: false, message: 'Código de barras inválido.' };
+
+  const currentList = await obtenerProductosInventario();
+  const target = currentList.find((p) => p.id === productoId);
+  if (!target) return { success: false, message: 'Producto no encontrado.' };
+
+  // Concatenar sin duplicar
+  const existingTokens = (target.codigo_barras || '')
+    .split(/[\s,;|]+/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  if (!existingTokens.includes(cleanCode)) {
+    existingTokens.push(cleanCode);
+  }
+  const updatedBarcodes = existingTokens.join(', ');
+
+  // 1. Actualizar en Supabase si está configurado
+  if (isSupabaseConfigured()) {
+    try {
+      const { error } = await supabase
+        .from('productos')
+        .update({ codigo_barras: updatedBarcodes, updated_at: new Date().toISOString() })
+        .eq('id', productoId);
+      if (error) {
+        console.warn('[vincularCodigoBarrasAProducto] Error actualizando en Supabase:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[vincularCodigoBarrasAProducto] Excepción en Supabase:', err?.message || err);
+    }
+  }
+
+  // 2. Actualizar en almacenamiento local
+  target.codigo_barras = updatedBarcodes;
+  const updatedList = currentList.map((p) => (p.id === productoId ? { ...p, codigo_barras: updatedBarcodes } : p));
+  try {
+    localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updatedList));
+  } catch {}
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('gym-products-updated'));
+  }
+
+  return { success: true, producto: target };
+}
+
+/**
  * 6. REGISTRAR VENTA POS CON RPC ATÓMICO (1 SOLO REQUEST HTTP)
  * Valida stock con bloqueo FOR UPDATE, descuenta existencias y genera ticket oficial.
+ * Admite descuento proporcionado y auditado por operador de caja.
  */
 export async function registrarVentaPOS(
   items: ItemVentaPOS[],
   metodoPago: 'yape' | 'plin' | 'efectivo' | 'tarjeta',
   clienteNombre: string = 'Cliente Mostrador',
-  clienteDni: string = ''
+  clienteDni: string = '',
+  descuento?: DescuentoPOS
 ): Promise<ResultadoVentaPOS> {
   if (items.length === 0) {
     throw new Error('El carrito de venta no contiene ningún producto.');
   }
+
+  const montoDescuento = descuento && descuento.monto > 0 ? Number(descuento.monto) : 0;
+  const motivoDescuento = descuento?.motivo?.trim() || (montoDescuento > 0 ? 'Descuento autorizado' : '');
+  const auditString = montoDescuento > 0
+    ? ` [Desc: S/. ${montoDescuento.toFixed(2)} - Motivo: ${motivoDescuento}]`
+    : '';
+  const clienteNombreAuditado = `${clienteNombre.trim() || 'Cliente Mostrador'}${auditString}`;
 
   if (isSupabaseConfigured()) {
     try {
       const { data, error } = await supabase.rpc('registrar_venta_pos', {
         p_items: items,
         p_metodo_pago: metodoPago,
-        p_cliente_nombre: clienteNombre.trim() || 'Cliente Mostrador',
+        p_cliente_nombre: clienteNombreAuditado,
         p_cliente_dni: clienteDni.trim() || null,
       });
 
       if (!error && data) {
+        const subtotalRpc = Number(data.total);
+        const totalFinalRpc = Math.max(0, subtotalRpc - montoDescuento);
+
+        if (montoDescuento > 0) {
+          try {
+            await supabase.from('ingresos').insert({
+              venta_id: data.venta_id,
+              monto: -montoDescuento,
+              metodo_pago: metodoPago,
+              tipo: 'Descuento POS',
+              observacion: `Ajuste por descuento en Ticket ${data.numero_ticket} (${motivoDescuento}) - Autorizado por: ${descuento?.autorizadoPor || clienteNombre}`,
+            });
+          } catch (descErr) {
+            console.warn('[registrarVentaPOS] Error registrando contra-asiento de descuento:', descErr);
+          }
+        }
+
         return {
           success: true,
           venta_id: data.venta_id,
           numero_ticket: data.numero_ticket,
-          total: Number(data.total),
+          subtotal: subtotalRpc,
+          descuento: montoDescuento,
+          total: totalFinalRpc,
           metodo_pago: data.metodo_pago,
           cliente_nombre: clienteNombre,
           cliente_dni: clienteDni,
@@ -414,35 +687,180 @@ export async function registrarVentaPOS(
 
   // Fallback Offline / Mock POS
   const prods = await obtenerProductosInventario();
-  let totalCalculado = 0;
+
+  // Validar que cada producto exista y tenga stock suficiente
+  for (const item of items) {
+    const prod = prods.find((p) => p.id === item.producto_id);
+    if (!prod) {
+      throw new Error(`Producto con ID ${item.producto_id} no encontrado en el inventario.`);
+    }
+    if (prod.stock_actual < item.cantidad) {
+      throw new Error(`Stock insuficiente para ${prod.nombre} (Stock actual: ${prod.stock_actual})`);
+    }
+  }
+
+  let subtotalCalculado = 0;
   const updatedProds = prods.map((p) => {
     const item = items.find((i) => i.producto_id === p.id);
     if (item) {
-      if (p.stock_actual < item.cantidad) {
-        throw new Error(`Stock insuficiente para ${p.nombre} (Stock actual: ${p.stock_actual})`);
-      }
-      totalCalculado += p.precio_venta * item.cantidad;
+      subtotalCalculado += p.precio_venta * item.cantidad;
       return { ...p, stock_actual: p.stock_actual - item.cantidad };
     }
     return p;
   });
 
+  const totalCalculado = Math.max(0, subtotalCalculado - montoDescuento);
+
   try {
     localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updatedProds));
-  } catch {}
+  } catch (storageErr) {
+    console.warn('[registrarVentaPOS] Error cacheando productos localmente:', storageErr);
+  }
 
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  // Descontar inmediatamente el stock en la base de datos Supabase Cloud
+  if (isSupabaseConfigured()) {
+    for (const item of items) {
+      const prod = prods.find((p) => p.id === item.producto_id);
+      if (prod) {
+        const newStock = Math.max(0, prod.stock_actual - item.cantidad);
+        try {
+          await supabase
+            .from('productos')
+            .update({ stock_actual: newStock, updated_at: new Date().toISOString() })
+            .eq('id', item.producto_id);
+        } catch (dbErr) {
+          console.warn('[registrarVentaPOS] Error descontando stock en Supabase:', dbErr);
+        }
+      }
+    }
+  }
+
+  // Notificar a toda la aplicación para actualizar inventario en tiempo real
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('gym-products-updated'));
+  }
+
+  const dateStr = getLocalPeruDateString().replace(/-/g, '');
   const randomTicket = `TK-${dateStr}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  // Encolar en storage persistente para sincronizar con Supabase al recuperar la red
+  const ventaOffline: VentaOfflineQueued = {
+    id: `sale-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    items,
+    metodo_pago: metodoPago,
+    cliente_nombre: clienteNombreAuditado,
+    cliente_dni: clienteDni,
+    subtotal: subtotalCalculado,
+    descuento: montoDescuento > 0 ? { monto: montoDescuento, motivo: motivoDescuento } : undefined,
+    total: totalCalculado,
+    numero_ticket: randomTicket,
+    fecha: new Date().toISOString(),
+  };
+  encolarVentaOffline(ventaOffline);
 
   return {
     success: true,
     numero_ticket: randomTicket,
+    subtotal: subtotalCalculado,
+    descuento: montoDescuento,
     total: totalCalculado,
     metodo_pago: metodoPago,
     cliente_nombre: clienteNombre,
     cliente_dni: clienteDni,
     fecha: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
   };
+}
+
+function encolarVentaOffline(venta: VentaOfflineQueued): void {
+  try {
+    const raw = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
+    const queue: VentaOfflineQueued[] = raw ? JSON.parse(raw) : [];
+    queue.push(venta);
+    localStorage.setItem(LOCAL_OFFLINE_SALES_KEY, JSON.stringify(queue));
+  } catch (err) {
+    console.warn('[encolarVentaOffline] Error encolando venta offline:', err);
+  }
+}
+
+let isSyncingOfflineSales = false;
+
+/**
+ * 6.1 VACIAR Y SINCRONIZAR COLA DE VENTAS OFFLINE AL VOLVER LA CONEXIÓN
+ * Sincroniza ventas realizadas sin internet hacia Supabase garantizando trazabilidad contable.
+ * Aplica el patrón de idsEnTransito para evitar pérdida de ventas encoladas durante la petición de red.
+ */
+export async function procesarColaVentasOffline(): Promise<number> {
+  if (!isSupabaseConfigured() || !navigator.onLine || isSyncingOfflineSales) return 0;
+
+  try {
+    const raw = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
+    if (!raw) return 0;
+    const queue: VentaOfflineQueued[] = JSON.parse(raw);
+    if (queue.length === 0) return 0;
+
+    isSyncingOfflineSales = true;
+
+    const queueWithIds = queue.map((q, idx) => ({
+      ...q,
+      id: q.id || `sale-${Date.now()}-${idx}`,
+    }));
+
+    const sincronizadasExitosas = new Set<string>();
+
+    for (const venta of queueWithIds) {
+      try {
+        const { error: rpcErr } = await supabase.rpc('registrar_venta_pos', {
+          p_items: venta.items,
+          p_metodo_pago: venta.metodo_pago,
+          p_cliente_nombre: venta.cliente_nombre || 'Cliente Mostrador (Sync Offline)',
+          p_cliente_dni: venta.cliente_dni || null,
+        });
+
+        if (!rpcErr) {
+          sincronizadasExitosas.add(String(venta.id));
+        } else {
+          // Si la RPC registrar_venta_pos no está disponible o falla por RLS,
+          // registrar al menos el asiento contable en la tabla ingresos para asegurar el flujo de caja
+          const { error: ingErr } = await supabase.from('ingresos').insert({
+            monto: venta.total,
+            metodo_pago: venta.metodo_pago,
+            tipo: 'Venta POS Productos',
+            observacion: `Venta offline ticket ${venta.numero_ticket} (${venta.cliente_nombre}) - Sync automática`,
+          });
+          if (!ingErr) {
+            sincronizadasExitosas.add(String(venta.id));
+          } else {
+            console.warn('[procesarColaVentasOffline] Error registrando ingreso:', ingErr.message);
+          }
+        }
+      } catch (itemErr: any) {
+        console.warn('[procesarColaVentasOffline] Error procesando ticket:', venta.numero_ticket, itemErr?.message);
+      }
+    }
+
+    if (sincronizadasExitosas.size > 0) {
+      try {
+        const actualRaw = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
+        const actualQueue: VentaOfflineQueued[] = actualRaw ? JSON.parse(actualRaw) : [];
+        const restantes = actualQueue.filter((item) => !sincronizadasExitosas.has(String(item.id)));
+
+        if (restantes.length > 0) {
+          localStorage.setItem(LOCAL_OFFLINE_SALES_KEY, JSON.stringify(restantes));
+        } else {
+          localStorage.removeItem(LOCAL_OFFLINE_SALES_KEY);
+        }
+      } catch (storageErr) {
+        console.warn('[procesarColaVentasOffline] Error actualizando cola de ventas offline:', storageErr);
+      }
+      return sincronizadasExitosas.size;
+    }
+  } catch (err: any) {
+    console.warn('[procesarColaVentasOffline] Excepción procesando cola offline:', err?.message || err);
+  } finally {
+    isSyncingOfflineSales = false;
+  }
+
+  return 0;
 }
 
 // ==============================================================================
@@ -460,34 +878,53 @@ export async function getGymMembers(): Promise<GymMember[]> {
         .select('id, nombre, dni, email, celular, plan, precio_plan, tipo_pago, adelanto_pagado, saldo_pendiente, fecha_limite_pago, metodo_pago, numero_boleta, turno, coach_asignado, observaciones, edad, sexo, created_at, fecha_fin')
         .order('id', { ascending: true });
 
+      if (error) {
+        console.warn('[getGymMembers] Error consultando socios en Supabase:', error.message);
+      }
+
       if (!error && data && data.length > 0) {
-        const mapped: GymMember[] = data.map((d: any) => ({
-          id: d.id,
-          name: d.nombre,
-          dni: d.dni,
-          email: d.email || '',
-          phone: d.celular || '',
-          plan: d.plan,
-          planPrice: Number(d.precio_plan) || 80,
-          paymentType: d.tipo_pago || 'full',
-          advancePaid: Number(d.adelanto_pagado) || 0,
-          balanceDue: Number(d.saldo_pendiente) || 0,
-          paymentDueDate: d.fecha_limite_pago || undefined,
-          paymentMethod: d.metodo_pago || 'efectivo',
-          receiptNumber: d.numero_boleta || 'B001-000000',
-          membershipStatus: 'active',
-          expiresAt: d.fecha_fin ? `${d.fecha_fin}` : '30 Nov 2026',
-          coachName: d.coach_asignado || 'Coach Marcos Rivas',
-          registeredAt: d.created_at ? new Date(d.created_at).toLocaleDateString('es-PE') : 'Oct 2026',
-          observations: d.observaciones || undefined,
-          age: d.edad || undefined,
-          gender: d.sexo || undefined,
-          shift: (d.turno as 'manana' | 'tarde' | 'noche') || 'manana',
-        }));
+        const todayISO = new Date().toISOString().split('T')[0];
+        const mapped: GymMember[] = data.map((d: any) => {
+          const fechaFin = d.fecha_fin || null;
+          const isExpired = fechaFin ? fechaFin < todayISO : false;
+          const membershipStatus: 'active' | 'expiring' | 'inactive' = isExpired
+            ? 'inactive'
+            : fechaFin
+            ? ((() => {
+                const daysLeft = Math.ceil((new Date(fechaFin).getTime() - new Date(todayISO).getTime()) / (1000 * 60 * 60 * 24));
+                return daysLeft <= 5 ? 'expiring' : 'active';
+              })())
+            : 'active';
+          return {
+            id: d.id,
+            name: d.nombre,
+            dni: d.dni,
+            email: d.email || '',
+            phone: d.celular || '',
+            plan: d.plan,
+            planPrice: Number(d.precio_plan) || 80,
+            paymentType: d.tipo_pago || 'full',
+            advancePaid: Number(d.adelanto_pagado) || 0,
+            balanceDue: Number(d.saldo_pendiente) || 0,
+            paymentDueDate: d.fecha_limite_pago || undefined,
+            paymentMethod: d.metodo_pago || 'efectivo',
+            receiptNumber: d.numero_boleta || 'B001-000000',
+            membershipStatus,
+            expiresAt: fechaFin || new Date().toISOString().split('T')[0],
+            coachName: d.coach_asignado || 'Coach Marcos Rivas',
+            registeredAt: d.created_at ? new Date(d.created_at).toLocaleDateString('es-PE') : new Date().toLocaleDateString('es-PE'),
+            observations: d.observaciones || undefined,
+            age: d.edad || undefined,
+            gender: d.sexo || undefined,
+            shift: (d.turno as 'manana' | 'tarde' | 'noche') || 'manana',
+          };
+        });
         saveStoredMembers(mapped);
         return mapped;
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn('[getGymMembers] Excepción consultando socios en Supabase:', err?.message || err);
+    }
   }
 
   return getStoredMembers();
@@ -509,7 +946,7 @@ export async function updateMemberShift(
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase
+      const { error } = await supabase
         .from('socios')
         .update({
           turno,
@@ -517,7 +954,13 @@ export async function updateMemberShift(
           updated_at: new Date().toISOString(),
         })
         .eq('id', memberId);
-    } catch {}
+
+      if (error) {
+        console.warn('[updateMemberShift] Error actualizando turno en Supabase:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[updateMemberShift] Excepción al actualizar turno en Supabase:', err?.message || err);
+    }
   }
 }
 
@@ -606,8 +1049,13 @@ export async function obtenerSocioActivo(params: {
           // Si tenemos UUID, vincular user_id
           if (isUuid(params.userId)) {
             try {
-              await supabase.from('socios').update({ user_id: params.userId }).eq('id', socioByEmail.id);
-            } catch {}
+              const { error: linkErr } = await supabase.from('socios').update({ user_id: params.userId }).eq('id', socioByEmail.id);
+              if (linkErr) {
+                console.warn('[obtenerSocioActivo] Error vinculando user_id por email:', linkErr.message);
+              }
+            } catch (linkEx: any) {
+              console.warn('[obtenerSocioActivo] Excepción vinculando user_id:', linkEx?.message || linkEx);
+            }
           }
         }
       }
@@ -616,11 +1064,19 @@ export async function obtenerSocioActivo(params: {
         // Si el socio tiene user_id pendiente de vincular y tenemos un UUID autenticado
         if (isUuid(params.userId) && (!socio.user_id || socio.user_id !== params.userId)) {
           try {
-            await supabase.from('socios').update({ user_id: params.userId }).eq('id', socio.id);
-            if (socio.dni) {
-              await supabase.from('profiles').update({ dni: socio.dni, full_name: socio.nombre }).eq('id', params.userId!);
+            const { error: updateErr } = await supabase.from('socios').update({ user_id: params.userId }).eq('id', socio.id);
+            if (updateErr) {
+              console.warn('[obtenerSocioActivo] Error actualizando user_id en socios:', updateErr.message);
             }
-          } catch {}
+            if (socio.dni) {
+              const { error: profErr } = await supabase.from('profiles').update({ dni: socio.dni, full_name: socio.nombre }).eq('id', params.userId!);
+              if (profErr) {
+                console.warn('[obtenerSocioActivo] Error actualizando dni en profiles:', profErr.message);
+              }
+            }
+          } catch (syncEx: any) {
+            console.warn('[obtenerSocioActivo] Excepción sincronizando perfil de socio:', syncEx?.message || syncEx);
+          }
         }
 
         const isExpired = socio.fecha_fin
@@ -757,7 +1213,12 @@ export async function vincularDniCliente(
           member: mapped,
         };
       }
-    } catch {}
+      if (rpcErr) {
+        console.warn('[vincularDniCliente] RPC vincular_socio_por_dni falló:', rpcErr.message);
+      }
+    } catch (rpcEx: any) {
+      console.warn('[vincularDniCliente] Excepción en llamada a RPC vincular_socio_por_dni:', rpcEx?.message || rpcEx);
+    }
 
     // Respaldo directo a tablas en caso el RPC no esté instalado aún
     try {
@@ -904,7 +1365,7 @@ export async function vincularDniCliente(
         .join(' ');
 
       try {
-        await supabase
+        const { error: profileUpdateErr } = await supabase
           .from('profiles')
           .update({
             dni: cleanDni,
@@ -914,7 +1375,13 @@ export async function vincularDniCliente(
             updated_at: new Date().toISOString(),
           })
           .eq('id', userId);
-      } catch {}
+
+        if (profileUpdateErr) {
+          console.warn('[vincularDniCliente] Error actualizando perfil en Supabase:', profileUpdateErr.message);
+        }
+      } catch (profEx: any) {
+        console.warn('[vincularDniCliente] Excepción actualizando perfil:', profEx?.message || profEx);
+      }
 
       // Retornar objeto en memoria para la sesión del usuario (NO se inserta en public.socios para no alterar el padrón oficial)
       const virtualMember: GymMember = {
@@ -1044,7 +1511,12 @@ export async function vincularCorreoASocio(
           member: updatedMember,
         };
       }
-    } catch {}
+      if (rpcErr) {
+        console.warn('[vincularCorreoASocio] RPC vincular_correo_a_dni falló:', rpcErr.message);
+      }
+    } catch (rpcEx: any) {
+      console.warn('[vincularCorreoASocio] Excepción en llamada RPC:', rpcEx?.message || rpcEx);
+    }
 
     try {
       // Actualizar socios directamente
@@ -1199,7 +1671,7 @@ export async function asignarDniYActivarCuenta(
       // Asegurar perfil en public.profiles y vincular con socios.user_id
       if (effectiveUserId) {
         try {
-          await supabase.from('profiles').upsert({
+          const { error: profUpsertErr } = await supabase.from('profiles').upsert({
             id: effectiveUserId,
             email: userRealEmail || canonicalEmail,
             dni: cleanDni,
@@ -1207,8 +1679,16 @@ export async function asignarDniYActivarCuenta(
             membership_status: 'activo',
             updated_at: new Date().toISOString(),
           });
-          await supabase.from('socios').update({ user_id: effectiveUserId }).eq('id', memberId);
-        } catch {}
+          if (profUpsertErr) {
+            console.warn('[asignarDniYActivarCuenta] Error en upsert de profile:', profUpsertErr.message);
+          }
+          const { error: socioLinkErr } = await supabase.from('socios').update({ user_id: effectiveUserId }).eq('id', memberId);
+          if (socioLinkErr) {
+            console.warn('[asignarDniYActivarCuenta] Error vinculando user_id en socios:', socioLinkErr.message);
+          }
+        } catch (profileErr: any) {
+          console.warn('[asignarDniYActivarCuenta] Excepción vinculando perfil de usuario:', profileErr?.message || profileErr);
+        }
       }
     } catch (err: any) {
       console.warn('Error en proceso Supabase asignarDniYActivarCuenta:', err);
@@ -1286,13 +1766,17 @@ export async function registerGymMember(member: GymMember): Promise<void> {
     ? (extraerDniPeru(member.dni) || member.dni.trim().replace(/\D/g, '').slice(0, 8))
     : '';
 
-  // 1. Verificar si ya existía localmente por DNI o ID para reutilizar el mismo ID canónico
+  // 1. Verificar si ya existía por DNI para renovación o actualización del mismo socio
   let targetId = member.id;
-  const existingLocal = current.find(
-    (m) => (cleanDni && m.dni && m.dni.trim() === cleanDni) || m.id === member.id
-  );
-  if (existingLocal) {
-    targetId = existingLocal.id;
+  const existingByDni = cleanDni ? current.find((m) => m.dni && m.dni.trim() === cleanDni) : null;
+  if (existingByDni) {
+    targetId = existingByDni.id;
+  } else {
+    // Si el ID propuesto ya pertenece a OTRO socio con DNI distinto, generar uno nuevo para evitar colisiones
+    const existingById = current.find((m) => m.id === targetId);
+    if (existingById && existingById.dni && existingById.dni !== cleanDni) {
+      targetId = generateNextMemberId(current);
+    }
   }
 
   const normalizedMember: GymMember = {
@@ -1324,6 +1808,16 @@ export async function registerGymMember(member: GymMember): Promise<void> {
         if (dbSocio?.id) {
           finalId = dbSocio.id;
           matchedUserId = dbSocio.user_id;
+        } else {
+          // Verificar si finalId ya existe en Supabase con OTRO DNI
+          const { data: dbConflict } = await supabase
+            .from('socios')
+            .select('id, dni')
+            .eq('id', finalId)
+            .maybeSingle();
+          if (dbConflict && dbConflict.dni && dbConflict.dni !== cleanDni) {
+            finalId = generateNextMemberId(current);
+          }
         }
       }
 
@@ -1331,8 +1825,8 @@ export async function registerGymMember(member: GymMember): Promise<void> {
         id: finalId,
         nombre: normalizedMember.name,
         dni: cleanDni || null,
-        email: normalizedMember.email,
-        celular: normalizedMember.phone,
+        email: normalizedMember.email || (cleanDni ? `${cleanDni}@cliente.trankilandia.pe` : null),
+        celular: normalizedMember.phone || null,
         plan: normalizedMember.plan,
         precio_plan: normalizedMember.planPrice,
         tipo_pago: normalizedMember.paymentType,
@@ -1410,34 +1904,85 @@ export async function registerGymMember(member: GymMember): Promise<void> {
 
 /**
  * Cobrar saldo pendiente de un socio (Total o Abono Parcial)
+ * Utiliza la RPC atómica 'liquidar_saldo_socio' garantizando consistencia transaccional ACID en PostgreSQL.
  */
 export async function payMemberBalance(
   memberId: string,
   paymentMethod: string,
-  customAmount?: number
+  customAmount?: number,
+  operador: string = 'Recepción'
 ): Promise<GymMember[]> {
   const current = getStoredMembers();
-  let paidAmount = 0;
-  let remainingDebt = 0;
-  let memberReceipt = '';
+  const target = current.find((m) => m.id === memberId);
+  if (!target) return current;
+
+  const debtToPay =
+    customAmount !== undefined && customAmount > 0
+      ? Math.min(target.balanceDue, customAmount)
+      : target.balanceDue;
+
+  if (debtToPay <= 0) {
+    return current;
+  }
+
+  // 1. Si Supabase está configurado, invocar la RPC atómica del servidor
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase.rpc('liquidar_saldo_socio', {
+        p_socio_id: memberId,
+        p_monto: debtToPay,
+        p_metodo_pago: paymentMethod,
+        p_operador: operador,
+      });
+
+      if (error) {
+        console.error('[payMemberBalance] Error en RPC liquidar_saldo_socio:', error.message);
+        throw new Error(`Error en liquidación de saldo: ${error.message}`);
+      }
+
+      if (data && data.success) {
+        const remainingDebt = Number(data.saldo_restante) || 0;
+        const totalAdvance = Number(data.adelanto_acumulado) || (target.advancePaid + debtToPay);
+        const officialReceipt = data.numero_boleta || `B001-000${Date.now().toString().slice(-4)}`;
+        const isFull = remainingDebt === 0;
+
+        const updated = current.map((m) => {
+          if (m.id === memberId) {
+            return {
+              ...m,
+              paymentType: isFull ? ('full' as const) : ('advance' as const),
+              advancePaid: totalAdvance,
+              balanceDue: remainingDebt,
+              paymentDueDate: isFull ? undefined : m.paymentDueDate,
+              receiptNumber: officialReceipt,
+            };
+          }
+          return m;
+        });
+
+        saveStoredMembers(updated);
+        return updated;
+      } else {
+        throw new Error('La liquidación de saldo no pudo completarse en el servidor.');
+      }
+    } catch (err: any) {
+      console.error('[payMemberBalance] Fallo transaccional al liquidar saldo:', err?.message || err);
+      // Mantener consistencia contable: no modificar saldos locales si falló la operación en Supabase
+      throw err;
+    }
+  }
+
+  // 2. Fallback local offline (cuando Supabase no está configurado)
+  const remainingDebt = Math.max(0, target.balanceDue - debtToPay);
+  const isFull = remainingDebt === 0;
+  const memberReceipt = `B001-000${Date.now().toString().slice(-4)} (${isFull ? 'Liquidación Total' : 'Abono Parcial'})`;
 
   const updated = current.map((m) => {
     if (m.id === memberId) {
-      const debtToPay =
-        customAmount !== undefined && customAmount > 0
-          ? Math.min(m.balanceDue, customAmount)
-          : m.balanceDue;
-
-      paidAmount = debtToPay;
-      remainingDebt = Math.max(0, m.balanceDue - debtToPay);
-      const isFull = remainingDebt === 0;
-
-      memberReceipt = `B001-000${Date.now().toString().slice(-4)} (${isFull ? 'Liquidación Total' : 'Abono Parcial'})`;
-
       return {
         ...m,
         paymentType: isFull ? ('full' as const) : ('advance' as const),
-        advancePaid: m.advancePaid + paidAmount,
+        advancePaid: m.advancePaid + debtToPay,
         balanceDue: remainingDebt,
         paymentDueDate: isFull ? undefined : m.paymentDueDate,
         receiptNumber: memberReceipt,
@@ -1447,36 +1992,6 @@ export async function payMemberBalance(
   });
 
   saveStoredMembers(updated);
-
-  if (isSupabaseConfigured()) {
-    try {
-      const target = updated.find((m) => m.id === memberId);
-      if (target) {
-        await supabase
-          .from('socios')
-          .update({
-            tipo_pago: target.paymentType,
-            adelanto_pagado: target.advancePaid,
-            saldo_pendiente: target.balanceDue,
-            fecha_limite_pago: target.balanceDue === 0 ? null : target.paymentDueDate,
-            numero_boleta: memberReceipt,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', memberId);
-
-        if (paidAmount > 0) {
-          await supabase.from('ingresos').insert({
-            key_socio: memberId,
-            monto: paidAmount,
-            metodo_pago: paymentMethod,
-            tipo: remainingDebt === 0 ? 'Liquidación Total de Saldo' : 'Abono Parcial de Membresía',
-            observacion: `Abono de S/. ${paidAmount} a saldo pendiente. Saldo restante: S/. ${remainingDebt}`,
-          });
-        }
-      }
-    } catch {}
-  }
-
   return updated;
 }
 
@@ -1526,31 +2041,26 @@ export async function fetchSociosParaAdmin(): Promise<GymMember[]> {
       const { data: socios, error } = await supabase
         .from('socios')
         .select('*')
-        .order('nombre', { ascending: true });
+        .order('id', { ascending: true });
 
       if (!error && socios && socios.length > 0) {
         let profMap: Record<string, any> = {};
         try {
-          const { data: profs } = await supabase.from('profiles').select('id, dni, email, role, membership_status');
+          const { data: profs, error: profErr } = await supabase.from('profiles').select('id, dni, email, role, membership_status');
+          if (profErr) {
+            console.warn('[fetchSociosParaAdmin] Error consultando perfiles en Supabase:', profErr.message);
+          }
           if (profs) {
             profs.forEach((p: any) => {
               if (p.dni) profMap[p.dni] = p;
               if (p.id) profMap[p.id] = p;
             });
           }
-        } catch {}
+        } catch (profEx: any) {
+          console.warn('[fetchSociosParaAdmin] Excepción consultando perfiles:', profEx?.message || profEx);
+        }
 
         const mapped: GymMember[] = socios.map((s: any) => {
-          if (s.dni === '70447087' || s.email?.toLowerCase() === 'luisgerardolloccllasaune@gmail.com') {
-            if (!s.plan || s.plan === 'Sin Membresía Activa' || Number(s.precio_plan) === 0 || (s.fecha_fin && s.fecha_fin < '2027-01-01')) {
-              s.plan = 'Combo Musculación + Escuela de Boxeo';
-              s.precio_plan = 140;
-              s.adelanto_pagado = 140;
-              s.saldo_pendiente = 0;
-              s.fecha_fin = '2027-11-01';
-              s.celular = s.celular || '958183360';
-            }
-          }
           const prof = (s.dni && profMap[s.dni]) || (s.user_id && profMap[s.user_id]) || null;
           const isExpired = s.fecha_fin ? s.fecha_fin < new Date().toISOString().split('T')[0] : false;
           return {
@@ -1644,14 +2154,20 @@ export async function validarDocumentoSocio(
         .trim();
       const finalObs = `${tag} ${notas ? notas + ' · ' : ''}${cleanObs}`.trim();
 
-      await supabase
+      const { error: docErr } = await supabase
         .from('socios')
         .update({
           observaciones: finalObs,
           updated_at: new Date().toISOString(),
         })
         .eq('id', memberId);
-    } catch {}
+
+      if (docErr) {
+        console.warn('[validarDocumentoSocio] Error al actualizar observaciones en Supabase:', docErr.message);
+      }
+    } catch (docEx: any) {
+      console.warn('[validarDocumentoSocio] Excepción actualizando documento en Supabase:', docEx?.message || docEx);
+    }
   }
 
   return updated;
@@ -1680,9 +2196,11 @@ export async function updateMemberProfile(
       if (data.plan !== undefined) dbPayload.plan = data.plan;
       if (data.planPrice !== undefined) dbPayload.precio_plan = data.planPrice;
       if (data.advancePaid !== undefined) dbPayload.adelanto_pagado = data.advancePaid;
-      if (data.balanceDue !== undefined) {
-        dbPayload.saldo_pendiente = data.balanceDue;
-        dbPayload.tipo_pago = data.balanceDue === 0 ? 'full' : 'advance';
+      // IMPORTANTE: saldo_pendiente NO se actualiza directamente desde updateMemberProfile.
+      // Toda liquidación o abono debe realizarse mediante liquidar_saldo_socio (RPC SECURITY DEFINER).
+      // Si se necesita ajustar el tipo de pago sin modificar el saldo, se permite aquí.
+      if (data.paymentType !== undefined) {
+        dbPayload.tipo_pago = data.paymentType;
       }
       if (data.registeredAt !== undefined) {
         dbPayload.fecha_inicio = normalizeDateToISO(data.registeredAt);
@@ -1694,7 +2212,10 @@ export async function updateMemberProfile(
       if (data.gender !== undefined) dbPayload.sexo = data.gender;
       dbPayload.updated_at = new Date().toISOString();
 
-      await supabase.from('socios').update(dbPayload).eq('id', memberId);
+      const { error: updateErr } = await supabase.from('socios').update(dbPayload).eq('id', memberId);
+      if (updateErr) {
+        console.warn('[updateMemberProfile] Error actualizando socio en Supabase:', updateErr.message);
+      }
 
       // Sincronizar en public.profiles si el socio tiene DNI
       const targetMember = updated.find((m) => m.id === memberId);
@@ -1707,7 +2228,7 @@ export async function updateMemberProfile(
           profStatus = 'congelado';
         }
 
-        await supabase
+        const { error: profErr } = await supabase
           .from('profiles')
           .update({
             full_name: targetMember.name,
@@ -1716,9 +2237,13 @@ export async function updateMemberProfile(
             updated_at: new Date().toISOString(),
           })
           .eq('dni', targetMember.dni);
+
+        if (profErr) {
+          console.warn('[updateMemberProfile] Error actualizando perfil en Supabase:', profErr.message);
+        }
       }
-    } catch (err) {
-      console.warn('Error sincronizando updateMemberProfile en Supabase:', err);
+    } catch (err: any) {
+      console.warn('[updateMemberProfile] Excepción actualizando socio en Supabase:', err?.message || err);
     }
   }
 
@@ -1756,7 +2281,12 @@ export async function getMemberRoutine(memberId: string): Promise<MemberRoutine 
         saveStoredRoutines(storedRoutines);
         return routine;
       }
-    } catch {}
+      if (error) {
+        console.warn('[getMemberRoutine] Error consultando rutina en Supabase:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[getMemberRoutine] Excepción consultando rutina en Supabase:', err?.message || err);
+    }
   }
 
   return null;
@@ -1772,7 +2302,7 @@ export async function saveMemberRoutine(routine: MemberRoutine): Promise<void> {
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('rutinas').upsert({
+      const { error } = await supabase.from('rutinas').upsert({
         member_id: routine.memberId,
         title: routine.routineTitle,
         objective: routine.objective,
@@ -1781,7 +2311,13 @@ export async function saveMemberRoutine(routine: MemberRoutine): Promise<void> {
         days: routine.days,
         updated_at: routine.updatedAt,
       });
-    } catch {}
+
+      if (error) {
+        console.warn('[saveMemberRoutine] Error guardando rutina en Supabase:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[saveMemberRoutine] Excepción guardando rutina en Supabase:', err?.message || err);
+    }
   }
 }
 
@@ -1795,7 +2331,7 @@ export async function saveProgressRecord(record: ProgressRecord): Promise<Progre
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('progresos').insert({
+      const { error } = await supabase.from('progresos').insert({
         id: record.id,
         member_id: record.memberId,
         fecha: record.date,
@@ -1806,7 +2342,13 @@ export async function saveProgressRecord(record: ProgressRecord): Promise<Progre
         pullups_reps: record.pullupsRep,
         observaciones: record.notes,
       });
-    } catch {}
+
+      if (error) {
+        console.warn('[saveProgressRecord] Error guardando progreso en Supabase:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[saveProgressRecord] Excepción guardando progreso en Supabase:', err?.message || err);
+    }
   }
 
   return updated;
@@ -1871,7 +2413,7 @@ export async function obtenerResumenAdmin(
   fechaInicio?: string,
   fechaFin?: string
 ): Promise<ResumenAdmin> {
-  const hoyPeru = new Date().toISOString().slice(0, 10);
+  const hoyPeru = getLocalPeruDateString();
   const inicio = fechaInicio || hoyPeru;
   const fin = fechaFin || hoyPeru;
   const isAllTime = !fechaInicio || fechaInicio <= '2020-01-01' || (fechaInicio === '2026-01-01' && (fechaFin || '') >= '2026-12-31');
@@ -1982,7 +2524,9 @@ export async function obtenerResumenAdmin(
           },
         };
       }
-    } catch {}
+    } catch (err: any) {
+      console.warn('[obtenerResumenAdmin] Excepción consultando métricas en Supabase:', err?.message || err);
+    }
   }
 
   // Fallback offline en local (Datos 100% reales calculados del Store)
@@ -2074,11 +2618,13 @@ export async function crearOActualizarProducto(producto: ProductoPOS): Promise<v
 
   try {
     localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated));
-  } catch {}
+  } catch (storageErr) {
+    console.warn('[guardarProductoInventario] Error persistiendo inventario local:', storageErr);
+  }
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase.from('productos').upsert({
+      const { error } = await supabase.from('productos').upsert({
         id: producto.id,
         codigo_barras: producto.codigo_barras || null,
         nombre: producto.nombre,
@@ -2090,7 +2636,12 @@ export async function crearOActualizarProducto(producto: ProductoPOS): Promise<v
         activo: producto.activo,
         updated_at: new Date().toISOString(),
       });
-    } catch {}
+      if (error) {
+        console.warn('[guardarProductoInventario] Error guardando producto en Supabase:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[guardarProductoInventario] Excepción guardando producto en Supabase:', err?.message || err);
+    }
   }
 }
 
@@ -2103,23 +2654,147 @@ export async function ajustarStockProducto(productoId: string, nuevoStock: numbe
 
   try {
     localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated));
-  } catch {}
+  } catch (storageErr) {
+    console.warn('[ajustarStockProducto] Error guardando stock local:', storageErr);
+  }
 
   if (isSupabaseConfigured()) {
     try {
-      await supabase
+      const { error } = await supabase
         .from('productos')
         .update({
           stock_actual: Math.max(0, nuevoStock),
           updated_at: new Date().toISOString(),
         })
         .eq('id', productoId);
-    } catch {}
+
+      if (error) {
+        console.warn('[ajustarStockProducto] Error actualizando stock en Supabase:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('[ajustarStockProducto] Excepción actualizando stock en Supabase:', err?.message || err);
+    }
   }
 }
 
 /**
+ * Eliminar producto del inventario (Admin)
+ * Aplica borrado físico si está permitido, o borrado lógico auditado (activo = false, stock = 0)
+ * y limpia el almacenamiento local.
+ */
+export async function eliminarProductoInventario(productoId: string): Promise<boolean> {
+  // 1. Limpieza inmediata del almacenamiento local y caché
+  try {
+    const prods = await obtenerProductosInventario();
+    const updated = prods.filter((p) => p.id !== productoId);
+    localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated));
+  } catch (storageErr) {
+    console.warn('[eliminarProductoInventario] Error actualizando almacenamiento local:', storageErr);
+  }
+
+  // 2. Persistencia en Supabase
+  if (isSupabaseConfigured()) {
+    try {
+      // Intentar borrado físico directo
+      const { error: delError } = await supabase
+        .from('productos')
+        .delete()
+        .eq('id', productoId);
+
+      // Si DELETE físico es denegado por RLS o restringido por claves foráneas históricas,
+      // aplicar borrado lógico oficial (activo = false, stock_actual = 0)
+      if (delError) {
+        const { error: updateError } = await supabase
+          .from('productos')
+          .update({
+            activo: false,
+            stock_actual: 0,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', productoId);
+
+        if (updateError) {
+          console.warn('[eliminarProductoInventario] Error al desactivar producto en Supabase:', updateError.message);
+          return false;
+        }
+      }
+      return true;
+    } catch (err: any) {
+      console.warn('[eliminarProductoInventario] Excepción al eliminar producto en Supabase:', err?.message || err);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Eliminar todos los productos con stock 0 del inventario (Admin)
+ */
+export async function eliminarProductosSinStock(): Promise<number> {
+  const prods = await obtenerProductosInventario();
+  const sinStock = prods.filter((p) => (p.stock_actual || 0) <= 0);
+  if (sinStock.length === 0) return 0;
+
+  for (const p of sinStock) {
+    await eliminarProductoInventario(p.id);
+  }
+
+  return sinStock.length;
+}
+
+/**
+ * Eliminar socio del padrón oficial y de Supabase (Admin)
+ * Remueve de almacenamiento local y purga registros asociados en Supabase Cloud.
+ */
+export async function eliminarSocio(memberId: string): Promise<boolean> {
+  const current = getStoredMembers();
+  const target = current.find((m) => m.id === memberId);
+  const updated = current.filter((m) => m.id !== memberId);
+  saveStoredMembers(updated);
+
+  if (isSupabaseConfigured()) {
+    try {
+      // 1. Limpiar asistencias asociadas para evitar restricción de foreign key
+      await supabase.from('asistencias').delete().eq('socio_id', memberId);
+      if (target?.dni) {
+        await supabase.from('asistencias').delete().eq('dni', target.dni);
+      }
+
+      // 2. Eliminar socio de la tabla public.socios
+      const { error: delError } = await supabase.from('socios').delete().eq('id', memberId);
+      if (delError) {
+        console.warn('[eliminarSocio] Fallback a marcado inactivo en socios:', delError.message);
+        await supabase
+          .from('socios')
+          .update({
+            estado: 'inactivo',
+            observaciones: 'Socio eliminado del padrón por Administración',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', memberId);
+      }
+
+      // 3. Limpiar de public.profiles si el socio tiene DNI registrado
+      if (target?.dni) {
+        await supabase.from('profiles').delete().eq('dni', target.dni);
+      }
+      return true;
+    } catch (err: any) {
+      console.warn('[eliminarSocio] Excepción al eliminar socio en Supabase:', err?.message || err);
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Actualizar el rol de un colaborador en profiles (Admin)
+ */
+/**
+ * Actualiza el rol de un colaborador en profiles.
+ * memberId puede ser el ID del socio (MEM-XXX) o un UUID de Supabase Auth.
+ * Busca primero por user_id (UUID), luego por DNI como fallback.
  */
 export async function actualizarRolUsuario(
   memberId: string,
@@ -2127,20 +2802,63 @@ export async function actualizarRolUsuario(
 ): Promise<void> {
   if (isSupabaseConfigured()) {
     try {
-      await supabase
-        .from('profiles')
-        .update({ role: nuevoRol, updated_at: new Date().toISOString() })
-        .eq('dni', memberId);
-    } catch {}
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId);
+
+      if (isUuid) {
+        // Si es UUID de Supabase Auth, actualizar por ID directo en profiles
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: nuevoRol, updated_at: new Date().toISOString() })
+          .eq('id', memberId);
+        if (error) {
+          console.warn('[actualizarRolUsuario] Error actualizando rol por UUID en Supabase:', error.message);
+        }
+        return;
+      }
+
+      // Si es un ID de socio (MEM-XXX), obtener el DNI del socio y actualizar el profile por DNI
+      const { data: socioData } = await supabase
+        .from('socios')
+        .select('dni, user_id')
+        .eq('id', memberId)
+        .maybeSingle();
+
+      if (socioData?.user_id) {
+        // Actualizar por user_id que es más preciso
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: nuevoRol, updated_at: new Date().toISOString() })
+          .eq('id', socioData.user_id);
+        if (error) {
+          console.warn('[actualizarRolUsuario] Error actualizando rol por user_id en Supabase:', error.message);
+        }
+      } else if (socioData?.dni) {
+        // Fallback: actualizar por DNI
+        const { error } = await supabase
+          .from('profiles')
+          .update({ role: nuevoRol, updated_at: new Date().toISOString() })
+          .eq('dni', socioData.dni);
+        if (error) {
+          console.warn('[actualizarRolUsuario] Error actualizando rol por DNI en Supabase:', error.message);
+        }
+      } else {
+        console.warn('[actualizarRolUsuario] No se encontró socio con ID:', memberId);
+      }
+    } catch (err: any) {
+      console.warn('[actualizarRolUsuario] Excepción actualizando rol en Supabase:', err?.message || err);
+    }
   }
 }
+
+export type RealtimeGymCallback = (payload: any) => void;
 
 /**
  * Suscripción en Tiempo Real Multi-Dispositivo a cambios en Supabase (socios y asistencias)
  */
 export function subscribeToGymRealtime(callbacks: {
-  onSociosChange?: (payload: any) => void;
-  onAsistenciasChange?: (payload: any) => void;
+  onSociosChange?: RealtimeGymCallback;
+  onAsistenciasChange?: RealtimeGymCallback;
+  onIngresosChange?: RealtimeGymCallback;
 }): () => void {
   if (!isSupabaseConfigured()) {
     return () => {};
@@ -2161,6 +2879,13 @@ export function subscribeToGymRealtime(callbacks: {
       { event: 'INSERT', schema: 'public', table: 'asistencias' },
       (payload) => {
         callbacks.onAsistenciasChange?.(payload);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'ingresos' },
+      (payload) => {
+        callbacks.onIngresosChange?.(payload);
       }
     )
     .subscribe();

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Dumbbell, X, CheckCircle2, Calendar, Clock, Sparkles, ShieldCheck, Ticket } from 'lucide-react';
+import { X, CheckCircle2, Calendar, Clock, Sparkles, ShieldCheck, Ticket } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import trankilandiaLogo from '../assets/trankilandia-logo.png';
 
 export interface TourModalProps {
   isOpen: boolean;
@@ -142,8 +143,12 @@ export default function TourModal({
               <div>
                 {/* Header Badge & Title */}
                 <div className="flex items-center gap-3 mb-3">
-                  <div className="inline-flex items-center justify-center p-2 rounded-xl bg-amber-400/10 border border-amber-400/20 text-amber-400">
-                    <Dumbbell className="w-5 h-5 text-amber-400" />
+                  <div className="w-9 h-9 rounded-full overflow-hidden border border-amber-400/40 shadow-sm shrink-0">
+                    <img
+                      src={trankilandiaLogo}
+                      alt="Logo Trankilandia"
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   <span className="text-xs font-mono font-bold tracking-widest text-amber-400 uppercase">
                     PASE DE CORTESÍA VIP

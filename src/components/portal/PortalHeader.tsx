@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Dumbbell,
   ShieldCheck,
   Receipt,
   User,
@@ -17,6 +16,9 @@ import {
   getStaffList,
 } from '../../lib/staffStore';
 import StaffSwitcherModal from './StaffSwitcherModal';
+import GymMegaphoneControl from './GymMegaphoneControl';
+import AlertVolumeControl from './AlertVolumeControl';
+import trankilandiaLogo from '../../assets/trankilandia-logo.png';
 
 interface PortalHeaderProps {
   currentRole: UserRole;
@@ -118,10 +120,14 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
             {/* Gym Brand + Role Identity */}
             <div className="flex items-center gap-3.5">
               <div
-                className="w-10 h-10 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 flex-shrink-0"
+                className="w-10 h-10 rounded-full overflow-hidden border border-amber-400/30 flex items-center justify-center flex-shrink-0 shadow-md shadow-amber-400/10"
                 title="Trankilandia Gym"
               >
-                <Dumbbell className="w-5 h-5" />
+                <img
+                  src={trankilandiaLogo}
+                  alt="Trankilandia Gym"
+                  className="w-full h-full object-cover"
+                />
               </div>
 
               <div>
@@ -142,6 +148,12 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
 
             {/* User Status + Viñeta Rápida de Personal */}
             <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Botón de Megáfono / Micrófono hacia el parlante Bluetooth */}
+              <GymMegaphoneControl />
+
+              {/* Control de volumen de alertas de escáner y accesos */}
+              <AlertVolumeControl />
+
               {/* Viñeta de Personal Activo con PIN */}
               {activeStaff && (
                 <button

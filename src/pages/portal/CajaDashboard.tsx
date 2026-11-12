@@ -57,6 +57,7 @@ import {
   GymMember,
   getStoredMembers,
   saveStoredMembers,
+  generateNextMemberId,
   reloadFreshMembersFromExcel,
   getStoredCatalogPlans,
   CatalogPlanOption,
@@ -71,6 +72,7 @@ import {
   cargarAsistenciasActivas90Min,
   registrarAsistencia,
   procesarColaAsistenciasOffline,
+  procesarColaVentasOffline,
   obtenerProductosInventario,
   registrarVentaPOS,
   registerGymMember,
@@ -212,6 +214,7 @@ export default function CajaDashboard() {
   // Modales
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
   const [customAbonoAmount, setCustomAbonoAmount] = useState<number>(0);
+  const [isSubmittingLiquidate, setIsSubmittingLiquidate] = useState(false);
   const [profileModalMember, setProfileModalMember] = useState<GymMember | null>(null);
   const [profileModalTab, setProfileModalTab] = useState<'personal' | 'membership' | 'shift' | 'documentos'>('personal');
   const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
@@ -401,10 +404,13 @@ export default function CajaDashboard() {
   useEffect(() => {
     const handleOnline = async () => {
       setIsOnline(true);
-      const synced = await procesarColaAsistenciasOffline();
-      if (synced > 0) {
+      const [syncedAsistencias, syncedVentas] = await Promise.all([
+        procesarColaAsistenciasOffline(),
+        procesarColaVentasOffline(),
+      ]);
+      if (syncedAsistencias > 0 || syncedVentas > 0) {
         setOfflinePendingCount(0);
-        setSuccessMessage(`Conexión restablecida. Sincronizadas ${synced} asistencias pendientes.`);
+        setSuccessMessage(`Conexión restablecida. Sincronizadas ${syncedAsistencias} asistencias y ${syncedVentas} ventas POS pendientes.`);
         setTimeout(() => setSuccessMessage(null), 4000);
       }
     };
@@ -1100,7 +1106,7 @@ export default function CajaDashboard() {
       // MODO NUEVA INSCRIPCIÓN
       const assignedId =
         sociosMap.get(cleanDni)?.id ||
-        `MEM-00${members.length + 1}`;
+        generateNextMemberId(members);
 
       memberToSave = {
         id: assignedId,
@@ -1340,83 +1346,93 @@ export default function CajaDashboard() {
 
   // 6. COBRAR SALDO PENDIENTE (LIQUIDACIÓN O ABONO PARCIAL)
   const handleConfirmLiquidate = async () => {
-    if (!liquidatingMember) return;
+    if (!liquidatingMember || isSubmittingLiquidate) return;
 
     const amountToCharge =
       customAbonoAmount > 0
         ? Math.min(liquidatingMember.balanceDue, customAbonoAmount)
         : liquidatingMember.balanceDue;
 
-    await payMemberBalance(liquidatingMember.id, liquidateMethod, amountToCharge);
+    if (amountToCharge <= 0) return;
 
-    const newBalance = Math.max(0, liquidatingMember.balanceDue - amountToCharge);
-    const newAdvance = liquidatingMember.advancePaid + amountToCharge;
-    const isFull = newBalance === 0;
+    try {
+      setIsSubmittingLiquidate(true);
+      await payMemberBalance(liquidatingMember.id, liquidateMethod, amountToCharge);
 
-    const updated = members.map((m) => {
-      if (m.id === liquidatingMember.id) {
-        return {
-          ...m,
-          paymentType: isFull ? ('full' as const) : ('advance' as const),
-          advancePaid: newAdvance,
-          balanceDue: newBalance,
-          paymentDueDate: isFull ? undefined : m.paymentDueDate,
-          receiptNumber: `B001-000${members.length + 512} (${isFull ? 'Liquidación Total' : 'Abono Parcial'})`,
-        };
-      }
-      return m;
-    });
+      const newBalance = Math.max(0, liquidatingMember.balanceDue - amountToCharge);
+      const newAdvance = liquidatingMember.advancePaid + amountToCharge;
+      const isFull = newBalance === 0;
 
-    setMembers(updated);
-    saveStoredMembers(updated);
-
-    // Actualizar socio en el mapa local
-    const socioEnMapa = sociosMap.get(liquidatingMember.dni || '');
-    if (socioEnMapa) {
-      const socioActualizado: SocioRecepcion = {
-        ...socioEnMapa,
-        tipo_pago: isFull ? 'full' : 'advance',
-        adelanto_pagado: newAdvance,
-        saldo_pendiente: newBalance,
-        fecha_limite_pago: isFull ? null : socioEnMapa.fecha_limite_pago,
-        tiene_deuda_activa: !isFull,
-      };
-      setSociosMap((prev) => {
-        const next = new Map(prev);
-        next.set(socioActualizado.dni, socioActualizado);
-        return next;
+      const updated = members.map((m) => {
+        if (m.id === liquidatingMember.id) {
+          return {
+            ...m,
+            paymentType: isFull ? ('full' as const) : ('advance' as const),
+            advancePaid: newAdvance,
+            balanceDue: newBalance,
+            paymentDueDate: isFull ? undefined : m.paymentDueDate,
+            receiptNumber: `B001-000${members.length + 512} (${isFull ? 'Liquidación Total' : 'Abono Parcial'})`,
+          };
+        }
+        return m;
       });
 
-      // Refrescar resultado del semáforo si coincide
-      if (lastScanResult.dni === liquidatingMember.dni) {
-        setLastScanResult({
-          status: isFull ? 'al_dia' : 'con_deuda',
-          socio: socioActualizado,
-          dni: socioActualizado.dni,
-          message: isFull
-            ? `SALDO CANCELADO · MEMBRESÍA AL DÍA 100%`
-            : `ABONO REGISTRADO · SALDO RESTANTE: S/. ${newBalance.toFixed(2)}`,
-          timestamp: Date.now(),
+      setMembers(updated);
+      saveStoredMembers(updated);
+
+      // Actualizar socio en el mapa local
+      const socioEnMapa = sociosMap.get(liquidatingMember.dni || '');
+      if (socioEnMapa) {
+        const socioActualizado: SocioRecepcion = {
+          ...socioEnMapa,
+          tipo_pago: isFull ? 'full' : 'advance',
+          adelanto_pagado: newAdvance,
+          saldo_pendiente: newBalance,
+          fecha_limite_pago: isFull ? null : socioEnMapa.fecha_limite_pago,
+          tiene_deuda_activa: !isFull,
+        };
+        setSociosMap((prev) => {
+          const next = new Map(prev);
+          next.set(socioActualizado.dni, socioActualizado);
+          return next;
+        });
+
+        // Refrescar resultado del semáforo si coincide
+        if (lastScanResult.dni === liquidatingMember.dni) {
+          setLastScanResult({
+            status: isFull ? 'al_dia' : 'con_deuda',
+            socio: socioActualizado,
+            dni: socioActualizado.dni,
+            message: isFull
+              ? `SALDO CANCELADO · MEMBRESÍA AL DÍA 100%`
+              : `ABONO REGISTRADO · SALDO RESTANTE: S/. ${newBalance.toFixed(2)}`,
+            timestamp: Date.now(),
+          });
+        }
+      }
+
+      const updatedMember = updated.find((m) => m.id === liquidatingMember.id);
+      if (updatedMember) {
+        setReceiptModal({
+          isOpen: true,
+          member: updatedMember,
+          amount: amountToCharge,
+          type: isFull ? 'Cancelación Total de Saldo' : 'Abono Parcial de Membresía',
+          method: liquidateMethod,
         });
       }
-    }
 
-    const updatedMember = updated.find((m) => m.id === liquidatingMember.id);
-    if (updatedMember) {
-      setReceiptModal({
-        isOpen: true,
-        member: updatedMember,
-        amount: amountToCharge,
-        type: isFull ? 'Cancelación Total de Saldo' : 'Abono Parcial de Membresía',
-        method: liquidateMethod,
-      });
+      setSuccessMessage(
+        `¡Abono de S/. ${amountToCharge.toFixed(2)} registrado con éxito a ${liquidatingMember.name}! Saldo restante: S/. ${newBalance.toFixed(2)}`
+      );
+      setLiquidatingMember(null);
+      setTimeout(() => setSuccessMessage(null), 5000);
+    } catch (err: any) {
+      console.error('[handleConfirmLiquidate] Error liquidando saldo:', err);
+      alert(`No se pudo procesar el cobro: ${err?.message || 'Error de conexión'}`);
+    } finally {
+      setIsSubmittingLiquidate(false);
     }
-
-    setSuccessMessage(
-      `¡Abono de S/. ${amountToCharge.toFixed(2)} registrado con éxito a ${liquidatingMember.name}! Saldo restante: S/. ${newBalance.toFixed(2)}`
-    );
-    setLiquidatingMember(null);
-    setTimeout(() => setSuccessMessage(null), 5000);
   };
 
   // 7. FUNCIONES DEL TERMINAL PUNTO DE VENTA (POS)
@@ -3879,11 +3895,11 @@ export default function CajaDashboard() {
               </button>
               <button
                 type="button"
-                disabled={!customAbonoAmount || customAbonoAmount <= 0}
+                disabled={!customAbonoAmount || customAbonoAmount <= 0 || isSubmittingLiquidate}
                 onClick={handleConfirmLiquidate}
                 className="flex-1 bg-emerald-500 hover:bg-emerald-400 text-black py-3 rounded-xl font-black cursor-pointer transition-colors shadow-lg shadow-emerald-500/20 disabled:opacity-40"
               >
-                CONFIRMAR COBRO
+                {isSubmittingLiquidate ? 'PROCESANDO...' : 'CONFIRMAR COBRO'}
               </button>
             </div>
           </motion.div>

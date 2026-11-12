@@ -1,4 +1,35 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          order: () => Promise.resolve({ data: [], error: null }),
+          maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        }),
+        ilike: () => ({
+          eq: () => ({
+            maybeSingle: () => Promise.resolve({ data: null, error: null }),
+          }),
+        }),
+      }),
+      insert: () => Promise.resolve({ error: null }),
+      update: () => ({
+        eq: () => Promise.resolve({ error: null }),
+      }),
+      delete: () => ({
+        eq: () => Promise.resolve({ error: null }),
+        ilike: () => ({
+          eq: () => Promise.resolve({ error: null }),
+        }),
+      }),
+    }),
+    rpc: () => Promise.resolve({ data: null, error: null }),
+  },
+  isSupabaseConfigured: () => false,
+}));
+
 import {
   StaffUser,
   getStaffList,
@@ -11,6 +42,8 @@ import {
 } from '../../lib/staffStore';
 
 describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN en Supabase', () => {
+  let createdTestStaffId: string | undefined;
+
   const MOCK_STAFF: StaffUser[] = [
     {
       id: 'staff-marisol',
@@ -36,17 +69,6 @@ describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN en Supabase
       telefono: '958183360',
       createdAt: '2026-11-01T00:00:00Z',
     },
-    {
-      id: 'staff-recepcion-m',
-      nombre: 'Recepción Mañana',
-      rol: 'cajero',
-      turno: 'manana',
-      pin: '1111',
-      avatarColor: 'from-emerald-400 to-teal-600 text-black',
-      iniciales: 'RM',
-      activo: true,
-      createdAt: '2026-11-01T00:00:00Z',
-    },
   ];
 
   beforeEach(() => {
@@ -55,9 +77,15 @@ describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN en Supabase
     localStorage.setItem('trankilandia_staff_verified_v3', JSON.stringify(MOCK_STAFF));
   });
 
+  afterAll(async () => {
+    if (createdTestStaffId) {
+      await deleteStaffUser(createdTestStaffId);
+    }
+  });
+
   it('debe leer el personal verificado en memoria local sincronizado', () => {
     const staff = getStaffList();
-    expect(staff.length).toBe(3);
+    expect(staff.length).toBe(2);
     const marisol = staff.find((u) => u.nombre === 'Marisol');
     expect(marisol).toBeDefined();
     expect(marisol?.rol).toBe('admin');
@@ -78,29 +106,71 @@ describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN en Supabase
     expect(resAlpha.success).toBe(false);
   });
 
-  it('permite a Marisol registrar un nuevo colaborador cajero de forma asíncrona', async () => {
-    const nuevo = await saveStaffUser({
-      nombre: 'Carla Recepción',
-      rol: 'cajero',
-      turno: 'tarde',
-      pin: '5678',
-      avatarColor: 'from-pink-500 to-rose-600 text-white',
+  it('permite a Marisol registrar un nuevo colaborador cajero con autorización admin', async () => {
+    // Intento no autorizado sin adminAuth
+    const rechazo = await saveStaffUser({
+      nombre: 'Intruso',
+      rol: 'admin',
+      turno: 'completo',
+      pin: '9999',
+      avatarColor: 'from-amber-400 to-amber-600 text-black',
       activo: true,
     });
+    expect(rechazo.success).toBe(false);
+    expect(rechazo.error).toContain('autorización de administrador');
 
-    expect(nuevo.id).toBeDefined();
-    expect(nuevo.iniciales).toBe('CR');
+    // Registro autorizado por Marisol
+    const res = await saveStaffUser(
+      {
+        nombre: 'Carla Recepción',
+        rol: 'cajero',
+        turno: 'tarde',
+        pin: '5678',
+        avatarColor: 'from-pink-500 to-rose-600 text-white',
+        activo: true,
+      },
+      { adminId: 'staff-marisol', adminPin: '1234' }
+    );
+
+    expect(res.success).toBe(true);
+    expect(res.user?.id).toBeDefined();
+    expect(res.user?.iniciales).toBe('CR');
+    createdTestStaffId = res.user?.id;
 
     const list = getStaffList();
     expect(list.some((u) => u.nombre === 'Carla Recepción')).toBe(true);
   });
 
-  it('permite actualizar el PIN de un colaborador', async () => {
-    const ok = await updateStaffPin('staff-recepcion-m', '4321');
-    expect(ok).toBe(true);
+  it('permite actualizar el PIN de un colaborador con autorización de administrador', async () => {
+    // Asegurar que exista un colaborador para la prueba
+    const addRes = await saveStaffUser(
+      {
+        nombre: 'Colaborador Test PIN',
+        rol: 'cajero',
+        turno: 'tarde',
+        pin: '5678',
+        avatarColor: 'from-pink-500 to-rose-600 text-white',
+        activo: true,
+      },
+      { adminId: 'staff-marisol', adminPin: '1234' }
+    );
+    expect(addRes.success).toBe(true);
+    const targetId = addRes.user!.id;
+
+    // Intento no autorizado sin adminAuth
+    const rechazo = await updateStaffPin(targetId, '4321');
+    expect(rechazo.success).toBe(false);
+    expect(rechazo.error).toContain('autorización de administrador');
+
+    // Actualización autorizada por Marisol
+    const res = await updateStaffPin(targetId, '4321', {
+      adminId: 'staff-marisol',
+      adminPin: '1234',
+    });
+    expect(res.success).toBe(true);
 
     const list = getStaffList();
-    const updated = list.find((u) => u.id === 'staff-recepcion-m');
+    const updated = list.find((u) => u.id === targetId);
     expect(updated?.pin).toBe('4321');
   });
 

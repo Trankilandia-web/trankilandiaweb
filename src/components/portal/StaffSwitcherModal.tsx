@@ -3,6 +3,7 @@ import { UserPlus, Lock, AlertCircle, X, Delete, ArrowLeft } from 'lucide-react'
 import {
   StaffUser,
   getStaffList,
+  fetchStaffFromSupabase,
   verifyStaffPin,
   saveStaffUser,
 } from '../../lib/staffStore';
@@ -31,10 +32,16 @@ export default function StaffSwitcherModal({
   const [newRol, setNewRol] = useState<'admin' | 'cajero'>('cajero');
   const [newTurno, setNewTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
   const [newPin, setNewPin] = useState('');
+  const [newAdminPin, setNewAdminPin] = useState('');
 
   useEffect(() => {
     if (isOpen) {
       setStaffList(getStaffList());
+      fetchStaffFromSupabase().then((res) => {
+        if (res.configured && res.users.length > 0) {
+          setStaffList(res.users);
+        }
+      });
       setPin('');
       setErrorMsg(null);
       setSelectedStaff(null);
@@ -100,24 +107,43 @@ export default function StaffSwitcherModal({
       return;
     }
 
-    const created = await saveStaffUser({
-      nombre: newNombre.trim(),
-      rol: newRol,
-      turno: newTurno,
-      pin: newPin,
-      avatarColor:
-        newRol === 'admin'
-          ? 'from-purple-500 to-indigo-600 text-white'
-          : 'from-emerald-400 to-teal-600 text-black',
-      activo: true,
-    });
+    if (!newAdminPin || newAdminPin.length !== 4) {
+      alert('Ingresa el PIN de un Administrador (Marisol: 1234 o Luis: 2026) para autorizar.');
+      return;
+    }
 
-    setStaffList(getStaffList());
+    const res = await saveStaffUser(
+      {
+        nombre: newNombre.trim(),
+        rol: newRol,
+        turno: newTurno,
+        pin: newPin,
+        avatarColor:
+          newRol === 'admin'
+            ? 'from-purple-500 to-indigo-600 text-white'
+            : 'from-emerald-400 to-teal-600 text-black',
+        activo: true,
+      },
+      {
+        adminPin: newAdminPin,
+      }
+    );
+
+    if (!res.success || !res.user) {
+      alert(`Error al registrar colaborador: ${res.error || 'Autorización fallida.'}`);
+      return;
+    }
+
+    const fresh = await fetchStaffFromSupabase();
+    if (fresh.configured && fresh.users.length > 0) {
+      setStaffList(fresh.users);
+    }
     setShowAddModal(false);
     setNewNombre('');
     setNewPin('');
+    setNewAdminPin('');
     // Seleccionar de inmediato el nuevo usuario
-    handleSelectStaff(created);
+    handleSelectStaff(res.user);
   };
 
   return (
@@ -365,7 +391,7 @@ export default function StaffSwitcherModal({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN Numérico (4 dígitos)</label>
+                  <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN Numérico de Acceso (4 dígitos)</label>
                   <input
                     type="password"
                     maxLength={4}
@@ -378,6 +404,23 @@ export default function StaffSwitcherModal({
                   />
                   <span className="text-[11px] font-mono text-zinc-500 mt-1 block">
                     El trabajador solo necesitará recordar este PIN de 4 dígitos.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN de Administrador Autorizador</label>
+                  <input
+                    type="password"
+                    maxLength={4}
+                    required
+                    pattern="[0-9]{4}"
+                    value={newAdminPin}
+                    onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="PIN de Marisol (1234) o Luis (2026)"
+                    className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-center text-xl tracking-widest text-white font-mono focus:outline-none focus:border-amber-400"
+                  />
+                  <span className="text-[11px] font-mono text-zinc-500 mt-1 block">
+                    Autoriza la creación del colaborador en Supabase.
                   </span>
                 </div>
 

@@ -2,6 +2,7 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole, ROLES_CONFIG } from '../../types/roles';
+import { getActiveStaffSession } from '../../lib/staffStore';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 interface ProtectedRouteProps {
@@ -12,13 +13,23 @@ interface ProtectedRouteProps {
 /**
  * Route Guard para proteger rutas de administración, caja, entrenador y cliente.
  * - Si no está autenticado, redirige a la página de inicio.
+ * - Si hay una sesión de personal activa con PIN (Caja o Admin), concede acceso directo según su rol asignado.
  * - Si es Super Administrador (actualRole === 'admin' o role === 'admin'), tiene acceso maestro a todos los módulos.
  * - Si el rol del usuario no tiene permisos, muestra una pantalla de acceso denegado con opción de volver a su portal.
  */
 export default function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) {
   const { user, actualRole, role, isLoading, getRedirectPath } = useAuth();
 
-  // 1. Estado de carga de sesión
+  // 1. Autorización directa para personal en terminal de escritorio con sesión activa de PIN
+  const activeStaff = getActiveStaffSession();
+  if (activeStaff && activeStaff.activo !== false) {
+    const staffRole: UserRole = activeStaff.rol === 'admin' ? 'admin' : 'caja';
+    if (staffRole === 'admin' || allowedRoles.includes(staffRole)) {
+      return <>{children}</>;
+    }
+  }
+
+  // 2. Estado de carga de sesión
   if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center text-white">

@@ -3,24 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User,
-  ShieldCheck,
-  Receipt,
-  Activity,
   LogOut,
   ArrowRight,
   MessageCircle,
   QrCode,
   Dumbbell,
-  CreditCard,
   ChevronDown,
-  Sparkles,
   MapPin,
-  Check,
   Tag,
   KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { ROLES_CONFIG, UserRole } from '../types/roles';
 import { GYM_CONTACT } from '../data/gymData';
 import { getStoredMembers } from '../data/gymStore';
 
@@ -29,12 +22,10 @@ export interface UserProfileDropdownProps {
 }
 
 export default function UserProfileDropdown() {
-  const { user, role, switchRole, signOut, getRedirectPath } = useAuth();
+  const { user, role, signOut, getRedirectPath } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
-
-  const currentRoleConfig = ROLES_CONFIG[role];
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -85,12 +76,6 @@ export default function UserProfileDropdown() {
     navigate(getRedirectPath());
   };
 
-  const handleRoleSelect = (newRole: UserRole) => {
-    switchRole(newRole);
-    setIsOpen(false);
-    navigate(ROLES_CONFIG[newRole].path);
-  };
-
   const handleSignOut = async () => {
     setIsOpen(false);
     await signOut();
@@ -104,15 +89,6 @@ export default function UserProfileDropdown() {
     );
     window.open(`https://wa.me/${GYM_CONTACT.phone.replace(/[^0-9]/g, '')}?text=${text}`, '_blank');
   };
-
-  const roleIcons = {
-    admin: ShieldCheck,
-    caja: Receipt,
-    entrenador: Activity,
-    cliente: User,
-  };
-
-  const ActiveIcon = roleIcons[role];
 
   return (
     <div className="relative inline-block text-left" ref={dropdownRef}>
@@ -149,7 +125,7 @@ export default function UserProfileDropdown() {
             {displayName.split(' ')[0]}
           </span>
           <span className="text-[9px] text-zinc-400 font-normal leading-none truncate max-w-[105px]">
-            {currentRoleConfig.name.split(' ')[0]}
+            Socio
           </span>
         </div>
 
@@ -205,12 +181,10 @@ export default function UserProfileDropdown() {
 
             {/* Active Role Status Banner */}
             <div className="mt-3 p-2.5 rounded-xl bg-zinc-900 border border-white/5 flex items-center justify-between text-xs font-mono">
-              <span className="text-zinc-400">Rol activo:</span>
-              <span
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${currentRoleConfig.themeColor.badgeBg} ${currentRoleConfig.themeColor.badgeText} ${currentRoleConfig.themeColor.badgeBorder}`}
-              >
-                <ActiveIcon className="w-3 h-3" />
-                <span>{currentRoleConfig.name}</span>
+              <span className="text-zinc-400">Estado de cuenta:</span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                <User className="w-3 h-3" />
+                <span>Socio Trankilandia</span>
               </span>
             </div>
 
@@ -222,7 +196,7 @@ export default function UserProfileDropdown() {
               onClick={handleNavigateToPortal}
               className="mt-3 w-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold py-3 px-4 rounded-xl text-xs font-display tracking-wide uppercase flex items-center justify-center gap-2 shadow-lg shadow-amber-400/20 cursor-pointer transition-all"
             >
-              <span>ENTRAR A MI PANEL ({currentRoleConfig.name.toUpperCase()})</span>
+              <span>ENTRAR A MI CARNET DIGITAL</span>
               <ArrowRight className="w-4 h-4" />
             </motion.button>
 
@@ -232,153 +206,66 @@ export default function UserProfileDropdown() {
                 Accesos directos de tu perfil:
               </div>
 
-              {role === 'cliente' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleNavigateToPortal}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
-                  >
-                    <span className="flex items-center gap-2">
-                      <QrCode className="w-4 h-4 text-amber-400" />
-                      <span>Mi Carnet Digital &amp; QR Torniquete</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-emerald-400 font-bold">ACTIVO</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNavigateToPortal}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Dumbbell className="w-4 h-4 text-amber-400" />
-                      <span>Mi Rutina del Coach &amp; PRs</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-500">Día 1</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsOpen(false);
-                      navigate('/cliente?tab=seguridad');
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
-                  >
-                    <span className="flex items-center gap-2">
-                      <KeyRound className="w-4 h-4 text-amber-400" />
-                      <span>Seguridad &amp; Cambiar Clave</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-400 font-bold">DNI / Clave</span>
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={handleNavigateToPortal}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <QrCode className="w-4 h-4 text-amber-400" />
+                  <span>Mi Carnet Digital &amp; QR Torniquete</span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400 font-bold">ACTIVO</span>
+              </button>
 
-              {role === 'caja' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleNavigateToPortal}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Receipt className="w-4 h-4 text-emerald-400" />
-                      <span>Terminal de Cobros &amp; Adelantos</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-emerald-400">S/. Soles</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNavigateToPortal}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
-                  >
-                    <span className="flex items-center gap-2">
-                      <CreditCard className="w-4 h-4 text-emerald-400" />
-                      <span>Escáner DNI &amp; Deudores</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-zinc-500">En vivo</span>
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  navigate('/cliente?tab=rutina');
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <Dumbbell className="w-4 h-4 text-amber-400" />
+                  <span>Mi Rutina del Coach &amp; PRs</span>
+                </span>
+                <span className="text-[10px] font-mono text-zinc-500">Día 1</span>
+              </button>
 
-              {role === 'entrenador' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleNavigateToPortal}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Activity className="w-4 h-4 text-orange-400" />
-                      <span>Mis Atletas &amp; Armado de Rutinas</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-orange-400">Coach</span>
-                  </button>
-                </>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsOpen(false);
+                  navigate('/cliente?tab=seguridad');
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
+              >
+                <span className="flex items-center gap-2">
+                  <KeyRound className="w-4 h-4 text-amber-400" />
+                  <span>Seguridad &amp; Cambiar Clave</span>
+                </span>
+                <span className="text-[10px] font-mono text-zinc-400 font-bold">DNI / Clave</span>
+              </button>
 
               {role === 'admin' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleNavigateToPortal}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-zinc-300 hover:text-white hover:bg-zinc-900 transition-colors text-left cursor-pointer"
-                  >
-                    <span className="flex items-center gap-2">
-                      <ShieldCheck className="w-4 h-4 text-purple-400" />
-                      <span>Padrón General (389 Socios)</span>
-                    </span>
-                    <span className="text-[10px] font-mono text-purple-400">Gerencia</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsOpen(false);
-                      navigate('/admin?tab=planes');
-                    }}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-amber-400 hover:text-black hover:bg-amber-400 transition-colors text-left cursor-pointer font-bold"
-                  >
-                    <span className="flex items-center gap-2">
-                      <Tag className="w-4 h-4" />
-                      <span>Gestionar Planes &amp; Tarifas</span>
-                    </span>
-                    <span className="text-[10px] font-mono uppercase bg-black/30 px-1.5 py-0.5 rounded">
-                      En vivo
-                    </span>
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    navigate('/admin?tab=planes');
+                  }}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-sans text-purple-300 hover:text-white hover:bg-purple-950/40 transition-colors text-left cursor-pointer font-bold border border-purple-500/20 mt-1"
+                >
+                  <span className="flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-purple-400" />
+                    <span>Gestionar Planes &amp; Tarifas</span>
+                  </span>
+                  <span className="text-[10px] font-mono uppercase bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded">
+                    Admin
+                  </span>
+                </button>
               )}
-            </div>
-
-            {/* Quick Role Switcher (Acceso pleno a los 4 roles para demostración y gerencia) */}
-            <div className="mt-3 pt-3 border-t border-white/10">
-              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 mb-2">
-                <span className="flex items-center gap-1 font-bold text-amber-400">
-                  <Sparkles className="w-3 h-3" />
-                  <span>VISTA DE CONTROL (DEMO / ROLES):</span>
-                </span>
-                <span className="text-zinc-500">4 roles en 1 clic</span>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                {(['cliente', 'caja', 'entrenador', 'admin'] as UserRole[]).map((r) => {
-                  const cfg = ROLES_CONFIG[r];
-                  const isCurrent = r === role;
-                  return (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => handleRoleSelect(r)}
-                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-mono font-bold transition-all flex items-center justify-between cursor-pointer ${
-                        isCurrent
-                          ? `${cfg.themeColor.badgeBg} ${cfg.themeColor.badgeText} border ${cfg.themeColor.badgeBorder} shadow-sm`
-                          : 'bg-zinc-900/90 hover:bg-zinc-800 text-zinc-400 hover:text-white border border-white/5'
-                      }`}
-                    >
-                      <span className="capitalize">{cfg.name.split(' ')[0]}</span>
-                      {isCurrent && <Check className="w-3 h-3 text-emerald-400 shrink-0" />}
-                    </button>
-                  );
-                })}
-              </div>
             </div>
 
             {/* Footer Actions */}

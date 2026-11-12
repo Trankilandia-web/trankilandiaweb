@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  Dumbbell,
   MessageCircle,
   Flame,
   AlertTriangle,
@@ -64,6 +63,7 @@ import {
 } from '../../lib/barcode128';
 import Barcode128 from '../../components/Barcode128';
 import QRCode2D from '../../components/QRCode2D';
+import trankilandiaLogo from '../../assets/trankilandia-logo.png';
 
 // Entrenadores oficiales del gimnasio (2 mujeres y 2 varones distribuidos en los 3 turnos)
 export const OFFICIAL_COACHES = [
@@ -1236,8 +1236,12 @@ export default function ClientePortal() {
                   {/* Header de la Tarjeta */}
                   <div className="flex items-center justify-between pb-4 border-b border-white/10">
                     <div className="flex items-center gap-2.5">
-                      <div className="p-2 rounded-xl bg-amber-400 text-black font-black">
-                        <Dumbbell className="w-5 h-5" />
+                      <div className="w-9 h-9 rounded-full overflow-hidden border border-amber-400/40 shadow-sm shrink-0">
+                        <img
+                          src={trankilandiaLogo}
+                          alt="Logo Trankilandia"
+                          className="w-full h-full object-cover"
+                        />
                       </div>
                       <div>
                         <div className="font-black text-sm tracking-tight text-white font-display">
@@ -1429,7 +1433,7 @@ export default function ClientePortal() {
                           {activeRoutine?.routineTitle || 'Plan de Entrenamiento'}
                         </h3>
                         <p className="text-xs text-zinc-400 mt-0.5">
-                          Supervisado por <strong className="text-amber-400">{activeRoutine?.coachName || currentMember.coachName || 'Coach Marcos'}</strong>
+                          Supervisado por <strong className="text-amber-400">{activeRoutine?.coachName || currentMember?.coachName || 'Coach Marcos'}</strong>
                         </p>
                       </div>
 
@@ -2344,8 +2348,8 @@ export default function ClientePortal() {
             }
             showGoogleEmailInput={
               !currentMember?.email ||
-              currentMember.email.toLowerCase().endsWith('@socio.trankilandia.pe') ||
-              currentMember.email.toLowerCase().endsWith('@cliente.trankilandia.pe')
+              currentMember.email?.toLowerCase().endsWith('@socio.trankilandia.pe') ||
+              currentMember.email?.toLowerCase().endsWith('@cliente.trankilandia.pe')
             }
             firstLoginPassword={firstLoginPassword}
             setFirstLoginPassword={setFirstLoginPassword}

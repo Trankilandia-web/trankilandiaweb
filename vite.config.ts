@@ -6,7 +6,10 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss()],
-  envPrefix: ['VITE_', 'NEXT_PUBLIC_', 'SUPABASE_'],
+  envPrefix: ['VITE_'],
+  build: {
+    sourcemap: false,
+  },
   server: {
     watch: {
       ignored: ['**/dist-electron/**', '**/dist/**', '**/.git/**'],

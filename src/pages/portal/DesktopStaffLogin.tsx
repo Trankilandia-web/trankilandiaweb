@@ -8,7 +8,6 @@ import {
   ArrowRight,
   ShieldCheck,
   Receipt,
-  Dumbbell,
   ShieldAlert,
   RefreshCw,
   X,
@@ -20,6 +19,7 @@ import {
   saveStaffUser,
 } from '../../lib/staffStore';
 import { useAuth } from '../../context/AuthContext';
+import trankilandiaLogo from '../../assets/trankilandia-logo.png';
 
 export default function DesktopStaffLogin() {
   const navigate = useNavigate();
@@ -41,6 +41,7 @@ export default function DesktopStaffLogin() {
   const [newRol, setNewRol] = useState<'admin' | 'cajero'>('cajero');
   const [newTurno, setNewTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
   const [newPin, setNewPin] = useState('');
+  const [newAdminPin, setNewAdminPin] = useState('');
 
   const loadStaffFromDatabase = async () => {
     setIsCheckingSupabase(true);
@@ -135,23 +136,39 @@ export default function DesktopStaffLogin() {
       return;
     }
 
-    const created = await saveStaffUser({
-      nombre: newNombre.trim(),
-      rol: newRol,
-      turno: newTurno,
-      pin: newPin,
-      avatarColor:
-        newRol === 'admin'
-          ? 'from-purple-500 to-indigo-600 text-white'
-          : 'from-emerald-400 to-teal-600 text-black',
-      activo: true,
-    });
+    if (!newAdminPin || newAdminPin.length !== 4) {
+      alert('Debe ingresar el PIN de un administrador (Marisol: 1234 o Luis: 2026) para autorizar.');
+      return;
+    }
+
+    const res = await saveStaffUser(
+      {
+        nombre: newNombre.trim(),
+        rol: newRol,
+        turno: newTurno,
+        pin: newPin,
+        avatarColor:
+          newRol === 'admin'
+            ? 'from-purple-500 to-indigo-600 text-white'
+            : 'from-emerald-400 to-teal-600 text-black',
+        activo: true,
+      },
+      {
+        adminPin: newAdminPin,
+      }
+    );
+
+    if (!res.success || !res.user) {
+      alert(`Error al registrar colaborador: ${res.error || 'Autorización denegada.'}`);
+      return;
+    }
 
     await loadStaffFromDatabase();
     setShowAddModal(false);
     setNewNombre('');
     setNewPin('');
-    handleSelectStaff(created);
+    setNewAdminPin('');
+    handleSelectStaff(res.user);
   };
 
   return (
@@ -162,8 +179,12 @@ export default function DesktopStaffLogin() {
       {/* Cabecera de la Terminal */}
       <header className="px-6 sm:px-12 py-5 border-b border-white/10 flex items-center justify-between z-10 backdrop-blur-md bg-zinc-950/80">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-2xl bg-amber-400 text-black flex items-center justify-center font-black shadow-lg shadow-amber-400/20">
-            <Dumbbell className="w-6 h-6" />
+          <div className="w-12 h-12 rounded-full overflow-hidden border border-amber-400/40 shadow-lg shadow-amber-400/20 shrink-0">
+            <img
+              src={trankilandiaLogo}
+              alt="Logo Trankilandia Gym"
+              className="w-full h-full object-cover"
+            />
           </div>
           <div>
             <div className="flex items-center gap-2">
@@ -501,7 +522,7 @@ export default function DesktopStaffLogin() {
               </div>
 
               <div>
-                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN de 4 Números</label>
+                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN de 4 Números (Acceso)</label>
                 <input
                   type="text"
                   maxLength={4}
@@ -511,6 +532,22 @@ export default function DesktopStaffLogin() {
                   placeholder="Ej. 1234"
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 font-mono tracking-widest text-center"
                 />
+              </div>
+
+              <div>
+                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">
+                  PIN de Administrador Autorizador
+                </label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  required
+                  value={newAdminPin}
+                  onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, ''))}
+                  placeholder="PIN de Marisol (1234) o Luis (2026)"
+                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 font-mono tracking-widest text-center"
+                />
+                <p className="text-[10px] text-zinc-500 mt-1 font-mono">Autoriza el alta de la nueva cuenta en Supabase</p>
               </div>
 
               <button
