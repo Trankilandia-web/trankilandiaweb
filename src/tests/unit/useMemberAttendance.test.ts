@@ -64,6 +64,23 @@ const MOCK_MEMBERS: GymMember[] = [
     coachName: 'Coach Marcos',
     registeredAt: '2019-12-01',
   },
+  {
+    id: 'MEM-629',
+    name: 'Yubetzy Cayama Perez',
+    dni: '007778365',
+    plan: '6 MESES · Musculación Libre',
+    planPrice: 330,
+    paymentType: 'full',
+    paymentMethod: 'efectivo',
+    advancePaid: 330,
+    balanceDue: 0,
+    membershipStatus: 'active',
+    expiresAt: '2028-12-31',
+    receiptNumber: 'B001-796930',
+    shift: 'manana',
+    coachName: 'Coach Camila Mendoza',
+    registeredAt: '2026-07-30',
+  },
 ];
 
 describe('Pruebas Unitarias · Custom Hook useMemberAttendance', () => {
@@ -240,5 +257,54 @@ describe('Pruebas Unitarias · Custom Hook useMemberAttendance', () => {
     expect(result.current.lastScanMessage).toContain('ya se encuentra entrenando en sala');
     expect(result.current.lastScanMessage).toContain('No se duplica su ingreso');
     expect(setAsistencias).not.toHaveBeenCalled();
+  });
+
+  it('permite registrar ingreso para socio con Carnet de Extranjeria / documento de 9 digitos sin truncarlo', async () => {
+    const { result } = renderHook(() =>
+      useMemberAttendance({
+        members: MOCK_MEMBERS,
+        setAsistencias,
+      })
+    );
+
+    act(() => {
+      result.current.setScanInput('007778365');
+    });
+
+    const fakeEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
+
+    await act(async () => {
+      await result.current.handleScanSubmit(fakeEvent);
+    });
+
+    expect(result.current.lastScanStatus).toBe('activo');
+    expect(result.current.lastScannedSocio?.id).toBe('MEM-629');
+    expect(result.current.lastScannedSocio?.nombre).toBe('Yubetzy Cayama Perez');
+    expect(result.current.lastScannedSocio?.dni).toBe('007778365');
+    expect(result.current.lastScanMessage).toContain('Pase Libre');
+    expect(setAsistencias).toHaveBeenCalled();
+  });
+
+  it('encuentra al socio buscando por apellido o nombre parcial aunque no se ingrese el DNI', async () => {
+    const { result } = renderHook(() =>
+      useMemberAttendance({
+        members: MOCK_MEMBERS,
+        setAsistencias,
+      })
+    );
+
+    act(() => {
+      result.current.setScanInput('Cayama');
+    });
+
+    const fakeEvent = { preventDefault: vi.fn() } as unknown as React.FormEvent;
+
+    await act(async () => {
+      await result.current.handleScanSubmit(fakeEvent);
+    });
+
+    expect(result.current.lastScanStatus).toBe('activo');
+    expect(result.current.lastScannedSocio?.id).toBe('MEM-629');
+    expect(result.current.lastScannedSocio?.nombre).toBe('Yubetzy Cayama Perez');
   });
 });

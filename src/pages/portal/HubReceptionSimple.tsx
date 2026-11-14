@@ -364,11 +364,24 @@ export default function HubReceptionSimple() {
       const code = rawCode.trim();
       if (!code) return;
 
-      // REGLA 1: Exactamente 8 caracteres numéricos -> ES UN DNI (Ingreso de Socio)
+      // REGLA 1: Coincidencia con documento en padrón (DNI 8 dígitos, Carnet de Extranjería 9 dígitos, etc.)
       const esDni8 = /^\d{8}$/.test(code);
+      const rawDigits = code.replace(/\D/g, '');
+      const existeSocioConDoc = members.some((m) => {
+        if (!m.dni) return false;
+        const d = m.dni.trim();
+        return d === code || (rawDigits.length >= 6 && d.replace(/\D/g, '') === rawDigits);
+      });
 
       // REGLA 2: Exactamente 12 o 13 caracteres numéricos -> ES UN PRODUCTO (Caja / POS)
       const esProducto12o13 = /^(\d{12}|\d{13})$/.test(code);
+
+      if (existeSocioConDoc || esDni8) {
+        // Enrutamiento prioritario a Control de Acceso
+        setActiveTab('acceso');
+        await procesarQuery(code);
+        return;
+      }
 
       if (esProducto12o13) {
         // Enrutamiento automático a pestaña POS
@@ -394,13 +407,6 @@ export default function HubReceptionSimple() {
           });
           setTimeout(() => setPosScannerNotice(null), 8000);
         }
-        return;
-      }
-
-      if (esDni8) {
-        // Enrutamiento automático a Control de Acceso
-        setActiveTab('acceso');
-        await procesarQuery(code);
         return;
       }
 
@@ -431,7 +437,7 @@ export default function HubReceptionSimple() {
       setActiveTab('acceso');
       await procesarQuery(code);
     },
-    [productos, agregarAlCarrito, procesarQuery]
+    [productos, agregarAlCarrito, procesarQuery, members]
   );
 
   const handleFormSubmit = async (e: React.FormEvent) => {

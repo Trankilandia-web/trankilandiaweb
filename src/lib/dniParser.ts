@@ -49,6 +49,12 @@ export function analizarDniPeru(
 
   const dnisSet = knownDnis instanceof Set ? knownDnis : Array.isArray(knownDnis) ? new Set(knownDnis) : null;
 
+  // Si la entrada coincide exactamente con un documento registrado en el padrón (DNI, CE, etc.)
+  const cleanDigits = text.replace(/\D/g, '');
+  if (dnisSet && (dnisSet.has(text) || (cleanDigits && dnisSet.has(cleanDigits)))) {
+    return { dni: dnisSet.has(text) ? text : cleanDigits, sourceType: 'manual', rawInput: text };
+  }
+
   // 1. Lector 2D con estructura JSON (ej: {"dni":"73456789"} o {"id":"MEM-001"})
   if (text.startsWith('{') && text.endsWith('}')) {
     try {
@@ -83,8 +89,6 @@ export function analizarDniPeru(
   }
 
   // 5. Normalización de dígitos limpios
-  const cleanDigits = text.replace(/\D/g, '');
-
   // A) Exactamente 8 dígitos: DNIe moderno o DNI puro
   if (cleanDigits.length === 8) {
     return { dni: cleanDigits, sourceType: 'dnie_puro', rawInput: text };

@@ -202,25 +202,40 @@ export function useMemberAttendance({
         isScanningLock.current = true;
         lastScanTimestamp.current = now;
 
-        const parsedDni = extraerDniPeru(query) || query.replace(/\D/g, '').slice(0, 8);
-        const cleanDni = parsedDni || query;
-
         const queryLower = query.toLowerCase().trim();
+        const rawDigits = query.replace(/\D/g, '');
         const tokens = queryLower.split(/\s+/).filter((t) => t.length >= 2);
 
-        // 1. Coincidencia por DNI
-        let socio = members.find(
-          (m) =>
-            (m.dni && m.dni.trim() === cleanDni) ||
-            (m.dni && m.dni.trim() === query)
-        );
+        // 1. Coincidencia directa por DNI o documento registrado (exacto o por dígitos numéricos limpios)
+        let socio = members.find((m) => {
+          if (!m.dni) return false;
+          const mTrim = m.dni.trim();
+          const mDigits = mTrim.replace(/\D/g, '');
+          return (
+            mTrim.toLowerCase() === queryLower ||
+            (rawDigits.length >= 6 && mDigits === rawDigits)
+          );
+        });
 
-        // 2. Coincidencia de nombre completo o contenido
+        // 2. Si no hubo coincidencia directa y es escaneo óptico / PDF417 / DNI con dígito verificador
+        if (!socio) {
+          const knownDnis = members.map((m) => m.dni).filter(Boolean) as string[];
+          const parsedDni = extraerDniPeru(query, knownDnis);
+          if (parsedDni) {
+            socio = members.find((m) => {
+              if (!m.dni) return false;
+              const mDigits = m.dni.replace(/\D/g, '');
+              return m.dni.trim() === parsedDni || mDigits === parsedDni;
+            });
+          }
+        }
+
+        // 3. Coincidencia de nombre completo o contenido
         if (!socio) {
           socio = members.find((m) => m.name.toLowerCase().includes(queryLower));
         }
 
-        // 3. Coincidencia si todas las palabras buscadas están en el nombre (independiente del orden)
+        // 4. Coincidencia si todas las palabras buscadas están en el nombre (independiente del orden)
         if (!socio && tokens.length > 1) {
           socio = members.find((m) => {
             const mName = m.name.toLowerCase();
@@ -228,8 +243,8 @@ export function useMemberAttendance({
           });
         }
 
-        // 4. Coincidencia por token distintivo de al menos 4 caracteres (ej. apellido "asto")
-        if (!socio && tokens.length > 1) {
+        // 5. Coincidencia por token distintivo de al menos 4 caracteres (ej. apellido "asto", "cayama")
+        if (!socio && tokens.length > 0) {
           socio = members.find((m) => {
             const mName = m.name.toLowerCase();
             return tokens.some((t) => t.length >= 4 && mName.includes(t));
