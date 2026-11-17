@@ -2841,6 +2841,206 @@ export async function obtenerResumenAdmin(
   };
 }
 
+export interface AuditoriaVentaItem {
+  id: string | number;
+  numeroTicket: string;
+  fecha: string;
+  hora: string;
+  clienteNombre: string;
+  clienteDni?: string;
+  metodoPago: string;
+  total: number;
+  items: {
+    productoId: string;
+    nombreProducto: string;
+    cantidad: number;
+    precioUnitario: number;
+    subtotal: number;
+  }[];
+}
+
+export interface ResumenVentasPorProducto {
+  productoId: string;
+  nombre: string;
+  cantidadTotal: number;
+  totalRecaudado: number;
+  precioUnitarioPromedio: number;
+}
+
+export interface AuditoriaVentasPOSResponse {
+  ventas: AuditoriaVentaItem[];
+  resumenPorProducto: ResumenVentasPorProducto[];
+  totalVendido: number;
+  totalUnidades: number;
+}
+
+/**
+ * Consulta la auditoría detallada de ventas POS y desglose de productos vendidos
+ * para el arqueo de caja y control de encargados en Administración.
+ */
+export async function obtenerAuditoriaVentasPOS(
+  fechaInicio?: string,
+  fechaFin?: string
+): Promise<AuditoriaVentasPOSResponse> {
+  const todasLasVentas: AuditoriaVentaItem[] = [];
+
+  // 1. Obtener de Supabase si está configurado
+  if (isSupabaseConfigured()) {
+    try {
+      let query = supabase
+        .from('ventas')
+        .select(`
+          id,
+          numero_ticket,
+          total,
+          metodo_pago,
+          cliente_nombre,
+          cliente_dni,
+          created_at,
+          venta_items (
+            producto_id,
+            nombre_producto,
+            cantidad,
+            precio_unitario,
+            subtotal
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (fechaInicio) {
+        query = query.gte('created_at', `${fechaInicio}T00:00:00.000Z`);
+      }
+      if (fechaFin) {
+        query = query.lte('created_at', `${fechaFin}T23:59:59.999Z`);
+      }
+
+      const { data, error } = await query;
+      if (!error && Array.isArray(data)) {
+        data.forEach((v: any) => {
+          const createdAt = new Date(v.created_at);
+          const fechaStr = createdAt.toLocaleDateString('es-PE', { timeZone: 'America/Lima' });
+          const horaStr = createdAt.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
+
+          const items = Array.isArray(v.venta_items)
+            ? v.venta_items.map((it: any) => ({
+                productoId: it.producto_id || 'prod',
+                nombreProducto: it.nombre_producto || 'Producto',
+                cantidad: Number(it.cantidad) || 1,
+                precioUnitario: Number(it.precio_unitario) || 0,
+                subtotal: Number(it.subtotal) || 0,
+              }))
+            : [];
+
+          todasLasVentas.push({
+            id: v.id,
+            numeroTicket: v.numero_ticket || `TK-${v.id}`,
+            fecha: fechaStr,
+            hora: horaStr,
+            clienteNombre: v.cliente_nombre || 'Cliente Mostrador',
+            clienteDni: v.cliente_dni || undefined,
+            metodoPago: v.metodo_pago || 'efectivo',
+            total: Number(v.total) || 0,
+            items,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('[obtenerAuditoriaVentasPOS] Error consultando ventas en Supabase:', err);
+    }
+  }
+
+  // 2. Complementar con ventas locales de contingencia (offline queue)
+  try {
+    const rawOffline = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
+    if (rawOffline) {
+      const offlineQueue: any[] = JSON.parse(rawOffline);
+      if (Array.isArray(offlineQueue)) {
+        const prods = await obtenerProductosInventario();
+        offlineQueue.forEach((ov: any) => {
+          // Verificar si ya está en todasLasVentas para no duplicar
+          if (!todasLasVentas.some((v) => v.numeroTicket === ov.numero_ticket)) {
+            const dateObj = ov.fecha ? new Date(ov.fecha) : new Date();
+            const fechaStr = dateObj.toLocaleDateString('es-PE', { timeZone: 'America/Lima' });
+            const horaStr = dateObj.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
+
+            // Filtrar rango de fecha si aplica
+            const isoDate = dateObj.toISOString().split('T')[0];
+            if (fechaInicio && isoDate < fechaInicio) return;
+            if (fechaFin && isoDate > fechaFin) return;
+
+            const items = Array.isArray(ov.items)
+              ? ov.items.map((it: any) => {
+                  const p = prods.find((prod) => prod.id === it.producto_id);
+                  const pUnit = Number(it.precio_unitario || p?.precio_venta || 0);
+                  const cant = Number(it.cantidad) || 1;
+                  return {
+                    productoId: it.producto_id,
+                    nombreProducto: it.nombre_producto || p?.nombre || 'Producto',
+                    cantidad: cant,
+                    precioUnitario: pUnit,
+                    subtotal: Number(it.subtotal) || (pUnit * cant),
+                  };
+                })
+              : [];
+
+            todasLasVentas.push({
+              id: ov.id || ov.numero_ticket,
+              numeroTicket: ov.numero_ticket || 'TK-OFFLINE',
+              fecha: fechaStr,
+              hora: horaStr,
+              clienteNombre: ov.cliente_nombre || 'Cliente Mostrador',
+              clienteDni: ov.cliente_dni || undefined,
+              metodoPago: ov.metodo_pago || 'efectivo',
+              total: Number(ov.total) || 0,
+              items,
+            });
+          }
+        });
+      }
+    }
+  } catch (offlineErr) {
+    console.warn('[obtenerAuditoriaVentasPOS] Error leyendo cola local:', offlineErr);
+  }
+
+  // 3. Consolidar totales y ranking por producto
+  const productoMap = new Map<string, { nombre: string; cantidad: number; total: number }>();
+  let totalVendido = 0;
+  let totalUnidades = 0;
+
+  todasLasVentas.forEach((v) => {
+    totalVendido += v.total;
+    v.items.forEach((it) => {
+      totalUnidades += it.cantidad;
+      const key = it.productoId || it.nombreProducto;
+      const existing = productoMap.get(key) || {
+        nombre: it.nombreProducto,
+        cantidad: 0,
+        total: 0,
+      };
+      existing.cantidad += it.cantidad;
+      existing.total += it.subtotal;
+      productoMap.set(key, existing);
+    });
+  });
+
+  const resumenPorProducto: ResumenVentasPorProducto[] = Array.from(productoMap.entries())
+    .map(([productoId, data]) => ({
+      productoId,
+      nombre: data.nombre,
+      cantidadTotal: data.cantidad,
+      totalRecaudado: data.total,
+      precioUnitarioPromedio: data.cantidad > 0 ? data.total / data.cantidad : 0,
+    }))
+    .sort((a, b) => b.cantidadTotal - a.cantidadTotal);
+
+  return {
+    ventas: todasLasVentas,
+    resumenPorProducto,
+    totalVendido,
+    totalUnidades,
+  };
+}
+
 /**
  * Crear o editar un producto en el inventario (Admin)
  */
