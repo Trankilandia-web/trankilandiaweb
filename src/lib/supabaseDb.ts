@@ -1856,36 +1856,45 @@ export async function registerGymMember(member: GymMember): Promise<void> {
         .upsert(dbPayload, { onConflict: 'id' });
       if (upsertErr) {
         console.error('Error guardando socio en Supabase:', upsertErr);
+        throw new Error(`Error guardando socio en base de datos: ${upsertErr.message}`);
       }
 
-      // Sincronizar en public.profiles si el socio tiene DNI
+      // Sincronizar en public.profiles si el socio tiene DNI (aislado para evitar que RLS afecte la inscripción)
       if (cleanDni) {
-        await supabase
-          .from('profiles')
-          .update({
-            full_name: normalizedMember.name,
-            dni: cleanDni,
-            plan: normalizedMember.plan,
-            membership_status:
-              normalizedMember.membershipStatus === 'inactive' ? 'vencido' : 'activo',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('dni', cleanDni);
+        try {
+          await supabase
+            .from('profiles')
+            .update({
+              full_name: normalizedMember.name,
+              dni: cleanDni,
+              plan: normalizedMember.plan,
+              membership_status:
+                normalizedMember.membershipStatus === 'inactive' ? 'vencido' : 'activo',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('dni', cleanDni);
+        } catch (profErr) {
+          console.warn('[registerGymMember] profiles sync notice:', profErr);
+        }
       }
 
       // Activar cuenta canónica para acceso por DNI
       if (cleanDni && cleanDni.length === 8) {
-        await asignarDniYActivarCuenta(
-          finalId,
-          cleanDni,
-          normalizedMember.email || undefined,
-          normalizedMember.phone || undefined
-        );
+        try {
+          await asignarDniYActivarCuenta(
+            finalId,
+            cleanDni,
+            normalizedMember.email || undefined,
+            normalizedMember.phone || undefined
+          );
+        } catch (actErr) {
+          console.warn('[registerGymMember] asignarDni notice:', actErr);
+        }
       }
 
       // Registrar también en tabla de ingresos si hubo abono efectivo
       if (normalizedMember.advancePaid > 0) {
-        await supabase.from('ingresos').insert({
+        const { error: ingErr } = await supabase.from('ingresos').insert({
           key_socio: finalId,
           monto: normalizedMember.advancePaid,
           metodo_pago: normalizedMember.paymentMethod,
@@ -1895,11 +1904,231 @@ export async function registerGymMember(member: GymMember): Promise<void> {
               : 'Membresía Completa',
           observacion: `Cobro boleta ${normalizedMember.receiptNumber} (${normalizedMember.plan})`,
         });
+        if (ingErr) {
+          console.warn('[registerGymMember] Error registrando ingreso:', ingErr.message);
+        }
       }
     } catch (err) {
-      console.warn('registerGymMember notice:', err);
+      console.error('Error en registerGymMember:', err);
+      throw err;
     }
   }
+}
+
+export interface RenovarMembresiaParams {
+  socioId: string;
+  plan: string;
+  precioPlan: number;
+  tipoPago: 'full' | 'advance';
+  adelantoPagado: number;
+  saldoPendiente: number;
+  fechaInicio: string;
+  fechaFin: string;
+  fechaLimitePago?: string;
+  metodoPago?: string;
+  numeroBoleta?: string;
+  turno?: 'manana' | 'tarde' | 'noche';
+  coachAsignado?: string;
+  registrarIngreso?: boolean;
+  operador?: string;
+}
+
+/**
+ * Renovar la membresía de un socio existente de forma segura y atómica.
+ * Usa la RPC 'renovar_membresia_socio' (SECURITY DEFINER) para evitar bloqueos por triggers de saldo.
+ * Si la RPC aún no está activa en Supabase, ejecuta fallback directo a socios e ingresos.
+ */
+export async function renovarMembresiaSocio(
+  params: RenovarMembresiaParams
+): Promise<{ success: boolean; message: string; data?: any }> {
+  if (!params.socioId || !params.socioId.trim()) {
+    throw new Error('El ID del socio es requerido para renovar.');
+  }
+
+  const current = getStoredMembers();
+  const existing = current.find((m) => m.id === params.socioId);
+  const cleanDni = existing?.dni || '';
+
+  const fechaIni = normalizeDateToISO(params.fechaInicio);
+  const fechaFin = normalizeDateToISO(params.fechaFin);
+  const boleta = params.numeroBoleta || `B001-${String(Math.floor(Math.random() * 900000 + 100000))}`;
+  const coach = params.coachAsignado || existing?.coachName || 'Coach Marcos Rivas';
+  const turno = params.turno || existing?.shift || 'manana';
+  const metodoPago = params.metodoPago || 'efectivo';
+  const registrarIngreso = params.registrarIngreso !== false;
+
+  let rpcSuccess = false;
+  let rpcData: any = null;
+
+  // 1. Intentar ejecución atómica mediante RPC SECURITY DEFINER
+  if (isSupabaseConfigured()) {
+    try {
+      const { data, error } = await supabase.rpc('renovar_membresia_socio', {
+        p_socio_id: params.socioId,
+        p_plan: params.plan,
+        p_precio_plan: params.precioPlan,
+        p_tipo_pago: params.tipoPago,
+        p_adelanto_pagado: params.adelantoPagado,
+        p_saldo_pendiente: params.saldoPendiente,
+        p_fecha_inicio: fechaIni,
+        p_fecha_fin: fechaFin,
+        p_fecha_limite_pago: params.fechaLimitePago || null,
+        p_metodo_pago: metodoPago,
+        p_numero_boleta: boleta,
+        p_turno: turno,
+        p_coach_asignado: coach,
+        p_registrar_ingreso: registrarIngreso,
+        p_operador: params.operador || 'Recepción',
+      });
+
+      if (!error && data && (data.success || data === true)) {
+        rpcSuccess = true;
+        rpcData = data;
+      } else if (error) {
+        console.warn('[renovarMembresiaSocio] RPC no disponible o falló, usando fallback:', error.message);
+      }
+    } catch (rpcErr) {
+      console.warn('[renovarMembresiaSocio] Excepción llamando RPC, usando fallback:', rpcErr);
+    }
+
+    // 2. Fallback directo si RPC no está migrado aún en Supabase
+    if (!rpcSuccess) {
+      // Verificar si el socio tiene saldo_pendiente previo en Supabase que se esté reduciendo
+      const { data: dbSocio } = await supabase
+        .from('socios')
+        .select('saldo_pendiente')
+        .eq('id', params.socioId)
+        .maybeSingle();
+
+      const prevSaldo = Number(dbSocio?.saldo_pendiente) || 0;
+      if (prevSaldo > 0 && params.saldoPendiente < prevSaldo) {
+        const montoALiquidar = prevSaldo - params.saldoPendiente;
+        try {
+          await supabase.rpc('liquidar_saldo_socio', {
+            p_socio_id: params.socioId,
+            p_monto: montoALiquidar,
+            p_metodo_pago: metodoPago,
+            p_operador: params.operador || 'Recepción',
+          });
+        } catch (liqErr) {
+          console.warn('[renovarMembresiaSocio] Advertencia liquidando saldo previo con RPC:', liqErr);
+        }
+      }
+
+      const updatePayload: Record<string, any> = {
+        plan: params.plan,
+        precio_plan: params.precioPlan,
+        tipo_pago: params.tipoPago,
+        adelanto_pagado: params.adelantoPagado,
+        fecha_inicio: fechaIni,
+        fecha_fin: fechaFin,
+        fecha_limite_pago: params.fechaLimitePago || null,
+        metodo_pago: metodoPago,
+        numero_boleta: boleta,
+        turno,
+        coach_asignado: coach,
+        estado: 'activo',
+        updated_at: new Date().toISOString(),
+      };
+
+      // Si el nuevo saldo es mayor o igual o si no hay conflicto de reducción directa
+      if (params.saldoPendiente >= prevSaldo || prevSaldo === 0) {
+        updatePayload.saldo_pendiente = params.saldoPendiente;
+      }
+
+      const { error: updErr } = await supabase
+        .from('socios')
+        .update(updatePayload)
+        .eq('id', params.socioId);
+
+      if (updErr) {
+        throw new Error(`Error en Supabase al renovar socio: ${updErr.message}`);
+      }
+
+      // Registrar ingreso si se solicitó y monto > 0
+      const montoIngreso = params.tipoPago === 'full' ? params.precioPlan : params.adelantoPagado;
+      if (registrarIngreso && montoIngreso > 0 && prevSaldo === 0) {
+        await supabase.from('ingresos').insert({
+          key_socio: params.socioId,
+          monto: montoIngreso,
+          metodo_pago: metodoPago,
+          tipo: params.tipoPago === 'full' ? 'Renovación de Membresía' : 'Renovación con Adelanto',
+          observacion: `Cobro boleta ${boleta} (${params.plan}) - ${params.operador || 'Recepción'}`,
+        });
+      }
+
+      // Intentar actualizar public.profiles sin bloquear si falla por RLS
+      if (cleanDni) {
+        try {
+          await supabase
+            .from('profiles')
+            .update({
+              full_name: existing?.name,
+              plan: params.plan,
+              membership_status: 'activo',
+              updated_at: new Date().toISOString(),
+            })
+            .eq('dni', cleanDni);
+        } catch {}
+      }
+    }
+  }
+
+  // 3. Actualizar memoria local en todos los casos
+  let foundInLocal = false;
+  const updatedMembers = current.map((m) => {
+    if (m.id === params.socioId || (cleanDni && m.dni === cleanDni)) {
+      foundInLocal = true;
+      return {
+        ...m,
+        plan: params.plan,
+        planPrice: params.precioPlan,
+        paymentType: params.tipoPago,
+        advancePaid: params.adelantoPagado,
+        balanceDue: params.saldoPendiente,
+        paymentDueDate: params.fechaLimitePago,
+        paymentMethod: metodoPago,
+        receiptNumber: boleta,
+        membershipStatus: 'active' as const,
+        expiresAt: fechaFin,
+        registeredAt: fechaIni,
+        shift: turno,
+        coachName: coach,
+      };
+    }
+    return m;
+  });
+
+  if (!foundInLocal) {
+    updatedMembers.unshift({
+      id: params.socioId,
+      name: existing?.name || params.socioId,
+      dni: cleanDni,
+      email: `${cleanDni || params.socioId}@socio.trankilandia.pe`,
+      phone: existing?.phone || '',
+      plan: params.plan,
+      planPrice: params.precioPlan,
+      paymentType: params.tipoPago,
+      advancePaid: params.adelantoPagado,
+      balanceDue: params.saldoPendiente,
+      paymentDueDate: params.fechaLimitePago,
+      paymentMethod: metodoPago,
+      receiptNumber: boleta,
+      membershipStatus: 'active',
+      expiresAt: fechaFin,
+      registeredAt: fechaIni,
+      shift: turno,
+      coachName: coach,
+    });
+  }
+
+  saveStoredMembers(updatedMembers);
+
+  return {
+    success: true,
+    message: `¡Membresía renovada con éxito hasta el ${fechaFin}!`,
+    data: rpcData,
+  };
 }
 
 /**
@@ -2214,10 +2443,11 @@ export async function updateMemberProfile(
 
       const { error: updateErr } = await supabase.from('socios').update(dbPayload).eq('id', memberId);
       if (updateErr) {
-        console.warn('[updateMemberProfile] Error actualizando socio en Supabase:', updateErr.message);
+        console.error('[updateMemberProfile] Error actualizando socio en Supabase:', updateErr.message);
+        throw new Error(`Error actualizando socio en base de datos: ${updateErr.message}`);
       }
 
-      // Sincronizar en public.profiles si el socio tiene DNI
+      // Sincronizar en public.profiles si el socio tiene DNI (aislado para evitar que RLS impida actualizar el perfil)
       const targetMember = updated.find((m) => m.id === memberId);
       if (targetMember?.dni) {
         let profStatus: 'activo' | 'vencido' | 'congelado' = 'activo';
@@ -2228,22 +2458,27 @@ export async function updateMemberProfile(
           profStatus = 'congelado';
         }
 
-        const { error: profErr } = await supabase
-          .from('profiles')
-          .update({
-            full_name: targetMember.name,
-            membership_status: profStatus,
-            plan: targetMember.plan,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('dni', targetMember.dni);
+        try {
+          const { error: profErr } = await supabase
+            .from('profiles')
+            .update({
+              full_name: targetMember.name,
+              membership_status: profStatus,
+              plan: targetMember.plan,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('dni', targetMember.dni);
 
-        if (profErr) {
-          console.warn('[updateMemberProfile] Error actualizando perfil en Supabase:', profErr.message);
+          if (profErr) {
+            console.warn('[updateMemberProfile] Error actualizando perfil en Supabase:', profErr.message);
+          }
+        } catch (profEx) {
+          console.warn('[updateMemberProfile] Excepción profiles sync:', profEx);
         }
       }
     } catch (err: any) {
-      console.warn('[updateMemberProfile] Excepción actualizando socio en Supabase:', err?.message || err);
+      console.error('[updateMemberProfile] Excepción actualizando socio en Supabase:', err?.message || err);
+      throw err;
     }
   }
 
