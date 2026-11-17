@@ -1954,7 +1954,10 @@ export async function renovarMembresiaSocio(
   const boleta = params.numeroBoleta || `B001-${String(Math.floor(Math.random() * 900000 + 100000))}`;
   const coach = params.coachAsignado || existing?.coachName || 'Coach Marcos Rivas';
   const turno = params.turno || existing?.shift || 'manana';
-  const metodoPago = params.metodoPago || 'efectivo';
+  const metodoPago: 'efectivo' | 'yape' | 'plin' | 'tarjeta' =
+    params.metodoPago === 'yape' || params.metodoPago === 'plin' || params.metodoPago === 'tarjeta'
+      ? params.metodoPago
+      : 'efectivo';
   const registrarIngreso = params.registrarIngreso !== false;
 
   let rpcSuccess = false;

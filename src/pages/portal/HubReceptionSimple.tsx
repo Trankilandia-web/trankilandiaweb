@@ -31,6 +31,7 @@ import {
   fetchSociosParaRecepcion,
   cargarAsistenciasActivas90Min,
   registerGymMember,
+  renovarMembresiaSocio,
   obtenerProductosInventario,
   updateMemberProfile,
   payMemberBalance,
@@ -52,7 +53,7 @@ import {
   addDaysToLocalPeruDate,
 } from '../../lib/dateUtils';
 import { usePosCashier } from '../../hooks/usePosCashier';
-import { useMemberAttendance } from '../../hooks/useMemberAttendance';
+import { useMemberAttendance, playAttendanceTone } from '../../hooks/useMemberAttendance';
 import { playGymAlert } from '../../lib/audioVoiceAlerts';
 
 export default function HubReceptionSimple() {
@@ -71,7 +72,9 @@ export default function HubReceptionSimple() {
     lastScannedSocio,
     setLastScannedSocio,
     lastScanStatus,
+    setLastScanStatus,
     lastScanMessage,
+    setLastScanMessage,
     scanInputRef,
     procesarQuery,
     procesarSocioDirecto,
@@ -133,8 +136,25 @@ export default function HubReceptionSimple() {
   const [formIsRenewal, setFormIsRenewal] = useState(false);
   const [formDniLocked, setFormDniLocked] = useState(false);
   const [formSuccessMsg, setFormSuccessMsg] = useState<string | null>(null);
+  const [formErrorMsg, setFormErrorMsg] = useState<string | null>(null);
   const [formCreatedMember, setFormCreatedMember] = useState<GymMember | null>(null);
   const [isSavingSocio, setIsSavingSocio] = useState(false);
+
+  // Estados para Modal de Renovación Rápida en Vivo
+  const [socioParaRenovar, setSocioParaRenovar] = useState<any | null>(null);
+  const [renovFechaInicio, setRenovFechaInicio] = useState<string>(getLocalPeruDateString());
+  const [renovModoInicio, setRenovModoInicio] = useState<'hoy' | 'continuidad' | 'manual'>('hoy');
+  const [renovPlan, setRenovPlan] = useState<string>('Plan Libre Mensual (Adulto)');
+  const [renovMeses, setRenovMeses] = useState<number>(1);
+  const [renovPrecio, setRenovPrecio] = useState<number>(80);
+  const [renovTipoPago, setRenovTipoPago] = useState<'full' | 'advance'>('full');
+  const [renovAdelanto, setRenovAdelanto] = useState<number>(80);
+  const [renovMetodoPago, setRenovMetodoPago] = useState<'efectivo' | 'yape' | 'plin' | 'tarjeta'>('efectivo');
+  const [renovTurno, setRenovTurno] = useState<'manana' | 'tarde' | 'noche'>('manana');
+  const [renovYaPagoExterno, setRenovYaPagoExterno] = useState<boolean>(false);
+  const [isRenewing, setIsRenewing] = useState<boolean>(false);
+  const [renovErrorMsg, setRenovErrorMsg] = useState<string | null>(null);
+  const [renovSuccessToast, setRenovSuccessToast] = useState<string | null>(null);
 
   // Catálogo de Planes Categorizado
   const [catalogPlans, setCatalogPlans] = useState<CatalogPlanOption[]>(getStoredCatalogPlans);
@@ -537,6 +557,20 @@ export default function HubReceptionSimple() {
     }
   }, [fechaInicioSeleccionada, customPromoMeses]);
 
+  // Cálculo dinámico de fin de vigencia para el Modal de Renovación Rápida
+  const renovFechaFin = useMemo(() => {
+    try {
+      if (Number(renovMeses) === 0) {
+        return renovFechaInicio;
+      }
+      const base = new Date(renovFechaInicio + 'T12:00:00');
+      base.setMonth(base.getMonth() + Number(renovMeses));
+      return base.toISOString().split('T')[0];
+    } catch {
+      return addDaysToLocalPeruDate(Number(renovMeses) * 30, renovFechaInicio);
+    }
+  }, [renovFechaInicio, renovMeses]);
+
   // 3. ENVÍO DE MENSAJE DE WHATSAPP CON 1 CLIC
   const enviarWhatsApp = (socio: GymMember) => {
     const phone = (socio.phone || '').replace(/\D/g, '');
@@ -605,6 +639,159 @@ export default function HubReceptionSimple() {
       alert(err?.message || 'Error al procesar el cobro de la deuda.');
     } finally {
       setIsLiquidating(false);
+    }
+  };
+
+  // PRESETS PARA RENOVACIÓN RÁPIDA
+  const PRESET_RENOVACIONES = [
+    { label: '1 Mes', months: 1, defaultPrice: 80, planName: 'Plan Libre Mensual (Adulto)' },
+    { label: '2 Meses', months: 2, defaultPrice: 130, planName: 'Plan Libre 2 Meses Promocional' },
+    { label: '3 Meses', months: 3, defaultPrice: 210, planName: 'Plan Trimestral' },
+    { label: '6 Meses', months: 6, defaultPrice: 360, planName: 'Plan Semestral' },
+    { label: '8 Meses', months: 8, defaultPrice: 300, planName: 'Promo Personalizada (8 Meses)' },
+    { label: '12 Meses', months: 12, defaultPrice: 650, planName: 'Plan Anual' },
+  ];
+
+  // 5. ABRIR MODAL DE RENOVACIÓN RÁPIDA (CON CONTROL DE FECHA PASADA O HOY Y COBRO SEGURO)
+  const abrirModalRenovacion = (socio: any) => {
+    const rawDni = socio.dni || '';
+    const cleanDni = extraerDniPeru(rawDni) || rawDni.replace(/\D/g, '').slice(0, 8);
+    const nombre = socio.nombre || socio.name || '';
+    const celular = (socio.celular || socio.phone || '').replace(/\D/g, '').slice(0, 9);
+    const planActual = socio.plan || 'Plan Libre Mensual (Adulto)';
+    const precioActual = Number(socio.precio_plan || socio.planPrice) || 80;
+    const turno = (socio.turno || socio.shift || 'manana') as 'manana' | 'tarde' | 'noche';
+    const fechaFinActual = socio.fecha_fin || socio.expiresAt || '';
+
+    const today = getLocalPeruDateString();
+    let fechaInicioCalculada = today;
+    let modo: 'hoy' | 'continuidad' | 'manual' = 'hoy';
+
+    if (fechaFinActual && fechaFinActual >= today) {
+      fechaInicioCalculada = addDaysToLocalPeruDate(1, fechaFinActual);
+      modo = 'continuidad';
+    }
+
+    const catalog = getStoredCatalogPlans();
+    const found = catalog.find((p) => p.name === planActual);
+    const meses = found?.months ?? 1;
+
+    setSocioParaRenovar({
+      ...socio,
+      id: socio.id,
+      dni: cleanDni,
+      nombre,
+      name: nombre,
+      celular,
+      phone: celular,
+      plan: planActual,
+      fecha_fin: fechaFinActual,
+      expiresAt: fechaFinActual,
+      turno,
+    });
+
+    setRenovModoInicio(modo);
+    setRenovFechaInicio(fechaInicioCalculada);
+    setRenovPlan(planActual);
+    setRenovMeses(meses);
+    setRenovPrecio(precioActual);
+    setRenovTipoPago('full');
+    setRenovAdelanto(precioActual);
+    setRenovMetodoPago('efectivo');
+    setRenovTurno(turno);
+    setRenovYaPagoExterno(false);
+    setRenovErrorMsg(null);
+  };
+
+  // CONFIRMAR RENOVACIÓN EN VIVO
+  const handleConfirmarRenovacionRapida = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!socioParaRenovar || isRenewing) return;
+
+    try {
+      setIsRenewing(true);
+      setRenovErrorMsg(null);
+
+      const paid = renovTipoPago === 'full' ? renovPrecio : Math.min(renovAdelanto, renovPrecio);
+      const balance = renovTipoPago === 'full' ? 0 : Math.max(0, renovPrecio - paid);
+
+      const activeStaff = getActiveStaffSession();
+      const operadorNombre = activeStaff?.nombre || 'Recepción';
+
+      await renovarMembresiaSocio({
+        socioId: socioParaRenovar.id,
+        plan: renovPlan,
+        precioPlan: renovPrecio,
+        tipoPago: renovTipoPago,
+        adelantoPagado: paid,
+        saldoPendiente: balance,
+        fechaInicio: renovFechaInicio,
+        fechaFin: renovFechaFin,
+        metodoPago: renovMetodoPago,
+        turno: renovTurno,
+        operador: operadorNombre,
+        registrarIngreso: !renovYaPagoExterno,
+      });
+
+      // Actualizar estado en memoria local de miembros
+      const memberId = socioParaRenovar.id;
+      const cleanDni = socioParaRenovar.dni;
+      const updatedMembers = members.map((m) => {
+        if (m.id === memberId || (cleanDni && m.dni === cleanDni)) {
+          return {
+            ...m,
+            plan: renovPlan,
+            planPrice: renovPrecio,
+            paymentType: renovTipoPago,
+            advancePaid: paid,
+            balanceDue: balance,
+            paymentMethod: renovMetodoPago,
+            membershipStatus: 'active' as const,
+            expiresAt: renovFechaFin,
+            shift: renovTurno,
+            registeredAt: renovFechaInicio,
+          };
+        }
+        return m;
+      });
+      setMembers(updatedMembers);
+      saveStoredMembers(updatedMembers);
+
+      // Actualizar banner en vivo del escáner si corresponde
+      if (
+        lastScannedSocio &&
+        (lastScannedSocio.id === memberId || (cleanDni && lastScannedSocio.dni === cleanDni))
+      ) {
+        setLastScannedSocio({
+          ...lastScannedSocio,
+          plan: renovPlan,
+          precio_plan: renovPrecio,
+          tipo_pago: renovTipoPago,
+          adelanto_pagado: paid,
+          saldo_pendiente: balance,
+          fecha_fin: renovFechaFin,
+          turno: renovTurno,
+          dias_restantes: calculateDaysRemaining(renovFechaFin),
+          estado_calculado: 'activo',
+          tiene_deuda_activa: balance > 0,
+        });
+        setLastScanStatus('activo');
+        setLastScanMessage(`¡Membresía renovada en vivo! Vigente hasta el ${renovFechaFin}.`);
+      }
+
+      playAttendanceTone('ok');
+      setRenovSuccessToast(
+        `¡Membresía de ${socioParaRenovar.nombre || socioParaRenovar.name} renovada con éxito! Vigencia hasta el ${renovFechaFin}.`
+      );
+      setSocioParaRenovar(null);
+      setTimeout(() => setRenovSuccessToast(null), 4000);
+    } catch (err: any) {
+      console.error('[handleConfirmarRenovacionRapida] Error:', err);
+      setRenovErrorMsg(
+        err?.message || 'Error al procesar la renovación en la base de datos. Intente nuevamente.'
+      );
+    } finally {
+      setIsRenewing(false);
     }
   };
 
@@ -759,6 +946,9 @@ export default function HubReceptionSimple() {
   const handleGuardarSocio = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSavingSocio) return;
+    setFormErrorMsg(null);
+    setFormSuccessMsg(null);
+
     const cleanDni = extraerDniPeru(formDni) || formDni.replace(/\D/g, '').slice(0, 8);
     if (!cleanDni || cleanDni.length !== 8 || !formNombre.trim()) {
       alert('Ingresa un DNI de 8 dígitos numéricos y el nombre completo del atleta.');
@@ -797,7 +987,13 @@ export default function HubReceptionSimple() {
       try {
         await registerGymMember(memberToSave);
         setSupabaseConnected(true);
-      } catch {}
+      } catch (err: any) {
+        console.error('[handleGuardarSocio] Error en base de datos:', err);
+        setFormErrorMsg(
+          `Error guardando en la base de datos: ${err.message || 'Error de conexión'}. No se pudo confirmar la membresía.`
+        );
+        return;
+      }
 
       // 2. Guardar en memoria local
       const updated = [memberToSave, ...members.filter((m) => m.id !== memberId && (!m.dni || m.dni !== cleanDni))];
@@ -1265,7 +1461,7 @@ export default function HubReceptionSimple() {
                     {(lastScanStatus === 'vencido' || lastScanStatus === 'por_vencer') && lastScannedSocio && (
                       <button
                         type="button"
-                        onClick={() => iniciarRenovacionSocio(lastScannedSocio)}
+                        onClick={() => abrirModalRenovacion(lastScannedSocio)}
                         className="px-6 py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-sm uppercase shadow-xl cursor-pointer flex items-center gap-2"
                       >
                         <UserPlus className="w-5 h-5" />
@@ -1464,7 +1660,7 @@ export default function HubReceptionSimple() {
                                 )}
                                 <button
                                   type="button"
-                                  onClick={() => iniciarRenovacionSocio(socio)}
+                                  onClick={() => abrirModalRenovacion(socio)}
                                   className="inline-flex items-center gap-1 px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs cursor-pointer transition-colors shadow-md"
                                 >
                                   <UserPlus className="w-3.5 h-3.5" />
@@ -1541,6 +1737,22 @@ export default function HubReceptionSimple() {
                 </button>
               )}
             </div>
+
+            {formErrorMsg && (
+              <div className="p-4 rounded-2xl bg-red-500/20 border border-red-500 text-red-300 font-mono text-xs flex items-center justify-between shadow-lg">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+                  <span>{formErrorMsg}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormErrorMsg(null)}
+                  className="p-1 hover:bg-red-500/30 rounded-lg text-red-300 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
 
             {formSuccessMsg && (
               <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500 text-emerald-300 font-mono text-xs flex items-center justify-between shadow-lg">
@@ -2607,6 +2819,354 @@ export default function HubReceptionSimple() {
         </div>
       )}
 
+      {/* MODAL DE RENOVACIÓN RÁPIDA EN VIVO (EVITA ERRORES DE FECHAS PASADAS Y TRAPS DE UX) */}
+      {socioParaRenovar && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 font-mono text-xs overflow-y-auto">
+          <div className="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-xl p-6 sm:p-7 shadow-2xl space-y-4 my-8">
+            <div className="flex items-start justify-between border-b border-white/10 pb-4">
+              <div>
+                <span className="text-[10px] text-amber-400 uppercase font-black tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Módulo de Renovación Rápida en Vivo
+                </span>
+                <h3 className="text-xl font-black text-white font-display uppercase tracking-tight mt-0.5">
+                  Renovar Membresía
+                </h3>
+                <p className="text-zinc-400 text-xs font-sans mt-0.5">
+                  Atleta: <strong className="text-white">{socioParaRenovar.nombre || socioParaRenovar.name}</strong> · DNI: {socioParaRenovar.dni || 'Sin DNI'}
+                </p>
+                {socioParaRenovar.fecha_fin && (
+                  <p className="text-[11px] text-zinc-500 font-mono mt-0.5">
+                    Plan previo: <span className="text-zinc-300">{socioParaRenovar.plan}</span> · Venció el:{' '}
+                    <span className="text-amber-400">{socioParaRenovar.fecha_fin}</span>
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSocioParaRenovar(null)}
+                className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {renovErrorMsg && (
+              <div className="p-3.5 rounded-xl bg-red-950/80 border border-red-500 text-red-200 flex items-start gap-2.5">
+                <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <strong className="block text-red-400 font-bold">Error en la Renovación:</strong>
+                  <span>{renovErrorMsg}</span>
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleConfirmarRenovacionRapida} className="space-y-4">
+              {/* 1. SELECTOR DE FECHA DE INICIO */}
+              <div>
+                <label className="block text-zinc-300 font-bold uppercase mb-1.5 text-xs">
+                  1. Fecha de Inicio de Vigencia
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRenovModoInicio('hoy');
+                      setRenovFechaInicio(getLocalPeruDateString());
+                    }}
+                    className={`p-2 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                      renovModoInicio === 'hoy'
+                        ? 'bg-amber-400 text-black border-amber-400 font-black'
+                        : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Hoy ({getLocalPeruDateString()})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fin = socioParaRenovar.fecha_fin;
+                      const next = fin && fin >= getLocalPeruDateString() ? addDaysToLocalPeruDate(1, fin) : getLocalPeruDateString();
+                      setRenovModoInicio('continuidad');
+                      setRenovFechaInicio(next);
+                    }}
+                    className={`p-2 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                      renovModoInicio === 'continuidad'
+                        ? 'bg-amber-400 text-black border-amber-400 font-black'
+                        : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Continuidad
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRenovModoInicio('manual')}
+                    className={`p-2 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                      renovModoInicio === 'manual'
+                        ? 'bg-amber-400 text-black border-amber-400 font-black'
+                        : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Fecha en que Pagó
+                  </button>
+                </div>
+
+                {renovModoInicio === 'manual' && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-zinc-950 border border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <span className="text-zinc-300 text-xs font-sans">
+                      Indique la fecha en que el socio pagó (ej. cobro anterior):
+                    </span>
+                    <input
+                      type="date"
+                      value={renovFechaInicio}
+                      onChange={(e) => setRenovFechaInicio(e.target.value)}
+                      className="bg-zinc-900 border border-white/20 focus:border-amber-400 rounded-xl px-3 py-1.5 text-white font-mono text-xs focus:outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* 2. PLAN Y DURACIÓN CON PRESETS */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-zinc-300 font-bold uppercase text-xs">2. Plan y Duración</label>
+                  <span className="text-[11px] text-zinc-400">Atajos frecuentes:</span>
+                </div>
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 mb-2.5">
+                  {PRESET_RENOVACIONES.map((p) => (
+                    <button
+                      key={p.months}
+                      type="button"
+                      onClick={() => {
+                        setRenovMeses(p.months);
+                        setRenovPlan(p.planName);
+                        setRenovPrecio(p.defaultPrice);
+                        if (renovTipoPago === 'full') {
+                          setRenovAdelanto(p.defaultPrice);
+                        } else {
+                          setRenovAdelanto((prev) => Math.min(prev, p.defaultPrice));
+                        }
+                      }}
+                      className={`py-2 px-1 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                        renovMeses === p.months
+                          ? 'bg-amber-400 text-black border-amber-400 font-black shadow-md'
+                          : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="text-xs">{p.label}</div>
+                      <div className="text-[10px] opacity-80">S/. {p.defaultPrice}</div>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="sm:col-span-1">
+                    <label className="block text-[10px] text-zinc-400 uppercase font-bold mb-1">Meses</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={36}
+                      value={renovMeses}
+                      onChange={(e) => {
+                        const m = Number(e.target.value);
+                        setRenovMeses(m);
+                      }}
+                      className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl px-3 py-2 text-white font-bold text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <label className="block text-[10px] text-zinc-400 uppercase font-bold mb-1">Precio Total (S/.)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={renovPrecio}
+                      onChange={(e) => {
+                        const p = Number(e.target.value);
+                        setRenovPrecio(p);
+                        if (renovTipoPago === 'full') setRenovAdelanto(p);
+                      }}
+                      className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl px-3 py-2 text-white font-bold text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <label className="block text-[10px] text-zinc-400 uppercase font-bold mb-1">Turno</label>
+                    <select
+                      value={renovTurno}
+                      onChange={(e) => setRenovTurno(e.target.value as any)}
+                      className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl px-3 py-2 text-white font-bold text-xs focus:outline-none"
+                    >
+                      <option value="manana">Mañana</option>
+                      <option value="tarde">Tarde</option>
+                      <option value="noche">Noche</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Resumen de Vigencia Calculada */}
+                <div className="p-3 mt-2 rounded-xl bg-zinc-950 border border-amber-500/30 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Nueva Vigencia</span>
+                    <span className="text-white font-bold">
+                      {renovFechaInicio} al <strong className="text-amber-400">{renovFechaFin}</strong>
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block">Duración</span>
+                    <span className="text-emerald-400 font-bold">{renovMeses === 0 ? 'Pase Diario' : `${renovMeses} mes(es)`}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. MODALIDAD DE COBRANZA EN CAJA */}
+              <div className="space-y-3 pt-1 border-t border-white/10">
+                <div className="p-3 rounded-xl bg-zinc-950 border border-white/10 flex items-center justify-between gap-3">
+                  <div>
+                    <span className="text-xs text-white font-bold block">¿El socio ya pagó con anterioridad o con otro operador?</span>
+                    <span className="text-[11px] text-zinc-400 font-sans block mt-0.5">
+                      Activa esta casilla para actualizar la vigencia sin registrar un cobro duplicado en la caja de hoy.
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={renovYaPagoExterno}
+                    onChange={(e) => setRenovYaPagoExterno(e.target.checked)}
+                    className="w-5 h-5 accent-amber-400 rounded cursor-pointer shrink-0"
+                  />
+                </div>
+
+                {!renovYaPagoExterno && (
+                  <>
+                    <div>
+                      <label className="block text-zinc-300 font-bold uppercase mb-1.5 text-xs">
+                        Modalidad de Pago
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenovTipoPago('full');
+                            setRenovAdelanto(renovPrecio);
+                          }}
+                          className={`p-2.5 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                            renovTipoPago === 'full'
+                              ? 'bg-amber-400 text-black border-amber-400 font-black'
+                              : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Pago Completo (S/. {renovPrecio}.00)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRenovTipoPago('advance');
+                            setRenovAdelanto((prev) => (prev >= renovPrecio ? Math.floor(renovPrecio / 2) : prev));
+                          }}
+                          className={`p-2.5 rounded-xl border text-center font-bold cursor-pointer transition-all ${
+                            renovTipoPago === 'advance'
+                              ? 'bg-amber-400 text-black border-amber-400 font-black'
+                              : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                          }`}
+                        >
+                          Dejar Adelanto
+                        </button>
+                      </div>
+                    </div>
+
+                    {renovTipoPago === 'advance' && (
+                      <div className="space-y-1.5 p-3 rounded-xl bg-zinc-950 border border-white/10">
+                        <label className="block text-zinc-300 font-bold uppercase text-[11px]">
+                          Monto de Adelanto Cobrado Hoy
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400 font-bold">S/.</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={renovPrecio}
+                            step="any"
+                            value={renovAdelanto}
+                            onChange={(e) => setRenovAdelanto(Math.min(renovPrecio, Math.max(0, Number(e.target.value))))}
+                            className="w-full bg-zinc-900 border border-white/10 focus:border-amber-400 rounded-xl pl-10 pr-4 py-2 text-sm font-bold text-white focus:outline-none"
+                          />
+                        </div>
+                        <div className="text-[11px] text-zinc-400 flex justify-between pt-1">
+                          <span>Saldo pendiente que registrará el sistema:</span>
+                          <strong className="text-orange-400 font-mono">
+                            S/. {Math.max(0, renovPrecio - renovAdelanto).toFixed(2)}
+                          </strong>
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-zinc-300 font-bold uppercase mb-1.5 text-xs">Método de Cobro</label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {(['efectivo', 'yape', 'plin', 'tarjeta'] as const).map((met) => (
+                          <button
+                            key={met}
+                            type="button"
+                            onClick={() => setRenovMetodoPago(met)}
+                            className={`py-2 px-1 rounded-xl border text-center uppercase text-xs font-bold cursor-pointer transition-all ${
+                              renovMetodoPago === met
+                                ? 'bg-amber-400 text-black border-amber-400 font-black'
+                                : 'bg-zinc-950 border-white/10 text-zinc-400 hover:text-white'
+                            }`}
+                          >
+                            {met}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* ACCIONES DEL MODAL */}
+              <div className="pt-3 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => {
+                    iniciarRenovacionSocio(socioParaRenovar);
+                    setSocioParaRenovar(null);
+                  }}
+                  className="text-zinc-400 hover:text-amber-400 text-xs underline cursor-pointer"
+                >
+                  Abrir Formulario Extendido (Pestaña 3)
+                </button>
+                <div className="flex gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setSocioParaRenovar(null)}
+                    className="px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold uppercase cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isRenewing || renovPrecio <= 0}
+                    className="px-6 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black text-xs font-black uppercase tracking-wide cursor-pointer shadow-lg shadow-amber-400/20 flex items-center gap-2"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>{isRenewing ? 'Renovando en Vivo...' : 'Confirmar Renovación en Vivo'}</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* NOTIFICACIÓN TOAST FLOTANTE DE RENOVACIÓN RÁPIDA */}
+      {renovSuccessToast && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-emerald-400 text-black font-black text-xs font-mono shadow-2xl flex items-center gap-2 animate-in slide-in-from-bottom-4 duration-200">
+          <CheckCircle2 className="w-5 h-5" />
+          <span>{renovSuccessToast}</span>
+        </div>
+      )}
+
       {/* MODAL DE LIQUIDACIÓN DE DEUDAS / COBRO DE SALDO */}
       {liquidatingMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 font-mono text-xs">
@@ -2774,7 +3334,12 @@ export default function HubReceptionSimple() {
               const updatedList = await updateMemberProfile(memberToSave.id, memberToSave);
               setMembers(updatedList);
               saveStoredMembers(updatedList);
-            } catch {
+              setGestionSuccessMsg(`Ficha de ${memberToSave.name} actualizada correctamente.`);
+              setSocioParaGestionar(null);
+              setTimeout(() => setGestionSuccessMsg(null), 3500);
+            } catch (err: any) {
+              console.error('[MemberProfileModal.onSave] Error actualizando socio:', err);
+              alert(`Error al guardar en base de datos: ${err.message || 'Fallo de conexión'}. Verifique la red.`);
               const localList = [memberToSave, ...members.filter((m) => m.id !== memberToSave.id)];
               setMembers(localList);
               saveStoredMembers(localList);
