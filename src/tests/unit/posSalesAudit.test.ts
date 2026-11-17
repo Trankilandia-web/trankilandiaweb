@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { obtenerAuditoriaVentasPOS, AuditoriaVentasPOSResponse } from '../../lib/supabaseDb';
+import { obtenerAuditoriaVentasPOS } from '../../lib/supabaseDb';
 
 describe('Pruebas Unitarias · Auditoría de Ventas POS en Economía', () => {
   const LOCAL_OFFLINE_SALES_KEY = 'trankilandia_ventas_offline';

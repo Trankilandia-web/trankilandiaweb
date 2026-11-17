@@ -1393,8 +1393,8 @@ export default function AdminDashboard() {
             {/* Tabla de Inventario */}
             <div className="bg-zinc-900/60 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead className="bg-zinc-950/80 text-zinc-400 uppercase tracking-wider border-b border-white/10">
+                <table className="w-full min-w-[900px] text-left text-xs font-mono">
+                  <thead className="bg-zinc-950 text-zinc-400 uppercase tracking-wider border-b border-white/10">
                     <tr>
                       <th className="py-3 px-4">SKU / ID</th>
                       <th className="py-3 px-4">Producto</th>
@@ -1403,7 +1403,7 @@ export default function AdminDashboard() {
                       <th className="py-3 px-4">P. Venta</th>
                       <th className="py-3 px-4">Margen</th>
                       <th className="py-3 px-4">Stock Actual</th>
-                      <th className="py-3 px-4 text-right">Ajuste Rápido</th>
+                      <th className="py-3 px-4 text-right sticky right-0 bg-zinc-950 z-20 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.7)]">Ajuste Rápido</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
@@ -1439,7 +1439,7 @@ export default function AdminDashboard() {
                               {prod.stock_actual} un. (Mín: {prod.stock_minimo})
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-right">
+                          <td className="py-3 px-4 text-right sticky right-0 bg-zinc-900 group-hover:bg-zinc-800/95 transition-colors z-10 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.7)] backdrop-blur-sm">
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 type="button"
@@ -1493,10 +1493,11 @@ export default function AdminDashboard() {
            ========================================================================= */}
         {activeTab === 'padron' && (
           <div className="bg-zinc-900/60 border border-white/10 rounded-2xl overflow-hidden shadow-xl space-y-4 p-5">
-            {/* Filtros de Padrón */}
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 pb-4 border-b border-white/10">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            {/* Buscador Ergonómico y Filtros de Padrón */}
+            <div className="space-y-3 pb-4 border-b border-white/10">
+              {/* Barra de Búsqueda Grande y Ergonómica */}
+              <div className="relative w-full">
+                <Search className="w-5 h-5 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={searchTerm}
@@ -1504,121 +1505,154 @@ export default function AdminDashboard() {
                     setSearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
-                  placeholder="Buscar socio por nombre, DNI o ID..."
-                  className="w-full pl-10 pr-4 py-2 bg-zinc-950 border border-white/10 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500 font-mono"
+                  placeholder="Buscar socio por nombre, apellido, DNI oficial o ID (ej. MEM-123)..."
+                  className="w-full pl-12 pr-12 py-3.5 bg-zinc-950 border border-white/15 focus:border-amber-400 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none font-mono shadow-inner transition-all"
                 />
+                {searchTerm && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearchTerm('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                    title="Limpiar búsqueda"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
 
-              {/* Filtros por Rol, Turno y Deuda */}
-              <div className="flex items-center gap-2 flex-wrap text-xs font-mono">
-                {/* Filtro Rol */}
-                <select
-                  value={roleFilter}
-                  onChange={(e) => {
-                    setRoleFilter(e.target.value as any);
-                    setCurrentPage(1);
-                  }}
-                  className="bg-zinc-950 border border-white/10 rounded-xl px-2.5 py-1.5 text-zinc-200 cursor-pointer"
-                >
-                  <option value="all">Rol: Todos</option>
-                  <option value="admin">Admin</option>
-                  <option value="caja">Caja</option>
-                  <option value="entrenador">Entrenador</option>
-                  <option value="cliente">Cliente</option>
-                </select>
+              {/* Fila de Filtros y Acciones Rápidas */}
+              <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs font-mono">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Filtro Rol */}
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => {
+                      setRoleFilter(e.target.value as any);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-zinc-200 cursor-pointer focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="all">Rol: Todos</option>
+                    <option value="admin">Admin</option>
+                    <option value="caja">Caja</option>
+                    <option value="entrenador">Entrenador</option>
+                    <option value="cliente">Cliente</option>
+                  </select>
 
-                {/* Filtro Turno */}
-                <select
-                  value={shiftFilter}
-                  onChange={(e) => {
-                    setShiftFilter(e.target.value as any);
-                    setCurrentPage(1);
-                  }}
-                  className="bg-zinc-950 border border-white/10 rounded-xl px-2.5 py-1.5 text-zinc-200 cursor-pointer"
-                >
-                  <option value="all">Turno: Todos</option>
-                  <option value="manana">Mañana (6am-2pm)</option>
-                  <option value="tarde">Tarde (2pm-6pm)</option>
-                  <option value="noche">Noche (6pm-10pm)</option>
-                </select>
+                  {/* Filtro Turno */}
+                  <select
+                    value={shiftFilter}
+                    onChange={(e) => {
+                      setShiftFilter(e.target.value as any);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-zinc-200 cursor-pointer focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="all">Turno: Todos</option>
+                    <option value="manana">Mañana (6am-2pm)</option>
+                    <option value="tarde">Tarde (2pm-6pm)</option>
+                    <option value="noche">Noche (6pm-10pm)</option>
+                  </select>
 
-                {/* Filtro Deuda */}
-                <select
-                  value={debtFilter}
-                  onChange={(e) => {
-                    setDebtFilter(e.target.value as any);
-                    setCurrentPage(1);
-                  }}
-                  className="bg-zinc-950 border border-white/10 rounded-xl px-2.5 py-1.5 text-zinc-200 cursor-pointer"
-                >
-                  <option value="all">Deuda: Todas</option>
-                  <option value="con_deuda">Con Saldo Deudor</option>
-                  <option value="al_dia">100% Al Día</option>
-                </select>
+                  {/* Filtro Deuda */}
+                  <select
+                    value={debtFilter}
+                    onChange={(e) => {
+                      setDebtFilter(e.target.value as any);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-zinc-950 border border-white/10 rounded-xl px-3 py-2 text-zinc-200 cursor-pointer focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="all">Deuda: Todas</option>
+                    <option value="con_deuda">Con Saldo Deudor</option>
+                    <option value="al_dia">100% Al Día</option>
+                  </select>
 
-                {/* Orden del Padrón: Matrícula / Recientes vs Alfabético */}
-                <select
-                  value={sortOrder}
-                  onChange={(e) => {
-                    setSortOrder(e.target.value as any);
-                    setCurrentPage(1);
-                  }}
-                  className="bg-zinc-950 border border-amber-400/40 text-amber-400 font-bold rounded-xl px-2.5 py-1.5 cursor-pointer hover:border-amber-400 transition-colors"
-                  title="Ordenar socios en el padrón"
-                >
-                  <option value="matricula">Orden: Matrícula (Recientes)</option>
-                  <option value="alfabetico">Orden: Alfabético (A - Z)</option>
-                  <option value="deuda">Orden: Mayor Deuda</option>
-                </select>
+                  {/* Orden del Padrón: Matrícula / Recientes vs Alfabético */}
+                  <select
+                    value={sortOrder}
+                    onChange={(e) => {
+                      setSortOrder(e.target.value as any);
+                      setCurrentPage(1);
+                    }}
+                    className="bg-zinc-950 border border-amber-400/40 text-amber-400 font-bold rounded-xl px-3 py-2 cursor-pointer hover:border-amber-400 transition-colors"
+                    title="Ordenar socios en el padrón"
+                  >
+                    <option value="matricula">Orden: Matrícula (Recientes)</option>
+                    <option value="alfabetico">Orden: Alfabético (A - Z)</option>
+                    <option value="deuda">Orden: Mayor Deuda</option>
+                  </select>
 
-                {/* Indicador de Conexión Real a Supabase Cloud */}
-                <span
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-mono border ml-auto ${
-                    !isSupabaseConfigured()
-                      ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-                      : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                  }`}
-                  title={
-                    !isSupabaseConfigured()
-                      ? 'La aplicación no tiene configurada la clave anon de Supabase. Los datos operan en almacenamiento local.'
-                      : 'Conexión activa en tiempo real con Supabase PostgreSQL'
-                  }
-                >
+                  {(searchTerm || roleFilter !== 'all' || shiftFilter !== 'all' || debtFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setRoleFilter('all');
+                        setShiftFilter('all');
+                        setDebtFilter('all');
+                        setCurrentPage(1);
+                      }}
+                      className="text-zinc-400 hover:text-amber-400 text-xs underline cursor-pointer px-1 py-1"
+                    >
+                      Restablecer filtros
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 ml-auto">
+                  {/* Indicador de Conexión Real a Supabase Cloud */}
                   <span
-                    className={`w-2 h-2 rounded-full ${
-                      !isSupabaseConfigured() ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'
+                    className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-mono border ${
+                      !isSupabaseConfigured()
+                        ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                        : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
                     }`}
-                  />
-                  <span>
-                    {!isSupabaseConfigured() ? 'Modo Local (Sin Cloud)' : 'Cloud En Vivo'}
-                  </span>
-                </span>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    if (window.confirm('¿Deseas recargar y sincronizar el padrón oficial con la data actual de Gym.xlsm?')) {
-                      reloadFreshMembersFromExcel();
-                      await cargarSociosEnMemoria();
-                      setActionSuccess(`¡Padrón actualizado con éxito! ${INITIAL_MEMBERS.length} socios sincronizados desde Gym.xlsm.`);
-                      setTimeout(() => setActionSuccess(null), 4000);
+                    title={
+                      !isSupabaseConfigured()
+                        ? 'La aplicación no tiene configurada la clave anon de Supabase. Los datos operan en almacenamiento local.'
+                        : 'Conexión activa en tiempo real con Supabase PostgreSQL'
                     }
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-bold transition-all border border-white/10 cursor-pointer"
-                  title="Recarga limpia y sincronización desde Gym.xlsm"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Sincronizar Gym.xlsm</span>
-                </button>
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        !isSupabaseConfigured() ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'
+                      }`}
+                    />
+                    <span>
+                      {!isSupabaseConfigured() ? 'Modo Local' : 'Cloud En Vivo'}
+                    </span>
+                  </span>
 
-                <button
-                  type="button"
-                  onClick={handleOpenNewMember}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-mono font-bold transition-all shadow-md shadow-amber-400/20 cursor-pointer"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>+ Inscribir Socio</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm('¿Deseas recargar y sincronizar el padrón oficial con la data actual de Gym.xlsm?')) {
+                        reloadFreshMembersFromExcel();
+                        await cargarSociosEnMemoria();
+                        setActionSuccess(`¡Padrón actualizado con éxito! ${INITIAL_MEMBERS.length} socios sincronizados desde Gym.xlsm.`);
+                        setTimeout(() => setActionSuccess(null), 4000);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-bold transition-all border border-white/10 cursor-pointer"
+                    title="Recarga limpia y sincronización desde Gym.xlsm"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Sincronizar Gym.xlsm</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenNewMember}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-mono font-black uppercase tracking-wide transition-all shadow-md shadow-amber-400/20 cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>+ Inscribir Socio</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1645,18 +1679,20 @@ export default function AdminDashboard() {
             </div>
 
             {/* Tabla Paginada de Socios */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-zinc-950/80 text-zinc-400 font-mono uppercase tracking-wider border-b border-white/10">
+            <div className="overflow-x-auto rounded-2xl border border-white/10 shadow-inner">
+              <table className="w-full min-w-[1100px] text-left text-xs border-collapse">
+                <thead className="bg-zinc-950 text-zinc-400 font-mono uppercase tracking-wider border-b border-white/10">
                   <tr>
-                    <th className="py-3 px-4">Socio / Usuario</th>
-                    <th className="py-3 px-4">DNI</th>
-                    <th className="py-3 px-4">Rol</th>
-                    <th className="py-3 px-4">Turno Oficial</th>
-                    <th className="py-3 px-4">Coach Asignado</th>
-                    <th className="py-3 px-4">Plan & Saldo</th>
-                    <th className="py-3 px-4">Documento</th>
-                    <th className="py-3 px-4 text-right">Acciones</th>
+                    <th className="py-3.5 px-4">Socio / Usuario</th>
+                    <th className="py-3.5 px-4">DNI</th>
+                    <th className="py-3.5 px-4">Rol</th>
+                    <th className="py-3.5 px-4">Turno Oficial</th>
+                    <th className="py-3.5 px-4">Coach Asignado</th>
+                    <th className="py-3.5 px-4">Plan & Saldo</th>
+                    <th className="py-3.5 px-4">Documento</th>
+                    <th className="py-3.5 px-4 text-right sticky right-0 bg-zinc-950 z-20 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.7)]">
+                      Acciones
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 font-sans">
@@ -1669,7 +1705,7 @@ export default function AdminDashboard() {
                     const hasDebt = (m.balanceDue || 0) > 0;
 
                     return (
-                      <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
+                      <tr key={m.id} className="group hover:bg-white/[0.03] transition-colors">
                         <td className="py-3 px-4">
                           <div className="font-bold text-white leading-snug">{m.name}</div>
                           <div className="text-[11px] text-zinc-400 font-mono flex items-center gap-2 mt-0.5">
@@ -1803,7 +1839,7 @@ export default function AdminDashboard() {
                           )}
                         </td>
 
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3 px-4 text-right sticky right-0 bg-zinc-900 group-hover:bg-zinc-800/95 transition-colors z-10 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.7)] backdrop-blur-sm">
                           <div className="flex items-center justify-end gap-2">
                             <button
                               type="button"
