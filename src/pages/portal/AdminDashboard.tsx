@@ -85,6 +85,8 @@ import {
   registerGymMember,
   normalizeDateToISO,
   subscribeToGymRealtime,
+  obtenerAuditoriaVentasPOS,
+  AuditoriaVentasPOSResponse,
 } from '../../lib/supabaseDb';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
@@ -232,6 +234,9 @@ export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState<'mes' | 'hoy' | '7dias' | 'anual' | string>('mes');
   const [resumen, setResumen] = useState<ResumenAdmin | null>(null);
   const [isLoadingResumen, setIsLoadingResumen] = useState(true);
+  const [auditoriaPOS, setAuditoriaPOS] = useState<AuditoriaVentasPOSResponse | null>(null);
+  const [isLoadingAuditoria, setIsLoadingAuditoria] = useState(false);
+  const [vistaAuditoria, setVistaAuditoria] = useState<'ranking' | 'tickets'>('ranking');
 
   // Inventario & Productos
   const [productos, setProductos] = useState<ProductoPOS[]>([]);
@@ -432,10 +437,19 @@ export default function AdminDashboard() {
     }
 
     try {
-      const data = await obtenerResumenAdmin(inicio, fin);
+      setIsLoadingAuditoria(true);
+      const [data, posData] = await Promise.all([
+        obtenerResumenAdmin(inicio, fin),
+        obtenerAuditoriaVentasPOS(inicio, fin),
+      ]);
       setResumen(data);
-    } catch {}
-    setIsLoadingResumen(false);
+      setAuditoriaPOS(posData);
+    } catch (err) {
+      console.warn('[cargarResumenKPIs] Error obteniendo resumen o auditoría POS:', err);
+    } finally {
+      setIsLoadingResumen(false);
+      setIsLoadingAuditoria(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -1263,6 +1277,211 @@ export default function AdminDashboard() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* AUDITORÍA DETALLADA DE VENTAS POS & CONTROL DE ENCARGADOS */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl p-6 shadow-xl space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-white/10">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold flex items-center gap-1.5">
+                      <Package className="w-4 h-4 text-amber-400" />
+                      Auditoría de Ventas POS & Control de Turno
+                    </span>
+                    <span className="text-[10px] bg-amber-400/10 text-amber-300 border border-amber-400/30 px-2 py-0.5 rounded-full font-mono">
+                      Cuadre de Encargado
+                    </span>
+                  </div>
+                  <h3 className="text-lg font-black text-white font-display uppercase tracking-tight mt-1">
+                    Productos Vendidos y Tickets del Periodo
+                  </h3>
+                  <p className="text-xs text-zinc-400 font-sans mt-0.5">
+                    Permite verificar cada producto vendido en mostrador, el método de pago utilizado y el operador a cargo.
+                  </p>
+                </div>
+
+                {/* Métricas Rápidas del POS */}
+                <div className="flex items-center gap-3">
+                  <div className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-emerald-500/30 text-right">
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block font-mono">Total POS</span>
+                    <strong className="text-emerald-400 font-mono text-base font-black">
+                      S/. {(auditoriaPOS?.totalVendido || 0).toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                  <div className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-white/10 text-right">
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block font-mono">Unidades</span>
+                    <strong className="text-white font-mono text-base font-black">
+                      {auditoriaPOS?.totalUnidades || 0} un.
+                    </strong>
+                  </div>
+                  <div className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-white/10 text-right">
+                    <span className="text-[10px] text-zinc-400 uppercase font-bold block font-mono">Tickets</span>
+                    <strong className="text-amber-300 font-mono text-base font-black">
+                      {auditoriaPOS?.ventas?.length || 0}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* Selector de Vista: Ranking por Producto vs Libro Diario de Tickets */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 p-1 bg-zinc-950 rounded-xl border border-white/10 text-xs font-mono">
+                  <button
+                    type="button"
+                    onClick={() => setVistaAuditoria('ranking')}
+                    className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      vistaAuditoria === 'ranking'
+                        ? 'bg-amber-400 text-black shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Resumen por Producto ({auditoriaPOS?.resumenPorProducto?.length || 0})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setVistaAuditoria('tickets')}
+                    className={`px-3.5 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                      vistaAuditoria === 'tickets'
+                        ? 'bg-amber-400 text-black shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    Libro Cronológico de Tickets ({auditoriaPOS?.ventas?.length || 0})
+                  </button>
+                </div>
+              </div>
+
+              {/* CONTENIDO DE LA AUDITORÍA */}
+              {isLoadingAuditoria ? (
+                <div className="p-8 text-center text-zinc-400 font-mono text-xs flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
+                  <span>Cargando auditoría de ventas...</span>
+                </div>
+              ) : !auditoriaPOS || auditoriaPOS.ventas.length === 0 ? (
+                <div className="p-8 rounded-2xl bg-zinc-950 border border-white/5 text-center text-zinc-500 font-mono text-xs space-y-2">
+                  <Package className="w-8 h-8 mx-auto text-zinc-600 mb-1" />
+                  <p className="text-zinc-400 font-bold">No se registran ventas de productos en este periodo ({dateRange}).</p>
+                  <p className="text-[11px] text-zinc-600">
+                    Las ventas realizadas en la pestaña de Recepción (POS) aparecerán detalladas aquí automáticamente.
+                  </p>
+                </div>
+              ) : vistaAuditoria === 'ranking' ? (
+                /* VISTA 1: RANKING Y DESGLOSE POR PRODUCTO */
+                <div className="overflow-x-auto rounded-2xl border border-white/10">
+                  <table className="w-full text-left text-xs font-mono">
+                    <thead className="bg-zinc-950 text-zinc-400 uppercase tracking-wider border-b border-white/10">
+                      <tr>
+                        <th className="py-3 px-4">Producto</th>
+                        <th className="py-3 px-4 text-center">Unidades Vendidas</th>
+                        <th className="py-3 px-4 text-right">Precio Promedio</th>
+                        <th className="py-3 px-4 text-right">Total Recaudado</th>
+                        <th className="py-3 px-4 text-right">% de Ventas</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-sans">
+                      {auditoriaPOS.resumenPorProducto.map((p, idx) => {
+                        const pct = auditoriaPOS.totalVendido > 0 ? (p.totalRecaudado / auditoriaPOS.totalVendido) * 100 : 0;
+                        return (
+                          <tr key={p.productoId || idx} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-3 px-4">
+                              <span className="font-bold text-white block">{p.nombre}</span>
+                              <span className="text-[10px] text-zinc-500 font-mono">ID: {p.productoId}</span>
+                            </td>
+                            <td className="py-3 px-4 text-center font-mono">
+                              <span className="px-2.5 py-1 rounded-full bg-amber-400/10 text-amber-300 font-bold border border-amber-400/20">
+                                {p.cantidadTotal} un.
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-zinc-300">
+                              S/. {p.precioUnitarioPromedio.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-emerald-400 text-sm">
+                              S/. {p.totalRecaudado.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono text-zinc-400">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-amber-400 rounded-full"
+                                    style={{ width: `${Math.min(100, Math.max(5, pct))}%` }}
+                                  />
+                                </div>
+                                <span className="text-[11px] w-9 text-right">{pct.toFixed(0)}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* VISTA 2: LIBRO DIARIO CRONOLÓGICO DE TICKETS */
+                <div className="overflow-x-auto rounded-2xl border border-white/10">
+                  <table className="w-full min-w-[750px] text-left text-xs font-mono">
+                    <thead className="bg-zinc-950 text-zinc-400 uppercase tracking-wider border-b border-white/10">
+                      <tr>
+                        <th className="py-3 px-4">Hora & Fecha</th>
+                        <th className="py-3 px-4">Ticket</th>
+                        <th className="py-3 px-4">Detalle de Productos</th>
+                        <th className="py-3 px-4">Encargado / Cliente</th>
+                        <th className="py-3 px-4">Método</th>
+                        <th className="py-3 px-4 text-right">Total Cobrado</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 font-sans">
+                      {auditoriaPOS.ventas.map((v) => (
+                        <tr key={v.id} className="hover:bg-white/[0.02] transition-colors">
+                          <td className="py-3 px-4 font-mono text-zinc-300">
+                            <span className="text-white font-bold block">{v.hora}</span>
+                            <span className="text-[10px] text-zinc-500">{v.fecha}</span>
+                          </td>
+                          <td className="py-3 px-4 font-mono text-amber-400 font-bold">
+                            {v.numeroTicket}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="space-y-0.5">
+                              {v.items && v.items.length > 0 ? (
+                                v.items.map((it, i) => (
+                                  <div key={i} className="text-xs text-zinc-200 flex items-center gap-1.5">
+                                    <span className="font-bold text-amber-300 font-mono">{it.cantidad}x</span>
+                                    <span>{it.nombreProducto}</span>
+                                    <span className="text-[10px] text-zinc-500 font-mono">(c/u S/. {it.precioUnitario.toFixed(2)})</span>
+                                  </div>
+                                ))
+                              ) : (
+                                <span className="text-zinc-500 italic text-xs">Venta directa mostrador</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-zinc-300 text-xs">
+                            <span className="font-medium text-white block">{v.clienteNombre}</span>
+                            {v.clienteDni && (
+                              <span className="text-[10px] font-mono text-zinc-500">DNI: {v.clienteDni}</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-4 font-mono">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${
+                                v.metodoPago.toLowerCase() === 'efectivo'
+                                  ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30'
+                                  : v.metodoPago.toLowerCase() === 'yape'
+                                  ? 'bg-purple-500/10 text-purple-300 border border-purple-500/30'
+                                  : 'bg-zinc-800 text-zinc-300'
+                              }`}
+                            >
+                              {v.metodoPago}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-white text-sm">
+                            S/. {v.total.toFixed(2)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         )}
