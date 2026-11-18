@@ -2850,6 +2850,7 @@ export interface AuditoriaVentaItem {
   clienteDni?: string;
   metodoPago: string;
   total: number;
+  fechaHoraISO?: string;
   items: {
     productoId: string;
     nombreProducto: string;
@@ -2936,6 +2937,7 @@ export async function obtenerAuditoriaVentasPOS(
             numeroTicket: v.numero_ticket || `TK-${v.id}`,
             fecha: fechaStr,
             hora: horaStr,
+            fechaHoraISO: v.created_at || createdAt.toISOString(),
             clienteNombre: v.cliente_nombre || 'Cliente Mostrador',
             clienteDni: v.cliente_dni || undefined,
             metodoPago: v.metodo_pago || 'efectivo',
@@ -2988,6 +2990,7 @@ export async function obtenerAuditoriaVentasPOS(
               numeroTicket: ov.numero_ticket || 'TK-OFFLINE',
               fecha: fechaStr,
               hora: horaStr,
+              fechaHoraISO: dateObj.toISOString(),
               clienteNombre: ov.cliente_nombre || 'Cliente Mostrador',
               clienteDni: ov.cliente_dni || undefined,
               metodoPago: ov.metodo_pago || 'efectivo',
@@ -3038,6 +3041,213 @@ export async function obtenerAuditoriaVentasPOS(
     resumenPorProducto,
     totalVendido,
     totalUnidades,
+  };
+}
+
+export interface MovimientoCaja {
+  id: string;
+  fechaHora: string; // ISO
+  horaFormateada: string; // "04:30 p. m."
+  tipo: 'membresia_nueva' | 'renovacion' | 'abono_deuda' | 'venta_pos';
+  tipoEtiqueta: string;
+  clienteNombre: string;
+  clienteDni?: string;
+  concepto: string;
+  metodoPago: 'efectivo' | 'yape' | 'plin' | 'tarjeta';
+  monto: number;
+  operador: string;
+  ticketOBoleta?: string;
+}
+
+export interface ReporteCajaDiario {
+  fechaInicio: string;
+  fechaFin: string;
+  totalRecaudado: number;
+  totalEfectivo: number;
+  totalYape: number;
+  totalPlin: number;
+  totalTarjeta: number;
+  totalMembresias: number;
+  conteoMembresias: number;
+  totalVentasPOS: number;
+  conteoVentasPOS: number;
+  movimientos: MovimientoCaja[];
+  resumenProductos: ResumenVentasPorProducto[];
+}
+
+/**
+ * Reporte integral de caja diaria y arqueo unificado:
+ * Combina en un solo flujo cronológico los ingresos por membresías, renovaciones,
+ * abonos y ventas de mostrador POS, con desglose exacto por método de pago.
+ */
+export async function obtenerReporteCajaMovimientos(
+  fechaInicio?: string,
+  fechaFin?: string
+): Promise<ReporteCajaDiario> {
+  const todayPeru = getLocalPeruDateString();
+  const rawStart = fechaInicio || todayPeru;
+  const rawEnd = fechaFin || rawStart;
+
+  const dateStart = rawStart.includes('T') ? rawStart.split('T')[0] : rawStart;
+  const dateEnd = rawEnd.includes('T') ? rawEnd.split('T')[0] : rawEnd;
+
+  const startISO = rawStart.includes('T') ? rawStart : `${dateStart}T00:00:00.000Z`;
+  const endISO = rawEnd.includes('T') ? rawEnd : `${dateEnd}T23:59:59.999Z`;
+
+  const movimientos: MovimientoCaja[] = [];
+
+  // 1. Obtener ventas de productos POS (Supabase + cola offline integrada)
+  const posAudit = await obtenerAuditoriaVentasPOS(dateStart, dateEnd);
+
+  posAudit.ventas.forEach((v) => {
+    const itemsResumen = v.items && v.items.length > 0
+      ? v.items.map((it) => `${it.cantidad}x ${it.nombreProducto}`).join(', ')
+      : `Ticket ${v.numeroTicket}`;
+
+    const rawPago = (v.metodoPago || '').toLowerCase();
+    const metodo: 'efectivo' | 'yape' | 'plin' | 'tarjeta' =
+      rawPago === 'yape' || rawPago === 'plin' || rawPago === 'tarjeta' ? rawPago : 'efectivo';
+
+    movimientos.push({
+      id: `pos-${v.numeroTicket || v.id}`,
+      fechaHora: v.fechaHoraISO || new Date().toISOString(),
+      horaFormateada: v.hora || '12:00 p. m.',
+      tipo: 'venta_pos',
+      tipoEtiqueta: 'Venta POS Mostrador',
+      clienteNombre: v.clienteNombre || 'Cliente Mostrador',
+      clienteDni: v.clienteDni,
+      concepto: itemsResumen,
+      metodoPago: metodo,
+      monto: v.total,
+      operador: 'Recepción / POS',
+      ticketOBoleta: v.numeroTicket,
+    });
+  });
+
+  // 2. Obtener ingresos de membresías, renovaciones y abonos de Supabase
+  if (isSupabaseConfigured()) {
+    try {
+      const { data: ingresosDb, error: ingErr } = await supabase
+        .from('ingresos')
+        .select('id, created_at, monto, metodo_pago, tipo, observacion, key_socio')
+        .gte('created_at', startISO)
+        .lte('created_at', endISO)
+        .order('created_at', { ascending: false });
+
+      if (!ingErr && Array.isArray(ingresosDb)) {
+        // Mapa local de socios para asociar nombres y DNIs
+        const storedMembers = getStoredMembers();
+        const sociosMap = new Map<string, GymMember>();
+        storedMembers.forEach((m) => {
+          if (m.id) sociosMap.set(m.id, m);
+          if (m.dni) sociosMap.set(m.dni, m);
+        });
+
+        ingresosDb.forEach((ing: any) => {
+          const obs = (ing.observacion || '').toLowerCase();
+          const tipoRaw = (ing.tipo || '').toLowerCase();
+
+          // Evitar duplicar ventas POS sincronizadas si ya están registradas desde la tabla de ventas
+          if (tipoRaw.includes('pos') || obs.includes('venta offline ticket') || obs.includes('venta pos')) {
+            const yaRegistrado = movimientos.some((m) =>
+              m.ticketOBoleta && obs.includes(m.ticketOBoleta.toLowerCase())
+            );
+            if (yaRegistrado) return;
+          }
+
+          const socioInfo = ing.key_socio ? sociosMap.get(ing.key_socio) : undefined;
+          const clienteNombre = socioInfo?.name || (ing.key_socio ? `Socio ${ing.key_socio}` : 'Cliente');
+          const clienteDni = socioInfo?.dni || (ing.key_socio && /^\d{8}$/.test(ing.key_socio) ? ing.key_socio : undefined);
+
+          let tipo: 'membresia_nueva' | 'renovacion' | 'abono_deuda' | 'venta_pos' = 'membresia_nueva';
+          let tipoEtiqueta = 'Membresía';
+
+          if (tipoRaw.includes('renov') || obs.includes('renov')) {
+            tipo = 'renovacion';
+            tipoEtiqueta = 'Renovación';
+          } else if (tipoRaw.includes('abono') || tipoRaw.includes('adelanto') || tipoRaw.includes('liquid') || obs.includes('abono') || obs.includes('saldo')) {
+            tipo = 'abono_deuda';
+            tipoEtiqueta = 'Abono / Deuda';
+          } else if (tipoRaw.includes('pos') || tipoRaw.includes('venta')) {
+            tipo = 'venta_pos';
+            tipoEtiqueta = 'Venta POS Mostrador';
+          }
+
+          const rawPago = (ing.metodo_pago || '').toLowerCase();
+          const metodo: 'efectivo' | 'yape' | 'plin' | 'tarjeta' =
+            rawPago === 'yape' || rawPago === 'plin' || rawPago === 'tarjeta' ? rawPago : 'efectivo';
+
+          const createdDate = new Date(ing.created_at || new Date());
+          const horaStr = createdDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
+
+          const matchBoleta = (ing.observacion || '').match(/B\d{3}-\d+/i);
+          const ticketOBoleta = matchBoleta ? matchBoleta[0] : undefined;
+
+          movimientos.push({
+            id: `ing-${ing.id}`,
+            fechaHora: ing.created_at || createdDate.toISOString(),
+            horaFormateada: horaStr,
+            tipo,
+            tipoEtiqueta,
+            clienteNombre,
+            clienteDni,
+            concepto: ing.observacion || ing.tipo || 'Pago recibido',
+            metodoPago: metodo,
+            monto: Number(ing.monto) || 0,
+            operador: obs.includes('recepción') || obs.includes('recepcion') ? 'Recepción' : 'Administración',
+            ticketOBoleta,
+          });
+        });
+      }
+    } catch (ingDbErr) {
+      console.warn('[obtenerReporteCajaMovimientos] Error leyendo ingresos de Supabase:', ingDbErr);
+    }
+  }
+
+  // 3. Ordenar movimientos cronológicamente descendente (más reciente primero)
+  movimientos.sort((a, b) => new Date(b.fechaHora).getTime() - new Date(a.fechaHora).getTime());
+
+  // 4. Calcular totales de arqueo exacto
+  let totalEfectivo = 0;
+  let totalYape = 0;
+  let totalPlin = 0;
+  let totalTarjeta = 0;
+  let totalMembresias = 0;
+  let conteoMembresias = 0;
+  let totalVentasPOS = 0;
+  let conteoVentasPOS = 0;
+
+  movimientos.forEach((m) => {
+    if (m.metodoPago === 'efectivo') totalEfectivo += m.monto;
+    else if (m.metodoPago === 'yape') totalYape += m.monto;
+    else if (m.metodoPago === 'plin') totalPlin += m.monto;
+    else if (m.metodoPago === 'tarjeta') totalTarjeta += m.monto;
+
+    if (m.tipo === 'venta_pos') {
+      totalVentasPOS += m.monto;
+      conteoVentasPOS += 1;
+    } else {
+      totalMembresias += m.monto;
+      conteoMembresias += 1;
+    }
+  });
+
+  const totalRecaudado = totalEfectivo + totalYape + totalPlin + totalTarjeta;
+
+  return {
+    fechaInicio: dateStart,
+    fechaFin: dateEnd,
+    totalRecaudado,
+    totalEfectivo,
+    totalYape,
+    totalPlin,
+    totalTarjeta,
+    totalMembresias,
+    conteoMembresias,
+    totalVentasPOS,
+    conteoVentasPOS,
+    movimientos,
+    resumenProductos: posAudit.resumenPorProducto || [],
   };
 }
 
