@@ -37,7 +37,6 @@ import {
   Mail,
   KeyRound,
   ShieldCheck,
-  Wallet,
   Receipt,
   Coins,
 } from 'lucide-react';
@@ -92,7 +91,6 @@ import {
   AuditoriaVentasPOSResponse,
   obtenerReporteCajaMovimientos,
   ReporteCajaDiario,
-  MovimientoCaja,
 } from '../../lib/supabaseDb';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 

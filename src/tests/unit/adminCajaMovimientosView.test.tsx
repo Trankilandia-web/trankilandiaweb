@@ -1,4 +1,3 @@
-import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import AdminDashboard from '../../pages/portal/AdminDashboard';
@@ -24,6 +23,6 @@ describe('AdminDashboard · Pestaña Caja & Movimientos del Día', () => {
     const elements = await screen.findAllByText(/Caja & Movimientos/i);
     expect(elements.length).toBeGreaterThanOrEqual(1);
     // Debe mostrar los filtros de fecha del arqueo
-    expect(screen.getByText('Hoy')).toBeInTheDocument();
+    expect(screen.getByText('Hoy')).toBeTruthy();
   });
 });

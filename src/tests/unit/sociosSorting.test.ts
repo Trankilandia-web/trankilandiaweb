@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GymMember } from '../../types';
+import { GymMember } from '../../data/gymStore';
 
 // Función pura de ordenamiento que replica la lógica usada en componentes
 export function sortGymMembers(
