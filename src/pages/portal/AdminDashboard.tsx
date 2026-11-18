@@ -37,6 +37,9 @@ import {
   Mail,
   KeyRound,
   ShieldCheck,
+  Wallet,
+  Receipt,
+  Coins,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import {
@@ -87,6 +90,9 @@ import {
   subscribeToGymRealtime,
   obtenerAuditoriaVentasPOS,
   AuditoriaVentasPOSResponse,
+  obtenerReporteCajaMovimientos,
+  ReporteCajaDiario,
+  MovimientoCaja,
 } from '../../lib/supabaseDb';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
@@ -124,7 +130,8 @@ const COACHES_BY_SHIFT_OPTIONS = [
 export default function AdminDashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryTab = searchParams.get('tab');
-  const validTabs: Array<'kpis' | 'inventario' | 'padron' | 'planes' | 'personal'> = [
+  const validTabs: Array<'caja_dia' | 'kpis' | 'inventario' | 'padron' | 'planes' | 'personal'> = [
+    'caja_dia',
     'kpis',
     'inventario',
     'padron',
@@ -133,11 +140,11 @@ export default function AdminDashboard() {
   ];
 
   // Pestañas principales (con soporte para enlace directo /admin?tab=planes)
-  const [activeTab, setActiveTab] = useState<'kpis' | 'inventario' | 'padron' | 'planes' | 'personal'>(() => {
+  const [activeTab, setActiveTab] = useState<'caja_dia' | 'kpis' | 'inventario' | 'padron' | 'planes' | 'personal'>(() => {
     if (queryTab && validTabs.includes(queryTab as any)) {
       return queryTab as any;
     }
-    return 'kpis';
+    return 'caja_dia';
   });
 
   useEffect(() => {
@@ -147,7 +154,7 @@ export default function AdminDashboard() {
     }
   }, [searchParams]);
 
-  const handleSelectTab = (tab: 'kpis' | 'inventario' | 'padron' | 'planes' | 'personal') => {
+  const handleSelectTab = (tab: 'caja_dia' | 'kpis' | 'inventario' | 'padron' | 'planes' | 'personal') => {
     setActiveTab(tab);
     setSearchParams({ tab });
   };
@@ -229,6 +236,89 @@ export default function AdminDashboard() {
     });
     setQuickPlanPrices(map);
   }, [storedPlans]);
+
+  // Reporte Diario de Caja & Movimientos Unificados (Pestaña Principal)
+  const [reporteCaja, setReporteCaja] = useState<ReporteCajaDiario | null>(null);
+  const [isLoadingReporteCaja, setIsLoadingReporteCaja] = useState(false);
+  const [cajaRango, setCajaRango] = useState<'hoy' | 'ayer' | '7dias' | 'mes'>('hoy');
+  const [filtroTipoMovimiento, setFiltroTipoMovimiento] = useState<'todos' | 'membresias' | 'pos' | 'abono'>('todos');
+  const [filtroMetodoPago, setFiltroMetodoPago] = useState<'todos' | 'efectivo' | 'digitales'>('todos');
+  const [searchMovimiento, setSearchMovimiento] = useState('');
+  const [mostrarAuditoriaProductos, setMostrarAuditoriaProductos] = useState(true);
+
+  const cargarReporteCaja = useCallback(async (rango: 'hoy' | 'ayer' | '7dias' | 'mes') => {
+    setIsLoadingReporteCaja(true);
+    try {
+      const now = new Date();
+      const peruFormatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Lima',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      });
+      const today = peruFormatter.format(now);
+      let inicio = today;
+      let fin = today;
+
+      if (rango === 'ayer') {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        inicio = peruFormatter.format(d);
+        fin = inicio;
+      } else if (rango === '7dias') {
+        const d = new Date();
+        d.setDate(d.getDate() - 7);
+        inicio = peruFormatter.format(d);
+        fin = today;
+      } else if (rango === 'mes') {
+        const parts = today.split('-');
+        inicio = `${parts[0]}-${parts[1]}-01`;
+        fin = today;
+      }
+
+      const rep = await obtenerReporteCajaMovimientos(inicio, fin);
+      setReporteCaja(rep);
+    } catch (err) {
+      console.warn('[cargarReporteCaja] Error cargando reporte de caja:', err);
+    } finally {
+      setIsLoadingReporteCaja(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarReporteCaja(cajaRango);
+  }, [cajaRango, cargarReporteCaja]);
+
+  const movimientosFiltrados = useMemo(() => {
+    if (!reporteCaja || !reporteCaja.movimientos) return [];
+    const q = searchMovimiento.trim().toLowerCase();
+
+    return reporteCaja.movimientos.filter((m) => {
+      if (q) {
+        const matchCliente = m.clienteNombre?.toLowerCase().includes(q);
+        const matchDni = m.clienteDni?.includes(q);
+        const matchConcepto = m.concepto?.toLowerCase().includes(q);
+        const matchTicket = m.ticketOBoleta?.toLowerCase().includes(q);
+        if (!matchCliente && !matchDni && !matchConcepto && !matchTicket) return false;
+      }
+
+      if (filtroTipoMovimiento === 'membresias') {
+        if (m.tipo !== 'membresia_nueva' && m.tipo !== 'renovacion') return false;
+      } else if (filtroTipoMovimiento === 'pos') {
+        if (m.tipo !== 'venta_pos') return false;
+      } else if (filtroTipoMovimiento === 'abono') {
+        if (m.tipo !== 'abono_deuda') return false;
+      }
+
+      if (filtroMetodoPago === 'efectivo') {
+        if (m.metodoPago !== 'efectivo') return false;
+      } else if (filtroMetodoPago === 'digitales') {
+        if (m.metodoPago === 'efectivo') return false;
+      }
+
+      return true;
+    });
+  }, [reporteCaja, searchMovimiento, filtroTipoMovimiento, filtroMetodoPago]);
 
   // Filtro de rango de fecha para arqueo (Hora de Perú) - Por defecto Mes Actual (Octubre)
   const [dateRange, setDateRange] = useState<'mes' | 'hoy' | '7dias' | 'anual' | string>('mes');
@@ -461,6 +551,7 @@ export default function AdminDashboard() {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         cargarResumenKPIs(dateRange);
+        cargarReporteCaja(cajaRango);
       }, 1500);
     };
 
@@ -894,6 +985,19 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0 max-w-full">
             <button
               type="button"
+              onClick={() => handleSelectTab('caja_dia')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
+                activeTab === 'caja_dia'
+                  ? 'bg-amber-400 text-black shadow-sm font-black'
+                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Coins className="w-4 h-4 flex-shrink-0" />
+              <span>Caja & Movimientos</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => handleSelectTab('kpis')}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'kpis'
@@ -993,6 +1097,360 @@ export default function AdminDashboard() {
             <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0" />
             <span>{actionSuccess}</span>
           </motion.div>
+        )}
+
+        {/* =========================================================================
+            PESTAÑA 0: CAJA CENTRALIZADA, ARQUEO DEL DÍA Y MOVIMIENTOS EN VIVO
+           ========================================================================= */}
+        {activeTab === 'caja_dia' && (
+          <div className="space-y-6">
+            {/* Control Superior de Arqueo y Rango de Fecha */}
+            <div className="bg-zinc-900/80 border border-white/10 rounded-2xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4 shadow-xl">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-amber-400" />
+                  <h2 className="text-base sm:text-lg font-black text-white uppercase tracking-tight">
+                    Cuadre de Caja & Movimientos del Turno
+                  </h2>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1 font-mono">
+                  Auditoría completa en tiempo real: flujo de efectivo para el encargado, transferencias digitales y tickets emitidos.
+                </p>
+              </div>
+
+              {/* Botones de Rango de Fecha */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { id: 'hoy', label: 'Hoy' },
+                  { id: 'ayer', label: 'Ayer' },
+                  { id: '7dias', label: 'Últimos 7 Días' },
+                  { id: 'mes', label: 'Mes Actual' },
+                ].map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => setCajaRango(r.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      cajaRango === r.id
+                        ? 'bg-amber-400 text-black shadow-md font-black'
+                        : 'bg-zinc-950 border border-white/10 text-zinc-400 hover:text-white hover:bg-zinc-800'
+                    }`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => cargarReporteCaja(cajaRango)}
+                  disabled={isLoadingReporteCaja}
+                  className="p-2 rounded-xl bg-zinc-950 border border-white/10 text-zinc-300 hover:text-white hover:bg-zinc-800 cursor-pointer transition-colors"
+                  title="Recargar caja en vivo"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingReporteCaja ? 'animate-spin text-amber-400' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* 5 CARDS DE ARQUEO FINANCIERO */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+              {/* 1. Efectivo en Caja */}
+              <div className="bg-zinc-900/90 border border-emerald-500/40 rounded-2xl p-4 shadow-lg relative overflow-hidden">
+                <div className="flex items-center justify-between text-xs text-emerald-400 font-bold uppercase font-mono">
+                  <span>Efectivo en Caja</span>
+                  <Banknote className="w-4 h-4" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white font-mono mt-2 tracking-tight">
+                  S/. {reporteCaja ? reporteCaja.totalEfectivo.toFixed(2) : '0.00'}
+                </div>
+                <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/20">
+                  <span>Billetes y monedas en cajón</span>
+                </div>
+              </div>
+
+              {/* 2. Billeteras Digitales & Tarjeta */}
+              <div className="bg-zinc-900/90 border border-purple-500/40 rounded-2xl p-4 shadow-lg">
+                <div className="flex items-center justify-between text-xs text-purple-400 font-bold uppercase font-mono">
+                  <span>Digitales & Tarjeta</span>
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white font-mono mt-2 tracking-tight">
+                  S/. {reporteCaja ? (reporteCaja.totalYape + reporteCaja.totalPlin + reporteCaja.totalTarjeta).toFixed(2) : '0.00'}
+                </div>
+                <div className="mt-2 text-[10px] text-zinc-400 font-mono flex items-center gap-1.5 flex-wrap">
+                  <span className="text-purple-300 font-bold">Yape: S/. {reporteCaja ? reporteCaja.totalYape.toFixed(2) : '0'}</span>
+                  <span>•</span>
+                  <span className="text-cyan-300 font-bold">Plin: S/. {reporteCaja ? reporteCaja.totalPlin.toFixed(2) : '0'}</span>
+                  {reporteCaja && reporteCaja.totalTarjeta > 0 && (
+                    <>
+                      <span>•</span>
+                      <span className="text-blue-300 font-bold">Tarj: S/. {reporteCaja.totalTarjeta.toFixed(2)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* 3. Membresías & Renovaciones */}
+              <div className="bg-zinc-900/90 border border-amber-500/40 rounded-2xl p-4 shadow-lg">
+                <div className="flex items-center justify-between text-xs text-amber-400 font-bold uppercase font-mono">
+                  <span>Membresías</span>
+                  <Users className="w-4 h-4" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white font-mono mt-2 tracking-tight">
+                  S/. {reporteCaja ? reporteCaja.totalMembresias.toFixed(2) : '0.00'}
+                </div>
+                <div className="mt-2 text-[10px] text-zinc-400 font-mono">
+                  <strong className="text-amber-300">{reporteCaja?.conteoMembresias || 0}</strong> transacciones de socios
+                </div>
+              </div>
+
+              {/* 4. Ventas POS Mostrador */}
+              <div className="bg-zinc-900/90 border border-cyan-500/40 rounded-2xl p-4 shadow-lg">
+                <div className="flex items-center justify-between text-xs text-cyan-400 font-bold uppercase font-mono">
+                  <span>Ventas POS (Productos)</span>
+                  <Package className="w-4 h-4" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-white font-mono mt-2 tracking-tight">
+                  S/. {reporteCaja ? reporteCaja.totalVentasPOS.toFixed(2) : '0.00'}
+                </div>
+                <div className="mt-2 text-[10px] text-zinc-400 font-mono">
+                  <strong className="text-cyan-300">{reporteCaja?.conteoVentasPOS || 0}</strong> tickets de mostrador
+                </div>
+              </div>
+
+              {/* 5. Gran Total Recaudado */}
+              <div className="bg-zinc-900/90 border border-white/20 rounded-2xl p-4 shadow-lg bg-gradient-to-br from-zinc-900 to-zinc-950">
+                <div className="flex items-center justify-between text-xs text-zinc-300 font-bold uppercase font-mono">
+                  <span>Total Recaudado</span>
+                  <DollarSign className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="text-2xl sm:text-3xl font-black text-amber-400 font-mono mt-2 tracking-tight">
+                  S/. {reporteCaja ? reporteCaja.totalRecaudado.toFixed(2) : '0.00'}
+                </div>
+                <div className="mt-2 text-[10px] text-zinc-400 font-mono">
+                  Suma neta del período
+                </div>
+              </div>
+            </div>
+
+            {/* SECCIÓN EXPANDIBLE: AUDITORÍA DE PRODUCTOS POS */}
+            {reporteCaja && reporteCaja.resumenProductos && reporteCaja.resumenProductos.length > 0 && (
+              <div className="bg-zinc-900/60 border border-white/10 rounded-2xl overflow-hidden shadow-xl">
+                <div
+                  onClick={() => setMostrarAuditoriaProductos(!mostrarAuditoriaProductos)}
+                  className="p-4 bg-zinc-950/60 border-b border-white/10 flex items-center justify-between cursor-pointer hover:bg-zinc-900 transition-colors"
+                >
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-cyan-400" />
+                    <span className="font-bold text-sm text-white font-mono">
+                      Productos POS Vendidos en el Turno ({reporteCaja.resumenProductos.length} artículos)
+                    </span>
+                  </div>
+                  <span className="text-xs text-zinc-400 font-mono">
+                    {mostrarAuditoriaProductos ? '▲ Ocultar desglose' : '▼ Ver desglose por producto'}
+                  </span>
+                </div>
+
+                {mostrarAuditoriaProductos && (
+                  <div className="overflow-x-auto p-2">
+                    <table className="w-full text-left text-xs font-mono">
+                      <thead className="bg-zinc-950 text-zinc-400 uppercase border-b border-white/5">
+                        <tr>
+                          <th className="py-2.5 px-4 font-bold">Producto</th>
+                          <th className="py-2.5 px-4 font-bold text-center">Unidades</th>
+                          <th className="py-2.5 px-4 font-bold text-right">Precio Prom.</th>
+                          <th className="py-2.5 px-4 font-bold text-right">Total Recaudado</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {reporteCaja.resumenProductos.map((p, idx) => (
+                          <tr key={p.productoId || idx} className="hover:bg-white/[0.02]">
+                            <td className="py-2.5 px-4 font-bold text-white font-sans">{p.nombre}</td>
+                            <td className="py-2.5 px-4 text-center font-bold text-cyan-400">
+                              <span className="px-2 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20">
+                                {p.cantidadTotal} un.
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-right text-zinc-400">
+                              S/. {p.precioUnitarioPromedio.toFixed(2)}
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-bold text-emerald-400">
+                              S/. {p.totalRecaudado.toFixed(2)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* FEED UNIFICADO: TODOS LOS MOVIMIENTOS DEL DÍA */}
+            <div className="bg-zinc-900/60 border border-white/10 rounded-2xl overflow-hidden shadow-xl space-y-4 p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-amber-400" />
+                    <h3 className="text-base font-black text-white uppercase tracking-tight">
+                      Registro de Movimientos del Día ({movimientosFiltrados.length})
+                    </h3>
+                  </div>
+                  <p className="text-xs text-zinc-400 mt-0.5 font-mono">
+                    Historial cronológico minuto a minuto de cada pago, renovación y venta en mostrador.
+                  </p>
+                </div>
+
+                <span className="text-xs text-zinc-400 font-mono">
+                  Total en vista: <strong className="text-amber-400 font-bold">
+                    S/. {movimientosFiltrados.reduce((acc, m) => acc + m.monto, 0).toFixed(2)}
+                  </strong>
+                </span>
+              </div>
+
+              {/* Filtros Rápidos y Buscador */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                <div className="md:col-span-6 relative">
+                  <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchMovimiento}
+                    onChange={(e) => setSearchMovimiento(e.target.value)}
+                    placeholder="Buscar por cliente, DNI, ticket o concepto..."
+                    className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl py-2.5 pl-10 pr-9 text-xs text-white placeholder-zinc-500 focus:outline-none font-mono"
+                  />
+                  {searchMovimiento && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchMovimiento('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center text-xs cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtro por Tipo */}
+                <div className="md:col-span-3">
+                  <select
+                    value={filtroTipoMovimiento}
+                    onChange={(e) => setFiltroTipoMovimiento(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-white/10 text-zinc-200 text-xs font-bold rounded-xl px-3 py-2.5 cursor-pointer hover:border-amber-400 focus:outline-none"
+                  >
+                    <option value="todos">Tipo: Todos los movimientos</option>
+                    <option value="membresias">Solo Membresías y Renovaciones</option>
+                    <option value="pos">Solo Ventas de Mostrador POS</option>
+                    <option value="abono">Solo Abonos de Deuda</option>
+                  </select>
+                </div>
+
+                {/* Filtro por Método de Pago */}
+                <div className="md:col-span-3">
+                  <select
+                    value={filtroMetodoPago}
+                    onChange={(e) => setFiltroMetodoPago(e.target.value as any)}
+                    className="w-full bg-zinc-950 border border-white/10 text-zinc-200 text-xs font-bold rounded-xl px-3 py-2.5 cursor-pointer hover:border-amber-400 focus:outline-none"
+                  >
+                    <option value="todos">Método: Todos (Efectivo + Digital)</option>
+                    <option value="efectivo">Solo Efectivo (Caja Física)</option>
+                    <option value="digitales">Solo Digitales (Yape / Plin / Tarjeta)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Tabla de Movimientos */}
+              <div className="overflow-x-auto rounded-xl border border-white/10 shadow-inner">
+                <table className="w-full min-w-[900px] text-left text-xs font-mono border-collapse">
+                  <thead className="bg-zinc-950 text-zinc-400 uppercase border-b border-white/10">
+                    <tr>
+                      <th className="py-3 px-4 font-bold">Hora</th>
+                      <th className="py-3 px-4 font-bold">Operación</th>
+                      <th className="py-3 px-4 font-bold">Cliente / DNI</th>
+                      <th className="py-3 px-4 font-bold">Detalle / Concepto</th>
+                      <th className="py-3 px-4 font-bold">Método</th>
+                      <th className="py-3 px-4 font-bold">Encargado</th>
+                      <th className="py-3 px-4 font-bold text-right">Monto</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {isLoadingReporteCaja ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-zinc-500">
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-400" />
+                          Cargando movimientos de caja...
+                        </td>
+                      </tr>
+                    ) : movimientosFiltrados.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-zinc-500">
+                          No se registraron movimientos en este período con los filtros seleccionados.
+                        </td>
+                      </tr>
+                    ) : (
+                      movimientosFiltrados.map((m) => {
+                        const esPos = m.tipo === 'venta_pos';
+                        const esRenov = m.tipo === 'renovacion';
+                        const esAbono = m.tipo === 'abono_deuda';
+
+                        const badgeBg = esPos
+                          ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20'
+                          : esRenov
+                          ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                          : esAbono
+                          ? 'bg-orange-500/10 text-orange-300 border-orange-500/20'
+                          : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20';
+
+                        const metodoBg =
+                          m.metodoPago === 'efectivo'
+                            ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+                            : m.metodoPago === 'yape'
+                            ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
+                            : m.metodoPago === 'plin'
+                            ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
+                            : 'bg-blue-500/10 text-blue-300 border-blue-500/30';
+
+                        return (
+                          <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
+                            <td className="py-3 px-4 text-zinc-400 font-bold whitespace-nowrap">
+                              {m.horaFormateada}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${badgeBg}`}>
+                                {m.tipoEtiqueta}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <div className="font-bold text-white text-xs">{m.clienteNombre}</div>
+                              {m.clienteDni && (
+                                <div className="text-[10px] text-zinc-500 font-mono">DNI: {m.clienteDni}</div>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-zinc-300 max-w-xs truncate" title={m.concepto}>
+                              {m.concepto}
+                              {m.ticketOBoleta && (
+                                <span className="ml-1 text-[10px] text-amber-400 font-mono">({m.ticketOBoleta})</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase font-mono border ${metodoBg}`}>
+                                {m.metodoPago}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-zinc-400 text-[11px] whitespace-nowrap">
+                              {m.operador}
+                            </td>
+                            <td className="py-3 px-4 text-right font-black text-sm text-white font-mono whitespace-nowrap">
+                              S/. {m.monto.toFixed(2)}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* =========================================================================
