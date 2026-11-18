@@ -833,11 +833,16 @@ export default function AdminDashboard() {
       return matchSearch && matchRole && matchShift && matchDebt;
     }).sort((a, b) => {
       if (sortOrder === 'matricula') {
-        // Orden numérico de matrícula según el ID canónico MEM-XXX (o fecha de registro)
+        // Orden inteligente: primero compara si hay timestamp reciente (inscripción o renovación reciente)
+        const timeA = (a as any).updated_at || (a as any).updatedAt || a.registeredAt || '';
+        const timeB = (b as any).updated_at || (b as any).updatedAt || b.registeredAt || '';
+        if (timeA && timeB && timeA !== timeB) {
+          return new Date(timeB).getTime() - new Date(timeA).getTime();
+        }
+        // Fallback: orden numérico de matrícula según el ID canónico MEM-XXX
         const numA = parseInt(a.id?.replace(/\D/g, '') || '0', 10);
         const numB = parseInt(b.id?.replace(/\D/g, '') || '0', 10);
-        if (numA !== numB) return numB - numA;
-        return (b.registeredAt || '').localeCompare(a.registeredAt || '');
+        return numB - numA;
       }
       if (sortOrder === 'alfabetico') {
         return (a.name || '').localeCompare(b.name || '');
@@ -1800,7 +1805,7 @@ export default function AdminDashboard() {
                     className="bg-zinc-950 border border-amber-400/40 text-amber-400 font-bold rounded-xl px-3 py-2 cursor-pointer hover:border-amber-400 transition-colors"
                     title="Ordenar socios en el padrón"
                   >
-                    <option value="matricula">Orden: Matrícula (Recientes)</option>
+                    <option value="matricula">Orden: Recientes (Inscrito / Renovado)</option>
                     <option value="alfabetico">Orden: Alfabético (A - Z)</option>
                     <option value="deuda">Orden: Mayor Deuda</option>
                   </select>

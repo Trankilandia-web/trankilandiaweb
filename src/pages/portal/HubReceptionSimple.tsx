@@ -115,6 +115,7 @@ export default function HubReceptionSimple() {
   // CRM & Vencimientos
   const [crmFilter, setCrmFilter] = useState<'todos' | 'vencidos' | 'por_vencer' | 'deudas'>('todos');
   const [crmSearch, setCrmSearch] = useState('');
+  const [crmSortOrder, setCrmSortOrder] = useState<'recientes' | 'alfabetico' | 'por_vencer' | 'vencidos' | 'deuda'>('recientes');
 
   // Estados para Liquidación de Deudas en CRM y Escáner
   const [liquidatingMember, setLiquidatingMember] = useState<GymMember | null>(null);
@@ -750,6 +751,7 @@ export default function HubReceptionSimple() {
             expiresAt: renovFechaFin,
             shift: renovTurno,
             registeredAt: renovFechaInicio,
+            ...({ updated_at: new Date().toISOString() } as any),
           };
         }
         return m;
@@ -981,6 +983,7 @@ export default function HubReceptionSimple() {
         coachName: formTurno === 'manana' ? 'Coach Marcos Rivas' : 'Coach Oficial',
         shift: formTurno,
         registeredAt: fechaInicioSeleccionada,
+        ...({ updated_at: new Date().toISOString() } as any),
       };
 
       // 1. Guardar en Supabase
@@ -1020,29 +1023,54 @@ export default function HubReceptionSimple() {
     }
   };
 
-  // Filtro de CRM
+  // Filtro de CRM con Ordenamiento Inteligente
   const crmSociosFiltrados = useMemo(() => {
     const query = crmSearch.trim().toLowerCase();
     const today = getLocalPeruDateString();
 
-    return members.filter((m) => {
-      const matchSearch =
-        !query ||
-        m.name.toLowerCase().includes(query) ||
-        (m.dni && m.dni.includes(query)) ||
-        (m.phone && m.phone.includes(query));
+    return members
+      .filter((m) => {
+        const matchSearch =
+          !query ||
+          m.name.toLowerCase().includes(query) ||
+          (m.dni && m.dni.includes(query)) ||
+          (m.phone && m.phone.includes(query));
 
-      if (!matchSearch) return false;
+        if (!matchSearch) return false;
 
-      const exp = m.expiresAt || today;
-      const diffDays = calculateDaysRemaining(exp, today);
+        const exp = m.expiresAt || today;
+        const diffDays = calculateDaysRemaining(exp, today);
 
-      if (crmFilter === 'vencidos') return diffDays < 0;
-      if (crmFilter === 'por_vencer') return diffDays >= 0 && diffDays <= 7;
-      if (crmFilter === 'deudas') return m.balanceDue > 0;
-      return true;
-    });
-  }, [members, crmFilter, crmSearch]);
+        if (crmFilter === 'vencidos') return diffDays < 0;
+        if (crmFilter === 'por_vencer') return diffDays >= 0 && diffDays <= 7;
+        if (crmFilter === 'deudas') return m.balanceDue > 0;
+        return true;
+      })
+      .sort((a, b) => {
+        if (crmSortOrder === 'recientes') {
+          const timeA = (a as any).updated_at || (a as any).updatedAt || a.registeredAt || '';
+          const timeB = (b as any).updated_at || (b as any).updatedAt || b.registeredAt || '';
+          if (timeA && timeB && timeA !== timeB) {
+            return new Date(timeB).getTime() - new Date(timeA).getTime();
+          }
+          const numA = parseInt(a.id?.replace(/\D/g, '') || '0', 10);
+          const numB = parseInt(b.id?.replace(/\D/g, '') || '0', 10);
+          return numB - numA;
+        }
+        if (crmSortOrder === 'alfabetico') {
+          return (a.name || '').localeCompare(b.name || '');
+        }
+        if (crmSortOrder === 'deuda') {
+          return (b.balanceDue || 0) - (a.balanceDue || 0);
+        }
+        if (crmSortOrder === 'por_vencer' || crmSortOrder === 'vencidos') {
+          const expA = a.expiresAt || today;
+          const expB = b.expiresAt || today;
+          return expA.localeCompare(expB);
+        }
+        return 0;
+      });
+  }, [members, crmFilter, crmSearch, crmSortOrder]);
 
   const crmCounts = useMemo(() => {
     const today = getLocalPeruDateString();
@@ -1566,16 +1594,44 @@ export default function HubReceptionSimple() {
               ))}
             </div>
 
-            {/* Buscador Rápido */}
-            <div className="relative">
-              <Search className="w-5 h-5 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={crmSearch}
-                onChange={(e) => setCrmSearch(e.target.value)}
-                placeholder="Buscar socio por Nombre, DNI o Teléfono..."
-                className="w-full bg-zinc-900 border border-white/10 focus:border-amber-400 rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white placeholder-zinc-500 focus:outline-none font-mono"
-              />
+            {/* Barra de Herramientas: Buscador y Selector de Ordenamiento Inteligente */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="w-5 h-5 text-zinc-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={crmSearch}
+                  onChange={(e) => setCrmSearch(e.target.value)}
+                  placeholder="Buscar socio por Nombre, DNI o Teléfono..."
+                  className="w-full bg-zinc-900 border border-white/10 focus:border-amber-400 rounded-2xl py-3.5 pl-12 pr-10 text-sm text-white placeholder-zinc-500 focus:outline-none font-mono"
+                />
+                {crmSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setCrmSearch('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center text-xs cursor-pointer"
+                    title="Limpiar búsqueda"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400 font-bold hidden sm:inline whitespace-nowrap">Ordenar por:</span>
+                <select
+                  value={crmSortOrder}
+                  onChange={(e) => setCrmSortOrder(e.target.value as any)}
+                  className="bg-zinc-900 border border-amber-400/50 text-amber-400 font-bold rounded-2xl px-4 py-3.5 text-xs cursor-pointer hover:border-amber-400 transition-colors focus:outline-none"
+                  title="Ordenar socios"
+                >
+                  <option value="recientes">⚡ Último Inscrito / Renovado (Recientes)</option>
+                  <option value="alfabetico">🔤 Nombre Alfabético (A - Z)</option>
+                  <option value="por_vencer">⏳ Próximos a Vencer</option>
+                  <option value="vencidos">❌ Vencidos Primero</option>
+                  <option value="deuda">💰 Mayor Saldo Pendiente</option>
+                </select>
+              </div>
             </div>
 
             {/* Tabla Limpia y Espaciosa */}
@@ -1599,7 +1655,7 @@ export default function HubReceptionSimple() {
                         </td>
                       </tr>
                     ) : (
-                      crmSociosFiltrados.slice(0, 50).map((socio) => {
+                      crmSociosFiltrados.slice(0, 150).map((socio) => {
                         const today = getLocalPeruDateString();
                         const exp = socio.expiresAt || today;
                         const diffDays = calculateDaysRemaining(exp, today);
