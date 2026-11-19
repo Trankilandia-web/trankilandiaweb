@@ -1,0 +1,87 @@
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import {
+  GYM_ANNOUNCEMENTS,
+  playAnnouncement,
+  stopAnnouncement,
+  getPlayingAnnouncementId,
+  isAnnouncementPlaying,
+} from '../../lib/announcementsService';
+import { setAlertVolume, setAlertMuted } from '../../lib/audioVoiceAlerts';
+
+describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () => {
+  beforeEach(() => {
+    stopAnnouncement();
+    setAlertVolume(0.8);
+    setAlertMuted(false);
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    stopAnnouncement();
+  });
+
+  it('el catálogo contiene los 3 anuncios oficiales de Trankilandia Gym con IDs y rutas correctas', () => {
+    expect(GYM_ANNOUNCEMENTS).toHaveLength(3);
+
+    const cierre = GYM_ANNOUNCEMENTS.find((a) => a.id === 'cierre-10min');
+    expect(cierre).toBeDefined();
+    expect(cierre?.title).toContain('Cierre');
+    expect(cierre?.audioPath).toBe('/sounds/anuncios/cierre-10min.mp3');
+    expect(cierre?.fullText).toContain('10 minutos para cerrar');
+
+    const orden = GYM_ANNOUNCEMENTS.find((a) => a.id === 'orden-accesorios');
+    expect(orden).toBeDefined();
+    expect(orden?.title).toContain('Accesorios');
+    expect(orden?.audioPath).toBe('/sounds/anuncios/orden-accesorios.mp3');
+    expect(orden?.fullText).toContain('guardar cada accesorio');
+
+    const clases = GYM_ANNOUNCEMENTS.find((a) => a.id === 'clases-grupales');
+    expect(clases).toBeDefined();
+    expect(clases?.title).toContain('Clases Grupales');
+    expect(clases?.audioPath).toBe('/sounds/anuncios/clases-grupales.mp3');
+    expect(clases?.fullText).toContain('segundo piso');
+  });
+
+  it('inicia en estado inactivo sin reproducción', () => {
+    expect(isAnnouncementPlaying()).toBe(false);
+    expect(getPlayingAnnouncementId()).toBeNull();
+  });
+
+  it('playAnnouncement activa el estado con el ID correspondiente y emite evento', async () => {
+    const eventSpy = vi.fn();
+    window.addEventListener('gym-announcement-state-changed', eventSpy);
+
+    // Mock HTMLMediaElement play
+    const playMock = vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockImplementation(async () => {});
+
+    await playAnnouncement('cierre-10min');
+
+    expect(isAnnouncementPlaying()).toBe(true);
+    expect(getPlayingAnnouncementId()).toBe('cierre-10min');
+    expect(eventSpy).toHaveBeenCalled();
+
+    playMock.mockRestore();
+    window.removeEventListener('gym-announcement-state-changed', eventSpy);
+  });
+
+  it('stopAnnouncement detiene la reproducción y limpia el estado', async () => {
+    const playMock = vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockImplementation(async () => {});
+    const pauseMock = vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+
+    await playAnnouncement('orden-accesorios');
+    expect(isAnnouncementPlaying()).toBe(true);
+
+    stopAnnouncement();
+    expect(isAnnouncementPlaying()).toBe(false);
+    expect(getPlayingAnnouncementId()).toBeNull();
+
+    playMock.mockRestore();
+    pauseMock.mockRestore();
+  });
+
+  it('ignora IDs inexistentes sin alterar el estado previo', async () => {
+    await playAnnouncement('id-no-existente');
+    expect(isAnnouncementPlaying()).toBe(false);
+    expect(getPlayingAnnouncementId()).toBeNull();
+  });
+});
