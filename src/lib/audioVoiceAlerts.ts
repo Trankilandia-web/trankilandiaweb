@@ -136,6 +136,19 @@ export const setVoiceAlertsEnabled = (enabled: boolean): void => {
 };
 
 /**
+ * Limpia emojis y caracteres especiales que puedan provocar que el sintetizador
+ * de voz los lea literalmente (por ejemplo: "bíceps", "fuego", "corazón", "arroba").
+ */
+export function cleanSpeechText(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E0}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1F018}-\u{1F270}\u{2388}\u{200D}\u{FE0F}]/gu, '')
+    .replace(/@/g, 'a')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Sintetizador de voz en español natural con modulación de volumen.
  */
 export function speakGymAnnouncement(text: string): void {
@@ -145,10 +158,13 @@ export function speakGymAnnouncement(text: string): void {
   const currentVol = getAlertVolume();
   if (currentVol <= 0) return;
 
+  const cleanedText = cleanSpeechText(text);
+  if (!cleanedText) return;
+
   try {
     window.speechSynthesis.cancel();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(cleanedText);
     utterance.lang = 'es-PE';
     utterance.rate = 1.05;
     utterance.pitch = 1.0;

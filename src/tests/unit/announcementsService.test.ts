@@ -6,7 +6,7 @@ import {
   getPlayingAnnouncementId,
   isAnnouncementPlaying,
 } from '../../lib/announcementsService';
-import { setAlertVolume, setAlertMuted } from '../../lib/audioVoiceAlerts';
+import { setAlertVolume, setAlertMuted, cleanSpeechText } from '../../lib/audioVoiceAlerts';
 
 describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () => {
   beforeEach(() => {
@@ -83,5 +83,16 @@ describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () 
     await playAnnouncement('id-no-existente');
     expect(isAnnouncementPlaying()).toBe(false);
     expect(getPlayingAnnouncementId()).toBeNull();
+  });
+
+  it('cleanSpeechText elimina emojis y arrobas para evitar que el motor de voz los lea literalmente', () => {
+    const raw = 'ATENCIÓN, GUERREROS 💪 Recuerden devolver cada accesorio 📢 ¡Guerrer@s! ❤️🔥';
+    const cleaned = cleanSpeechText(raw);
+    expect(cleaned).not.toContain('💪');
+    expect(cleaned).not.toContain('📢');
+    expect(cleaned).not.toContain('❤️');
+    expect(cleaned).not.toContain('🔥');
+    expect(cleaned).not.toContain('@');
+    expect(cleaned).toBe('ATENCIÓN, GUERREROS Recuerden devolver cada accesorio ¡Guerreras!');
   });
 });

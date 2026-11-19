@@ -31,9 +31,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-amber-400',
       border: 'border-amber-500/30',
     },
-    duration: '22s',
+    duration: '17s',
     fullText:
-      'ATENCIÓN, GUERREROS 💪 Les recordamos que faltan 10 minutos para cerrar el gimnasio. Por favor, vayan culminando sus rutinas y dejando las máquinas en orden para realizar el cierre a la hora establecida. ¡Gracias por su comprensión y por entrenar con nosotros! ❤️',
+      '¡Atención, guerreros! Les recordamos que faltan 10 minutos para cerrar el gimnasio. Por favor, vayan culminando sus rutinas y dejando las máquinas en orden para realizar el cierre a la hora establecida. ¡Muchas gracias por su comprensión y por entrenar con nosotros!',
     audioPath: '/sounds/anuncios/cierre-10min.mp3',
   },
   {
@@ -45,9 +45,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-cyan-400',
       border: 'border-cyan-500/30',
     },
-    duration: '12s',
+    duration: '10s',
     fullText:
-      '📢 Estimados guerreros, recuerden devolver y guardar cada accesorio en su lugar después de utilizarlo. ¡El orden es responsabilidad de todos! 💪❤️',
+      'Estimados guerreros, recuerden devolver y guardar cada accesorio en su lugar después de utilizarlo. ¡El orden es responsabilidad de todos!',
     audioPath: '/sounds/anuncios/orden-accesorios.mp3',
   },
   {
@@ -59,9 +59,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-emerald-400',
       border: 'border-emerald-500/30',
     },
-    duration: '10s',
+    duration: '9s',
     fullText:
-      '📢 ¡Guerrer@s! 💪🔥 Ya llegó nuestra profesora. ¡Los esperamos en el segundo piso para disfrutar de nuestras clases grupales!',
+      '¡Guerreros! Ya llegó nuestra profesora. ¡Los esperamos en el segundo piso para disfrutar de nuestras clases grupales!',
     audioPath: '/sounds/anuncios/clases-grupales.mp3',
   },
 ];
