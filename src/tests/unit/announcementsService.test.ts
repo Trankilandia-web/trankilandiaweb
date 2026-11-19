@@ -5,6 +5,9 @@ import {
   stopAnnouncement,
   getPlayingAnnouncementId,
   isAnnouncementPlaying,
+  getCustomAnnouncementAudio,
+  setCustomAnnouncementAudio,
+  removeCustomAnnouncementAudio,
 } from '../../lib/announcementsService';
 import { setAlertVolume, setAlertMuted, cleanSpeechText } from '../../lib/audioVoiceAlerts';
 
@@ -13,11 +16,13 @@ describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () 
     stopAnnouncement();
     setAlertVolume(0.8);
     setAlertMuted(false);
+    localStorage.clear();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
     stopAnnouncement();
+    localStorage.clear();
   });
 
   it('el catálogo contiene los 3 anuncios oficiales de Trankilandia Gym con IDs y rutas correctas', () => {
@@ -27,7 +32,7 @@ describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () 
     expect(cierre).toBeDefined();
     expect(cierre?.title).toContain('Cierre');
     expect(cierre?.audioPath).toBe('/sounds/anuncios/cierre-10min.mp3');
-    expect(cierre?.fullText).toContain('10 minutos para cerrar');
+    expect(cierre?.fullText).toContain('minutos para cerrar');
 
     const orden = GYM_ANNOUNCEMENTS.find((a) => a.id === 'orden-accesorios');
     expect(orden).toBeDefined();
@@ -94,5 +99,18 @@ describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () 
     expect(cleaned).not.toContain('🔥');
     expect(cleaned).not.toContain('@');
     expect(cleaned).toBe('ATENCIÓN, GUERREROS Recuerden devolver cada accesorio ¡Guerreras!');
+  });
+
+  it('permite guardar, consultar y eliminar audios personalizados en localStorage', () => {
+    const testId = 'cierre-10min';
+    const dummyAudioData = 'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2...';
+
+    expect(getCustomAnnouncementAudio(testId)).toBeNull();
+
+    setCustomAnnouncementAudio(testId, dummyAudioData);
+    expect(getCustomAnnouncementAudio(testId)).toBe(dummyAudioData);
+
+    removeCustomAnnouncementAudio(testId);
+    expect(getCustomAnnouncementAudio(testId)).toBeNull();
   });
 });

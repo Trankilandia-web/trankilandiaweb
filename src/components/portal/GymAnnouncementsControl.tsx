@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Megaphone,
   Play,
@@ -8,6 +8,9 @@ import {
   Dumbbell,
   Users,
   Radio,
+  Upload,
+  RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 import {
   GYM_ANNOUNCEMENTS,
@@ -16,6 +19,9 @@ import {
   stopAnnouncement,
   getPlayingAnnouncementId,
   isAnnouncementPlaying,
+  getCustomAnnouncementAudio,
+  setCustomAnnouncementAudio,
+  removeCustomAnnouncementAudio,
 } from '../../lib/announcementsService';
 import { getAlertVolume, isAlertMuted } from '../../lib/audioVoiceAlerts';
 
@@ -25,7 +31,21 @@ export default function GymAnnouncementsControl() {
   const [isPlaying, setIsPlaying] = useState<boolean>(isAnnouncementPlaying);
   const [currentVolume, setCurrentVolume] = useState<number>(getAlertVolume);
   const [isMuted, setIsMuted] = useState<boolean>(isAlertMuted);
+  const [customAudioMap, setCustomAudioMap] = useState<Record<string, boolean>>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const refreshCustomMap = () => {
+    const map: Record<string, boolean> = {};
+    GYM_ANNOUNCEMENTS.forEach((a) => {
+      map[a.id] = Boolean(getCustomAnnouncementAudio(a.id));
+    });
+    setCustomAudioMap(map);
+  };
+
+  useEffect(() => {
+    refreshCustomMap();
+  }, [isOpen]);
 
   // Escucha del estado de reproducción en vivo
   useEffect(() => {
@@ -35,6 +55,7 @@ export default function GymAnnouncementsControl() {
         setPlayingId(detail.currentId ?? null);
         setIsPlaying(Boolean(detail.isPlaying));
       }
+      refreshCustomMap();
     };
 
     const handleVolumeChange = (e: any) => {
@@ -79,6 +100,28 @@ export default function GymAnnouncementsControl() {
     } else {
       await playAnnouncement(ann.id);
     }
+  };
+
+  const handleFileUpload = (annId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      if (result) {
+        setCustomAnnouncementAudio(annId, result);
+        refreshCustomMap();
+      }
+    };
+    reader.readAsDataURL(file);
+    // Limpiar input
+    e.target.value = '';
+  };
+
+  const handleRestoreOfficial = (annId: string) => {
+    removeCustomAnnouncementAudio(annId);
+    refreshCustomMap();
   };
 
   const getCategoryIcon = (id: string) => {
@@ -169,6 +212,7 @@ export default function GymAnnouncementsControl() {
           <div className="mt-3 space-y-2.5 max-h-[60vh] overflow-y-auto pr-0.5">
             {GYM_ANNOUNCEMENTS.map((ann) => {
               const isCurrentPlaying = playingId === ann.id;
+              const hasCustomAudio = customAudioMap[ann.id];
 
               return (
                 <div
@@ -181,12 +225,20 @@ export default function GymAnnouncementsControl() {
                 >
                   {/* Encabezado del anuncio */}
                   <div className="flex items-center justify-between gap-2 mb-1.5">
-                    <span
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${ann.badgeColor.bg} ${ann.badgeColor.text} ${ann.badgeColor.border}`}
-                    >
-                      {getCategoryIcon(ann.id)}
-                      {ann.badge}
-                    </span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${ann.badgeColor.bg} ${ann.badgeColor.text} ${ann.badgeColor.border}`}
+                      >
+                        {getCategoryIcon(ann.id)}
+                        {ann.badge}
+                      </span>
+                      {hasCustomAudio && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/10 text-purple-300 border border-purple-500/30">
+                          <Sparkles className="w-2.5 h-2.5" />
+                          Audio Propio
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[10px] font-mono text-zinc-500">
                       ~{ann.duration}
                     </span>
@@ -197,6 +249,17 @@ export default function GymAnnouncementsControl() {
                   <p className="text-[11px] text-zinc-400 leading-snug line-clamp-3 mb-2.5">
                     {ann.fullText}
                   </p>
+
+                  {/* Input de archivo oculto para subir audio propio */}
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    ref={(el) => {
+                      fileInputRefs.current[ann.id] = el;
+                    }}
+                    onChange={(e) => handleFileUpload(ann.id, e)}
+                    className="hidden"
+                  />
 
                   {/* Botón de Reproducción */}
                   <button
@@ -220,6 +283,31 @@ export default function GymAnnouncementsControl() {
                       </>
                     )}
                   </button>
+
+                  {/* Opciones de personalización: Subir audio propio o restaurar */}
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-zinc-400">
+                    <button
+                      type="button"
+                      onClick={() => fileInputRefs.current[ann.id]?.click()}
+                      className="inline-flex items-center gap-1 hover:text-amber-400 transition-colors cursor-pointer py-0.5"
+                      title="Subir una nota de voz de WhatsApp o archivo MP3 grabado para este mensaje"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>{hasCustomAudio ? 'Cambiar audio propio' : 'Subir audio propio'}</span>
+                    </button>
+
+                    {hasCustomAudio && (
+                      <button
+                        type="button"
+                        onClick={() => handleRestoreOfficial(ann.id)}
+                        className="inline-flex items-center gap-1 text-zinc-500 hover:text-red-400 transition-colors cursor-pointer py-0.5"
+                        title="Restaurar el audio de estudio oficial con base rítmica"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Restaurar original</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -234,7 +322,7 @@ export default function GymAnnouncementsControl() {
                 {isMuted ? 'Silenciado' : `${volumePercent}%`}
               </strong>
             </span>
-            <span className="text-zinc-500">Campana Ding-Dong incluida</span>
+            <span className="text-zinc-500">Base Fitness & Stinger</span>
           </div>
         </div>
       )}

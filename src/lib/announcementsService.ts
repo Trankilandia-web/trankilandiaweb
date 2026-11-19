@@ -3,9 +3,10 @@
 // ==============================================================================
 // Permite reproducir los mensajes oficiales del gimnasio a través del parlante
 // Bluetooth conectado, respetando el volumen maestro y el silenciador.
+// Admite también subir audios personalizados propios (ej. nota de voz de WhatsApp).
 // ==============================================================================
 
-import { getAlertVolume, isAlertMuted, speakGymAnnouncement } from './audioVoiceAlerts';
+import { getAlertVolume, isAlertMuted, speakGymAnnouncement, cleanSpeechText } from './audioVoiceAlerts';
 
 export interface GymAnnouncement {
   id: string;
@@ -31,9 +32,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-amber-400',
       border: 'border-amber-500/30',
     },
-    duration: '17s',
+    duration: '19s',
     fullText:
-      '¡Atención, guerreros! Les recordamos que faltan 10 minutos para cerrar el gimnasio. Por favor, vayan culminando sus rutinas y dejando las máquinas en orden para realizar el cierre a la hora establecida. ¡Muchas gracias por su comprensión y por entrenar con nosotros!',
+      '¡Atención, guerreros! ¡Faltan diez minutos para cerrar el gimnasio! Vamos culminando con toda la energía esas últimas repeticiones y dejando las máquinas y mancuernas en orden. ¡Muchas gracias por entrenar con nosotros y darlo todo hoy!',
     audioPath: '/sounds/anuncios/cierre-10min.mp3',
   },
   {
@@ -45,9 +46,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-cyan-400',
       border: 'border-cyan-500/30',
     },
-    duration: '10s',
+    duration: '15s',
     fullText:
-      'Estimados guerreros, recuerden devolver y guardar cada accesorio en su lugar después de utilizarlo. ¡El orden es responsabilidad de todos!',
+      '¡Familia Trankilandia! Recuerden devolver y guardar cada accesorio, barra y mancuerna en su lugar después de utilizarlo. ¡El orden y la disciplina la hacemos todos juntos con fuerza!',
     audioPath: '/sounds/anuncios/orden-accesorios.mp3',
   },
   {
@@ -59,15 +60,53 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-emerald-400',
       border: 'border-emerald-500/30',
     },
-    duration: '9s',
+    duration: '14s',
     fullText:
-      '¡Guerreros! Ya llegó nuestra profesora. ¡Los esperamos en el segundo piso para disfrutar de nuestras clases grupales!',
+      '¡Guerreros y guerreras! ¡Ya llegó nuestra profesora! ¡Los esperamos a todos con la mejor vibra en el segundo piso para disfrutar de nuestras clases grupales al máximo!',
     audioPath: '/sounds/anuncios/clases-grupales.mp3',
   },
 ];
 
+const CUSTOM_AUDIO_KEY_PREFIX = 'trankilandia_custom_audio_v1_';
+
 let currentAudio: HTMLAudioElement | null = null;
 let currentAnnouncementId: string | null = null;
+
+/**
+ * Obtiene el audio personalizado si el usuario subió uno propio para este anuncio.
+ */
+export function getCustomAnnouncementAudio(id: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage.getItem(CUSTOM_AUDIO_KEY_PREFIX + id);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Guarda un audio personalizado en base64 para reemplazar el anuncio por defecto.
+ */
+export function setCustomAnnouncementAudio(id: string, dataUrl: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CUSTOM_AUDIO_KEY_PREFIX + id, dataUrl);
+    dispatchStateChange();
+  } catch (e) {
+    console.error('Error al guardar audio personalizado:', e);
+  }
+}
+
+/**
+ * Elimina el audio personalizado y restaura el audio de estudio oficial.
+ */
+export function removeCustomAnnouncementAudio(id: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(CUSTOM_AUDIO_KEY_PREFIX + id);
+    dispatchStateChange();
+  } catch {}
+}
 
 // Escuchar cambios de volumen y mute para modular el audio activo en vivo
 if (typeof window !== 'undefined') {
@@ -138,7 +177,7 @@ export function stopAnnouncement(): void {
 }
 
 /**
- * Reproduce un anuncio oficial por el parlante Bluetooth.
+ * Reproduce un anuncio oficial o personalizado por el parlante Bluetooth.
  * Si ya hay otro mensaje reproduciéndose, lo detiene primero.
  */
 export async function playAnnouncement(id: string): Promise<void> {
@@ -157,7 +196,10 @@ export async function playAnnouncement(id: string): Promise<void> {
   if (typeof window === 'undefined') return;
 
   try {
-    const audio = new Audio(item.audioPath);
+    const customSrc = getCustomAnnouncementAudio(id);
+    const audioSrc = customSrc || item.audioPath;
+
+    const audio = new Audio(audioSrc);
     currentAudio = audio;
 
     const initialVol = isAlertMuted() ? 0 : getAlertVolume();
@@ -172,10 +214,10 @@ export async function playAnnouncement(id: string): Promise<void> {
     };
 
     audio.onerror = () => {
-      console.warn(`[announcementsService] Error cargando "${item.audioPath}". Usando fallback de voz.`);
+      console.warn(`[announcementsService] Error cargando "${audioSrc}". Usando fallback de voz.`);
       currentAudio = null;
-      // Fallback a síntesis vocal
-      speakGymAnnouncement(item.fullText);
+      // Fallback a síntesis vocal limpia
+      speakGymAnnouncement(cleanSpeechText(item.fullText));
       // Tras el tiempo estimado, restaurar estado
       setTimeout(() => {
         if (currentAnnouncementId === id) {
@@ -189,6 +231,6 @@ export async function playAnnouncement(id: string): Promise<void> {
   } catch (err) {
     console.warn('[announcementsService] Error al reproducir audio HTML5:', err);
     // Fallback a voz sintética
-    speakGymAnnouncement(item.fullText);
+    speakGymAnnouncement(cleanSpeechText(item.fullText));
   }
 }
