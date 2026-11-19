@@ -32,9 +32,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-amber-400',
       border: 'border-amber-500/30',
     },
-    duration: '19s',
+    duration: '17s',
     fullText:
-      '¡Atención, guerreros! ¡Faltan diez minutos para cerrar el gimnasio! Vamos culminando con toda la energía esas últimas repeticiones y dejando las máquinas y mancuernas en orden. ¡Muchas gracias por entrenar con nosotros y darlo todo hoy!',
+      '¡Atención, guerreros! Les recordamos que faltan diez minutos para cerrar el gimnasio. Por favor, vayan culminando sus rutinas y dejando las máquinas y mancuernas en orden para realizar el cierre a la hora establecida. ¡Muchas gracias por su comprensión y por entrenar con nosotros!',
     audioPath: '/sounds/anuncios/cierre-10min.mp3',
   },
   {
@@ -46,9 +46,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-cyan-400',
       border: 'border-cyan-500/30',
     },
-    duration: '15s',
+    duration: '10s',
     fullText:
-      '¡Familia Trankilandia! Recuerden devolver y guardar cada accesorio, barra y mancuerna en su lugar después de utilizarlo. ¡El orden y la disciplina la hacemos todos juntos con fuerza!',
+      '¡Estimados guerreros! Recuerden devolver y guardar cada accesorio en su lugar después de utilizarlo. ¡El orden y la disciplina es responsabilidad de todos!',
     audioPath: '/sounds/anuncios/orden-accesorios.mp3',
   },
   {
@@ -60,9 +60,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-emerald-400',
       border: 'border-emerald-500/30',
     },
-    duration: '14s',
+    duration: '9s',
     fullText:
-      '¡Guerreros y guerreras! ¡Ya llegó nuestra profesora! ¡Los esperamos a todos con la mejor vibra en el segundo piso para disfrutar de nuestras clases grupales al máximo!',
+      '¡Guerreros y guerreras! Ya llegó nuestra profesora. ¡Los esperamos a todos en el segundo piso para disfrutar de nuestras clases grupales!',
     audioPath: '/sounds/anuncios/clases-grupales.mp3',
   },
 ];
