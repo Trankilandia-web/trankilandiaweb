@@ -16,6 +16,7 @@ import {
   getStaffList,
 } from '../../lib/staffStore';
 import StaffSwitcherModal from './StaffSwitcherModal';
+import GymAnnouncementsControl from './GymAnnouncementsControl';
 import GymMegaphoneControl from './GymMegaphoneControl';
 import AlertVolumeControl from './AlertVolumeControl';
 import trankilandiaLogo from '../../assets/trankilandia-logo.png';
@@ -148,6 +149,9 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
 
             {/* User Status + Viñeta Rápida de Personal */}
             <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Botón de Mensajes y Anuncios por el Parlante Bluetooth */}
+              <GymAnnouncementsControl />
+
               {/* Botón de Megáfono / Micrófono hacia el parlante Bluetooth */}
               <GymMegaphoneControl />
 
