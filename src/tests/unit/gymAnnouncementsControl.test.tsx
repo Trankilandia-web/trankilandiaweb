@@ -10,7 +10,7 @@ describe('Pruebas Unitarias · Componente GymAnnouncementsControl', () => {
 
   it('renderiza el botón de Mensajes en estado inactivo', () => {
     render(<GymAnnouncementsControl />);
-    expect(screen.getByText(/Mensajes/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mensajes/i)).toBeTruthy();
   });
 
   it('al hacer clic en Mensajes abre el popover con los 3 mensajes oficiales', () => {
@@ -18,12 +18,12 @@ describe('Pruebas Unitarias · Componente GymAnnouncementsControl', () => {
     const triggerBtn = screen.getByRole('button', { name: /Mensajes/i });
     fireEvent.click(triggerBtn);
 
-    expect(screen.getByText(/Mensajes de Sala/i)).toBeInTheDocument();
-    expect(screen.getByText(/Salida: Parlante Bluetooth/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mensajes de Sala/i)).toBeTruthy();
+    expect(screen.getByText(/Salida: Parlante Bluetooth/i)).toBeTruthy();
 
-    expect(screen.getByText(/Aviso de Cierre \(10 min\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Orden y Cuidado de Accesorios/i)).toBeInTheDocument();
-    expect(screen.getByText(/Inicio de Clases Grupales/i)).toBeInTheDocument();
+    expect(screen.getByText(/Aviso de Cierre \(10 min\)/i)).toBeTruthy();
+    expect(screen.getByText(/Orden y Cuidado de Accesorios/i)).toBeTruthy();
+    expect(screen.getByText(/Inicio de Clases Grupales/i)).toBeTruthy();
   });
 
   it('al hacer clic en Reproducir ejecuta playAnnouncement con el ID correspondiente', () => {
