@@ -34,7 +34,7 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
     },
     duration: '17s',
     fullText:
-      '¡Atención, guerreros! Les recordamos que faltan diez minutos para cerrar el gimnasio. Por favor, vayan culminando sus rutinas y dejando las máquinas y mancuernas en orden para realizar el cierre a la hora establecida. ¡Muchas gracias por su comprensión y por entrenar con nosotros!',
+      '¡Atención, guerreros! Les recordamos que faltan 10 minutos para cerrar el gimnasio. Por favor vayan culminando sus rutinas y dejando las máquinas y mancuernas en orden para realizar el cierre a la hora establecida. ¡Muchas gracias por su comprensión y por entrenar con nosotros!',
     audioPath: '/sounds/anuncios/cierre-10min.mp3',
   },
   {
