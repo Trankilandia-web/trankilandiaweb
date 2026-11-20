@@ -13,7 +13,6 @@ import {
   DiagnosticoRecomposicion,
   SegmentalData,
   SexoBiometrico,
-  crearSegmentalDataDefault,
 } from '../types/evaluacion';
 
 export interface EntradaMedicion {
@@ -271,7 +270,7 @@ export function determinarDiagnostico(
     };
   }
 
-  const { delta_musculo_kg, delta_grasa_kg, delta_peso_kg } = delta;
+  const { delta_musculo_kg, delta_grasa_kg } = delta;
 
   // 1. Recomposición Corporal (Gana músculo y pierde grasa)
   if (delta_musculo_kg >= 0.3 && delta_grasa_kg <= -0.3) {

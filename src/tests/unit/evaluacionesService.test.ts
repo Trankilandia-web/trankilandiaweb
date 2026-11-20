@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   guardarEvaluacion,
   obtenerHistorialEvaluaciones,
@@ -83,5 +83,9 @@ describe('Servicio de Persistencia y Caché Local-First (evaluacionesService)', 
     const ultima = await obtenerUltimaEvaluacion('70447087');
     expect(ultima).not.toBeNull();
     expect(ultima?.peso_kg).toBe(75.0);
+  });
+
+  it('actualizarEstaturaSocio debe actualizar la estatura sin lanzar excepciones', async () => {
+    await expect(actualizarEstaturaSocio('MEM-001', 175)).resolves.not.toThrow();
   });
 });

@@ -29,10 +29,12 @@ import {
   User,
   Phone,
   Save,
+  TrendingUp,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
+import EvolucionCorporalView from '../../components/portal/EvolucionCorporalView';
 import { useAuth } from '../../context/AuthContext';
 import {
   GymMember,
@@ -420,8 +422,8 @@ export default function ClientePortal() {
   // Tab activa del cliente
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'carnet' | 'rutina' | 'membresia' | 'perfil' | 'seguridad'>(
-    tabParam === 'seguridad' || tabParam === 'rutina' || tabParam === 'membresia' || tabParam === 'perfil' ? tabParam : 'carnet'
+  const [activeTab, setActiveTab] = useState<'carnet' | 'rutina' | 'evolucion' | 'membresia' | 'perfil' | 'seguridad'>(
+    tabParam === 'seguridad' || tabParam === 'rutina' || tabParam === 'evolucion' || tabParam === 'membresia' || tabParam === 'perfil' ? tabParam : 'carnet'
   );
 
   // Estados para gestión de Mis Datos Personales (Pestaña 'perfil')
@@ -1188,6 +1190,19 @@ export default function ClientePortal() {
 
               <button
                 type="button"
+                onClick={() => setActiveTab('evolucion')}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'evolucion'
+                    ? 'bg-amber-400 text-black shadow-md'
+                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <TrendingUp className="w-4 h-4" />
+                <span>Mi Evolución</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setActiveTab('membresia')}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'membresia'
@@ -1536,6 +1551,14 @@ export default function ClientePortal() {
               </div>
             )}
 
+            {/* PESTAÑA: MI EVOLUCIÓN (BIOIMPEDANCIA EUROMAR G78) */}
+            {activeTab === 'evolucion' && (
+              <EvolucionCorporalView
+                socioDni={currentMember.dni || effectiveDni || ''}
+                socioNombre={currentMember.name}
+              />
+            )}
+
             {/* PESTAÑA 3: MI MEMBRESÍA & PAGOS */}
             {activeTab === 'membresia' && (
               <div className="space-y-5">
@@ -1602,19 +1625,19 @@ export default function ClientePortal() {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
                     <div className="bg-zinc-950 p-3 rounded-2xl border border-white/5">
                       <span className="text-[10px] text-zinc-500 block">Peso Corporal</span>
-                      <span className="text-lg font-black text-white">{latestProgress?.weightKg || 76.5} kg</span>
+                      <span className="text-lg font-black text-white">{latestProgress?.weightKg ? `${latestProgress.weightKg} kg` : '—'}</span>
                     </div>
                     <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
                       <span className="text-[10px] text-amber-400 block">Press Banca</span>
-                      <span className="text-lg font-black text-amber-400">{latestProgress?.benchPressKg || 95} kg</span>
+                      <span className="text-lg font-black text-amber-400">{latestProgress?.benchPressKg ? `${latestProgress.benchPressKg} kg` : '—'}</span>
                     </div>
                     <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
                       <span className="text-[10px] text-amber-400 block">Sentadilla</span>
-                      <span className="text-lg font-black text-amber-400">{latestProgress?.squatKg || 120} kg</span>
+                      <span className="text-lg font-black text-amber-400">{latestProgress?.squatKg ? `${latestProgress.squatKg} kg` : '—'}</span>
                     </div>
                     <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
                       <span className="text-[10px] text-amber-400 block">Peso Muerto</span>
-                      <span className="text-lg font-black text-amber-400">{latestProgress?.deadliftKg || 140} kg</span>
+                      <span className="text-lg font-black text-amber-400">{latestProgress?.deadliftKg ? `${latestProgress.deadliftKg} kg` : '—'}</span>
                     </div>
                   </div>
                 </div>

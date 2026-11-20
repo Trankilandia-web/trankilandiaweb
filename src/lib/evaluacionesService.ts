@@ -9,7 +9,7 @@
 
 import { supabase, isSupabaseConfigured } from './supabase';
 import { EvaluacionCorporal } from '../types/evaluacion';
-import { getStoredMembers, saveStoredMembers, GymMember } from '../data/gymStore';
+import { getStoredMembers, saveStoredMembers } from '../data/gymStore';
 
 export const STORAGE_KEY_EVALUACIONES = 'trankilandia_evaluaciones_corporales_v1';
 export const STORAGE_KEY_OFFLINE_QUEUE = 'trankilandia_evaluaciones_offline_v1';

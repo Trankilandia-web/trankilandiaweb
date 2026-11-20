@@ -1,16 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Scale,
   Bluetooth,
-  User,
   Search,
   CheckCircle2,
-  AlertCircle,
-  ArrowRight,
-  ArrowLeft,
   X,
-  RefreshCw,
   Share2,
   Lock,
   Smartphone,
@@ -101,11 +96,12 @@ export default function TerminalBalanza() {
       setShowEstaturaModal(true);
     }
 
-    if (selectedMember.edad) {
-      setEdad(Number(selectedMember.edad));
+    if (selectedMember.age) {
+      setEdad(Number(selectedMember.age));
     }
-    if (selectedMember.sexo === 'Femenino' || selectedMember.sexo === 'Masculino') {
-      setSexo(selectedMember.sexo);
+    const memberGender = selectedMember.gender || (selectedMember as any).sexo;
+    if (memberGender === 'Femenino' || memberGender === 'Masculino') {
+      setSexo(memberGender);
     }
 
     if (selectedMember.dni) {
@@ -191,7 +187,6 @@ export default function TerminalBalanza() {
         },
         onError: (err) => {
           setStatusMessage(`Error: ${err.message}`);
-          setScaleStatus('error');
         },
       });
 
@@ -595,12 +590,22 @@ export default function TerminalBalanza() {
                     <p className="text-xs text-zinc-400 font-sans mt-1 max-w-sm mx-auto">
                       Pide al socio subir a la balanza y sujetar firmemente los electrodos de las manos.
                     </p>
+                    <div className="pt-1">
+                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-white/5">
+                        Estado BLE: {scaleStatus}
+                      </span>
+                    </div>
                   </div>
 
                   {liveWeight > 0 && (
                     <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/40 inline-block px-8">
-                      <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest block">
-                        Peso Detectado
+                      <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest block flex items-center justify-center gap-1.5">
+                        <span>Peso Detectado</span>
+                        {isWeightLocked && (
+                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">
+                            ESTABILIZADO
+                          </span>
+                        )}
                       </span>
                       <span className="text-4xl font-black font-mono text-amber-400 tracking-tight">
                         {liveWeight.toFixed(2)} <span className="text-base text-white">kg</span>

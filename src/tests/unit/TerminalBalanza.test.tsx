@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import React from 'react';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import TerminalBalanza from '../../pages/portal/TerminalBalanza';
@@ -16,10 +15,17 @@ describe('Terminal Móvil de Pesaje (TerminalBalanza)', () => {
         name: 'Luis Gerardo Llocclla',
         phone: '958183360',
         plan: 'Membresía Anual',
+        planPrice: 100,
+        paymentType: 'full',
+        advancePaid: 100,
+        balanceDue: 0,
+        paymentMethod: 'efectivo',
+        receiptNumber: 'REC-001',
         membershipStatus: 'active',
-        paymentStatus: 'paid',
+        expiresAt: '2026-12-31',
+        coachName: 'Luis',
         registeredAt: '2026-01-01',
-        shift: 'completo',
+        shift: 'manana',
       },
     ]);
   });

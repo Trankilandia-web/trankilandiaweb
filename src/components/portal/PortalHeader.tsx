@@ -6,6 +6,7 @@ import {
   User,
   LogOut,
   Lock,
+  Scale,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ROLES_CONFIG, UserRole } from '../../types/roles';
@@ -149,6 +150,19 @@ export default function PortalHeader({ currentRole, title, subtitle }: PortalHea
 
             {/* User Status + Viñeta Rápida de Personal */}
             <div className="flex items-center gap-2.5 flex-wrap">
+              {/* Acceso directo a Balanza EUROMAR G78 */}
+              {currentRole !== 'cliente' && (
+                <button
+                  type="button"
+                  onClick={() => navigate('/balanza')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 hover:text-amber-200 border border-amber-400/30 transition-colors text-xs font-bold cursor-pointer"
+                  title="Abrir Terminal de Balanza Inteligente EUROMAR G78"
+                >
+                  <Scale className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline">Balanza G78</span>
+                </button>
+              )}
+
               {/* Botón de Mensajes y Anuncios por el Parlante Bluetooth */}
               <GymAnnouncementsControl />
 
