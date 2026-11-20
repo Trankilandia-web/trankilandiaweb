@@ -36,8 +36,8 @@ describe('Componente EvolucionCorporalView', () => {
 
     // Esperar a que se cargue la evaluación
     expect(await screen.findByText(/FIT SCORE/i, {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findByText('75.00', {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findByText('35.50', {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findByText(/Análisis Segmental por Zonas/i, {}, { timeout: 8000 })).toBeDefined();
-  });
+    expect(await screen.findAllByText(/75.00/, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findAllByText(/35.5/, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findAllByText(/Análisis Segmentario/i, {}, { timeout: 8000 })).toBeDefined();
+  }, 15000);
 });

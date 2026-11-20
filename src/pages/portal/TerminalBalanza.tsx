@@ -1132,8 +1132,109 @@ export default function TerminalBalanza() {
                   <div className="text-lg font-black text-white font-mono mt-0.5">
                     Nivel {computedEval.grasa_visceral}
                   </div>
-                  <span className="text-[10px] font-mono text-emerald-400">Óptimo</span>
+                  <span className="text-[10px] font-mono text-emerald-400">
+                    {computedEval.grasa_visceral <= 9 ? 'Estándar' : 'Alto'}
+                  </span>
                 </div>
+              </div>
+
+              {/* Desglose Completo de Indicadores Estilo Fitdays */}
+              <div className="bg-zinc-950/80 border border-white/5 rounded-2xl p-4 text-left space-y-3 font-mono text-xs">
+                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wider block border-b border-white/5 pb-1">
+                  Indicadores Fitdays & Zonas Segmentales (8 Electrodos)
+                </span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">Masa Libre de Grasa</span>
+                    <span className="font-bold text-white text-xs">
+                      {(computedEval.masa_libre_grasa_kg || (computedEval.peso_kg - computedEval.grasa_corporal_kg)).toFixed(1)} kg
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">Músculo Esquelético</span>
+                    <span className="font-bold text-white text-xs">
+                      {(computedEval.musculo_esqueletico_pct || (computedEval.masa_muscular_pct * 0.61)).toFixed(1)} %
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">Contenido de Agua</span>
+                    <span className="font-bold text-white text-xs">
+                      {(computedEval.agua_kg || (computedEval.peso_kg * computedEval.agua_pct / 100)).toFixed(1)} kg ({computedEval.agua_pct}%)
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">Proteína</span>
+                    <span className="font-bold text-white text-xs">
+                      {(computedEval.proteina_kg || (computedEval.peso_kg * computedEval.proteina_pct / 100)).toFixed(1)} kg ({computedEval.proteina_pct}%)
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">Grasa Subcutánea</span>
+                    <span className="font-bold text-amber-400 text-xs">
+                      {(computedEval.grasa_subcutanea_pct || (computedEval.grasa_corporal_pct * 0.71)).toFixed(1)} %
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">BMR (Metabolismo)</span>
+                    <span className="font-bold text-amber-400 text-xs">
+                      {computedEval.bmr_kcal} kcal
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">Edad Corporal</span>
+                    <span className="font-bold text-white text-xs">
+                      {computedEval.edad_metabolica} años
+                    </span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5">
+                    <span className="text-zinc-500 block text-[9px] uppercase">WHR (Cintura/Cadera)</span>
+                    <span className="font-bold text-white text-xs">
+                      {(computedEval.whr || 0.88).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Resumen de los 5 miembros (8 electrodos) */}
+                {computedEval.segmental_data && (
+                  <div className="pt-2 border-t border-white/5 space-y-1.5">
+                    <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                      Segmental: Brazos, Tronco y Piernas
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-white/5">
+                        <span className="text-zinc-500 block">Brazos (L / R):</span>
+                        <span className="text-emerald-400 font-bold">
+                          {computedEval.segmental_data.brazo_izq.musculo_kg} kg musc
+                        </span>
+                        <span className="text-zinc-400"> · </span>
+                        <span className="text-amber-400">
+                          {(computedEval.segmental_data.brazo_izq.grasa_kg || 2.0).toFixed(1)} kg grasa
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-amber-400/20">
+                        <span className="text-zinc-500 block">Tronco:</span>
+                        <span className="text-emerald-400 font-bold">
+                          {computedEval.segmental_data.tronco.musculo_kg} kg musc
+                        </span>
+                        <span className="text-zinc-400"> · </span>
+                        <span className="text-amber-400">
+                          {(computedEval.segmental_data.tronco.grasa_kg || 16.0).toFixed(1)} kg grasa
+                        </span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-zinc-900 border border-white/5">
+                        <span className="text-zinc-500 block">Piernas (L / R):</span>
+                        <span className="text-emerald-400 font-bold">
+                          {computedEval.segmental_data.pierna_izq.musculo_kg} kg musc
+                        </span>
+                        <span className="text-zinc-400"> · </span>
+                        <span className="text-amber-400">
+                          {(computedEval.segmental_data.pierna_izq.grasa_kg || 4.4).toFixed(1)} kg grasa
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Botones de Acción */}

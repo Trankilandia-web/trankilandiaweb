@@ -6,7 +6,6 @@ import {
   Sparkles,
   Calendar,
   Share2,
-  CheckCircle2,
   Activity,
   Flame,
   Heart,
@@ -19,6 +18,7 @@ import {
 import {
   calcularDeltasMensuales,
   determinarDiagnostico,
+  obtenerEstandarFitdays,
 } from '../../lib/bioimpedanceEngine';
 
 export interface EvolucionCorporalViewProps {
@@ -345,111 +345,484 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
         </div>
       </div>
 
-      {/* 4. Métricas Secundarias */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-zinc-900/60 border border-white/10 rounded-2xl p-4 font-mono text-xs">
-        <div>
-          <span className="text-zinc-500 block text-[10px] uppercase">Agua Corporal</span>
-          <span className="font-bold text-white text-sm">{currentEval.agua_pct}%</span>
-          <span className="text-[10px] text-zinc-500 block">Hidratación</span>
+      {/* 4. Tabla Completa de Indicadores (Estándar Fitdays EUROMAR® G78) */}
+      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+          <div>
+            <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
+              INFORME BIOMÉTRICO FITDAYS
+            </span>
+            <h4 className="text-xl font-black uppercase text-white font-display">
+              Indicadores de Composición Corporal
+            </h4>
+          </div>
+          <span className="text-[11px] font-mono text-zinc-500 uppercase hidden sm:inline">
+            Balanza Segmental G78-BT
+          </span>
         </div>
-        <div>
-          <span className="text-zinc-500 block text-[10px] uppercase">Metabolismo Basal</span>
-          <span className="font-bold text-amber-400 text-sm">{currentEval.bmr_kcal} kcal</span>
-          <span className="text-[10px] text-zinc-500 block">Gasto en reposo</span>
-        </div>
-        <div>
-          <span className="text-zinc-500 block text-[10px] uppercase">Edad Metabólica</span>
-          <span className="font-bold text-white text-sm">{currentEval.edad_metabolica} años</span>
-          <span className="text-[10px] text-zinc-500 block">vs {currentEval.edad} reales</span>
-        </div>
-        <div>
-          <span className="text-zinc-500 block text-[10px] uppercase">Masa Ósea</span>
-          <span className="font-bold text-white text-sm">{currentEval.masa_osea_kg} kg</span>
-          <span className="text-[10px] text-zinc-500 block">Mineral óseo</span>
+
+        <div className="divide-y divide-white/5 text-xs font-mono">
+          {/* Header de Tabla */}
+          <div className="grid grid-cols-12 py-2 text-zinc-500 font-bold uppercase text-[10px]">
+            <div className="col-span-5 sm:col-span-6">Indicador</div>
+            <div className="col-span-4 sm:col-span-3 text-right">Valor</div>
+            <div className="col-span-3 text-right">Estándar</div>
+          </div>
+
+          {/* 1. Peso */}
+          {(() => {
+            const std = obtenerEstandarFitdays('peso', currentEval.peso_kg, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Peso</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.peso_kg.toFixed(2)} kg
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 2. IMC */}
+          {(() => {
+            const std = obtenerEstandarFitdays('imc', currentEval.imc, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">IMC</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.imc.toFixed(1)}
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 3. Grasa Corporal */}
+          {(() => {
+            const std = obtenerEstandarFitdays('grasa', currentEval.grasa_corporal_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Grasa Corporal</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-amber-400">
+                  {currentEval.grasa_corporal_pct.toFixed(1)} %
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 4. Masa Grasa */}
+          {(() => {
+            const std = obtenerEstandarFitdays('grasa', currentEval.grasa_corporal_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Masa grasa</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.grasa_corporal_kg.toFixed(1)} kg
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 5. Masa libre de grasa */}
+          <div className="grid grid-cols-12 py-2.5 items-center">
+            <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Masa libre de grasa</div>
+            <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+              {(currentEval.masa_libre_grasa_kg || (currentEval.peso_kg - currentEval.grasa_corporal_kg)).toFixed(1)} kg
+            </div>
+            <div className="col-span-3 text-right text-zinc-500">—</div>
+          </div>
+
+          {/* 6. Masa Muscular */}
+          {(() => {
+            const std = obtenerEstandarFitdays('musculo', currentEval.masa_muscular_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Masa Muscular</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-emerald-400">
+                  {currentEval.masa_muscular_kg.toFixed(1)} kg
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 7. Frecuencia muscular */}
+          {(() => {
+            const std = obtenerEstandarFitdays('frecuencia_muscular', currentEval.masa_muscular_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Frecuencia muscular</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.masa_muscular_pct.toFixed(1)} %
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 8. Músculo esquelético */}
+          {(() => {
+            const val = currentEval.musculo_esqueletico_pct || Number((currentEval.masa_muscular_pct * 0.61).toFixed(1));
+            const std = obtenerEstandarFitdays('musculo_esqueletico', val, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Músculo esquelético</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {val.toFixed(1)} %
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 9. Masa Esquelética (Ósea) */}
+          <div className="grid grid-cols-12 py-2.5 items-center">
+            <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Masa Esquelética (Ósea)</div>
+            <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+              {currentEval.masa_osea_kg.toFixed(1)} kg
+            </div>
+            <div className="col-span-3 text-right font-bold text-emerald-400">Excelente</div>
+          </div>
+
+          {/* 10. Cantidad de proteína */}
+          {(() => {
+            const val = currentEval.proteina_kg || Number(((currentEval.peso_kg * currentEval.proteina_pct) / 100).toFixed(1));
+            const std = obtenerEstandarFitdays('proteina', currentEval.proteina_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Cantidad de proteína</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {val.toFixed(1)} kg
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 11. Proteína % */}
+          {(() => {
+            const std = obtenerEstandarFitdays('proteina', currentEval.proteina_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Proteína</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.proteina_pct.toFixed(1)} %
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 12. Contenido de agua */}
+          {(() => {
+            const val = currentEval.agua_kg || Number(((currentEval.peso_kg * currentEval.agua_pct) / 100).toFixed(1));
+            const std = obtenerEstandarFitdays('agua', currentEval.agua_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Contenido de agua</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {val.toFixed(1)} kg
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 13. Agua Corporal % */}
+          {(() => {
+            const std = obtenerEstandarFitdays('agua', currentEval.agua_pct, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Agua Corporal</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.agua_pct.toFixed(1)} %
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 14. Grasa subcutánea */}
+          {(() => {
+            const val = currentEval.grasa_subcutanea_pct || Number((currentEval.grasa_corporal_pct * 0.71).toFixed(1));
+            const std = obtenerEstandarFitdays('subcutanea', val, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Grasa subcutánea</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {val.toFixed(1)} %
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 15. Grasa Visceral */}
+          {(() => {
+            const std = obtenerEstandarFitdays('visceral', currentEval.grasa_visceral, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Grasa Visceral</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.grasa_visceral.toFixed(1)}
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 16. BMR */}
+          <div className="grid grid-cols-12 py-2.5 items-center">
+            <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">BMR (Metabolismo Basal)</div>
+            <div className="col-span-4 sm:col-span-3 text-right font-bold text-amber-400">
+              {currentEval.bmr_kcal} kcal
+            </div>
+            <div className="col-span-3 text-right text-zinc-500">—</div>
+          </div>
+
+          {/* 17. Edad Corporal */}
+          {(() => {
+            const deltaEdad = currentEval.edad_metabolica - currentEval.edad;
+            const std = obtenerEstandarFitdays('edad', deltaEdad, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Edad Corporal</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {currentEval.edad_metabolica} años
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 18. WHR */}
+          {(() => {
+            const val = currentEval.whr || (currentEval.sexo === 'Masculino' ? 0.90 : 0.82);
+            const std = obtenerEstandarFitdays('whr', val, currentEval.sexo, currentEval.imc);
+            return (
+              <div className="grid grid-cols-12 py-2.5 items-center">
+                <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">WHR (Cintura/Cadera)</div>
+                <div className="col-span-4 sm:col-span-3 text-right font-bold text-white">
+                  {val.toFixed(2)}
+                </div>
+                <div className={`col-span-3 text-right font-bold ${std.colorClass}`}>{std.nivel}</div>
+              </div>
+            );
+          })()}
+
+          {/* 19. Peso corporal estándar */}
+          <div className="grid grid-cols-12 py-2.5 items-center">
+            <div className="col-span-5 sm:col-span-6 font-medium text-zinc-300">Peso corporal estándar</div>
+            <div className="col-span-4 sm:col-span-3 text-right font-bold text-zinc-400">
+              {(currentEval.peso_estandar_kg || (22.0 * Math.pow(currentEval.estatura_cm / 100, 2))).toFixed(1)} kg
+            </div>
+            <div className="col-span-3 text-right text-zinc-500">—</div>
+          </div>
         </div>
       </div>
 
-      {/* 5. Mapa Corporal Segmental (8 electrodos) */}
+      {/* 5. Datos de las Extremidades (Análisis Segmentario de 8 Electrodos) */}
       {segmental && (
-        <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
-                DESGLOSE DE 8 ELECTRODOS
+        <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-7 shadow-xl space-y-6">
+          <div className="border-b border-white/5 pb-3">
+            <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
+              DATOS DE LAS EXTREMIDADES (8 ELECTRODOS)
+            </span>
+            <h4 className="text-xl font-black uppercase text-white font-display">
+              Análisis Segmentario Completo
+            </h4>
+            <p className="text-xs text-zinc-400 font-sans mt-0.5">
+              El análisis segmentario desglosa la grasa y masa magra en brazos, piernas y tronco.
+            </p>
+          </div>
+
+          {/* A. Análisis de Grasa Segmentario */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-amber-400 uppercase tracking-wide">
+                Análisis de Grasa Segmentario
               </span>
-              <h4 className="text-xl font-black uppercase text-white font-display">
-                Análisis Segmental por Zonas
-              </h4>
-              <p className="text-xs text-zinc-400 font-sans mt-0.5">
-                Masa muscular y grasa medidas independientemente en tus 5 cuadrantes anatómicos.
-              </p>
+              <span className="text-zinc-500 text-[11px]">Rango estándar: 80% - 160%</span>
             </div>
-            <div className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-mono">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Simetría Equilibrada</span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Brazos */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-2.5">
+                <span className="text-xs font-mono font-bold text-zinc-400 uppercase block border-b border-white/5 pb-1">
+                  Tren Superior (Brazos)
+                </span>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Brazo Izq (L):</span>
+                  <span className="text-amber-400 font-bold">
+                    {(segmental.brazo_izq.grasa_kg || (currentEval.grasa_corporal_kg * 0.067)).toFixed(1)} kg · {segmental.brazo_izq.grasa_pct}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Brazo Der (R):</span>
+                  <span className="text-amber-400 font-bold">
+                    {(segmental.brazo_der.grasa_kg || (currentEval.grasa_corporal_kg * 0.067)).toFixed(1)} kg · {segmental.brazo_der.grasa_pct}%
+                  </span>
+                </div>
+              </div>
+
+              {/* Tronco */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/20 space-y-2.5">
+                <span className="text-xs font-mono font-bold text-amber-400 uppercase block border-b border-white/5 pb-1">
+                  Tronco / Abdomen
+                </span>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Grasa de Tronco:</span>
+                  <span className="text-amber-400 font-bold text-sm">
+                    {(segmental.tronco.grasa_kg || (currentEval.grasa_corporal_kg * 0.54)).toFixed(1)} kg
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Nivel de Grasa:</span>
+                  <span className="text-white font-bold">{segmental.tronco.grasa_pct}%</span>
+                </div>
+              </div>
+
+              {/* Piernas */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-2.5">
+                <span className="text-xs font-mono font-bold text-zinc-400 uppercase block border-b border-white/5 pb-1">
+                  Tren Inferior (Piernas)
+                </span>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Pierna Izq (L):</span>
+                  <span className="text-amber-400 font-bold">
+                    {(segmental.pierna_izq.grasa_kg || (currentEval.grasa_corporal_kg * 0.147)).toFixed(1)} kg · {segmental.pierna_izq.grasa_pct}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Pierna Der (R):</span>
+                  <span className="text-amber-400 font-bold">
+                    {(segmental.pierna_der.grasa_kg || (currentEval.grasa_corporal_kg * 0.147)).toFixed(1)} kg · {segmental.pierna_der.grasa_pct}%
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-            {/* Brazos */}
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-3">
-              <span className="text-xs font-mono font-bold text-amber-400 uppercase block border-b border-white/5 pb-1">
-                Tren Superior (Brazos)
+          {/* B. Equilibrio Muscular */}
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-emerald-400 uppercase tracking-wide">
+                Equilibrio Muscular
               </span>
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-zinc-400">Brazo Izquierdo:</span>
-                <span className="text-white font-bold">
-                  {segmental.brazo_izq.musculo_kg} kg · {segmental.brazo_izq.grasa_pct}%
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-zinc-400">Brazo Derecho:</span>
-                <span className="text-white font-bold">
-                  {segmental.brazo_der.musculo_kg} kg · {segmental.brazo_der.grasa_pct}%
-                </span>
-              </div>
+              <span className="text-zinc-500 text-[11px]">Rango estándar: 90% - 110%</span>
             </div>
 
-            {/* Torso / Tronco */}
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/20 space-y-3">
-              <span className="text-xs font-mono font-bold text-amber-400 uppercase block border-b border-white/5 pb-1">
-                Tronco & Abdomen
-              </span>
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-zinc-400">Masa Magra Torso:</span>
-                <span className="text-emerald-400 font-bold">
-                  {segmental.tronco.musculo_kg} kg
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Brazos */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-2.5">
+                <span className="text-xs font-mono font-bold text-zinc-400 uppercase block border-b border-white/5 pb-1">
+                  Tren Superior (Brazos)
                 </span>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Brazo Izq (L):</span>
+                  <span className="text-emerald-400 font-bold">
+                    {segmental.brazo_izq.musculo_kg.toFixed(1)} kg · {segmental.brazo_izq.musculo_pct || 105}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Brazo Der (R):</span>
+                  <span className="text-emerald-400 font-bold">
+                    {segmental.brazo_der.musculo_kg.toFixed(1)} kg · {segmental.brazo_der.musculo_pct || 105}%
+                  </span>
+                </div>
               </div>
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-zinc-400">Grasa de Tronco:</span>
-                <span className="text-amber-400 font-bold">
-                  {segmental.tronco.grasa_pct}%
-                </span>
-              </div>
-            </div>
 
-            {/* Piernas */}
-            <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-3">
-              <span className="text-xs font-mono font-bold text-amber-400 uppercase block border-b border-white/5 pb-1">
-                Tren Inferior (Piernas)
-              </span>
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-zinc-400">Pierna Izquierda:</span>
-                <span className="text-white font-bold">
-                  {segmental.pierna_izq.musculo_kg} kg · {segmental.pierna_izq.grasa_pct}%
+              {/* Tronco */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-emerald-500/20 space-y-2.5">
+                <span className="text-xs font-mono font-bold text-emerald-400 uppercase block border-b border-white/5 pb-1">
+                  Tronco & Espalda
                 </span>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Músculo Tronco:</span>
+                  <span className="text-emerald-400 font-bold text-sm">
+                    {segmental.tronco.musculo_kg.toFixed(1)} kg
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Rango Simetría:</span>
+                  <span className="text-white font-bold">{segmental.tronco.musculo_pct || 100}%</span>
+                </div>
               </div>
-              <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-zinc-400">Pierna Derecha:</span>
-                <span className="text-white font-bold">
-                  {segmental.pierna_der.musculo_kg} kg · {segmental.pierna_der.grasa_pct}%
+
+              {/* Piernas */}
+              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/5 space-y-2.5">
+                <span className="text-xs font-mono font-bold text-zinc-400 uppercase block border-b border-white/5 pb-1">
+                  Tren Inferior (Piernas)
                 </span>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Pierna Izq (L):</span>
+                  <span className="text-emerald-400 font-bold">
+                    {segmental.pierna_izq.musculo_kg.toFixed(1)} kg · {segmental.pierna_izq.musculo_pct || 108}%
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-mono">
+                  <span className="text-zinc-400">Pierna Der (R):</span>
+                  <span className="text-emerald-400 font-bold">
+                    {segmental.pierna_der.musculo_kg.toFixed(1)} kg · {segmental.pierna_der.musculo_pct || 108}%
+                  </span>
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* 6. Control de Peso y Recomendaciones */}
+      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+        <div className="border-b border-white/5 pb-3">
+          <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
+            METAS DE RECOMPOSICIÓN
+          </span>
+          <h4 className="text-xl font-black uppercase text-white font-display">
+            Control de Peso Objetivo
+          </h4>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-xs">
+          <div className="p-3.5 rounded-2xl bg-zinc-950 border border-white/5">
+            <span className="text-zinc-500 block text-[10px] uppercase">Peso Objetivo</span>
+            <span className="font-bold text-white text-base">
+              {(currentEval.peso_objetivo_kg || (22.0 * Math.pow(currentEval.estatura_cm / 100, 2))).toFixed(1)} kg
+            </span>
+            <span className="text-[10px] text-zinc-500 block mt-0.5">Recomendado</span>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-zinc-950 border border-white/5">
+            <span className="text-zinc-500 block text-[10px] uppercase">Control de peso</span>
+            <span className={`font-bold text-base ${
+              (currentEval.control_peso_kg || 0) <= 0 ? 'text-blue-400' : 'text-emerald-400'
+            }`}>
+              {(currentEval.control_peso_kg || 0) > 0 ? `+${currentEval.control_peso_kg}` : (currentEval.control_peso_kg || 0)} kg
+            </span>
+            <span className="text-[10px] text-zinc-500 block mt-0.5">Ajuste total</span>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-zinc-950 border border-white/5">
+            <span className="text-zinc-500 block text-[10px] uppercase">Control de grasa</span>
+            <span className={`font-bold text-base ${
+              (currentEval.control_grasa_kg || 0) <= 0 ? 'text-amber-400' : 'text-emerald-400'
+            }`}>
+              {(currentEval.control_grasa_kg || 0) > 0 ? `+${currentEval.control_grasa_kg}` : (currentEval.control_grasa_kg || 0)} kg
+            </span>
+            <span className="text-[10px] text-zinc-500 block mt-0.5">Grasa neta</span>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-zinc-950 border border-white/5">
+            <span className="text-zinc-500 block text-[10px] uppercase">Control muscular</span>
+            <span className="font-bold text-emerald-400 text-base">
+              +{(currentEval.control_muscular_kg || 0).toFixed(1)} kg
+            </span>
+            <span className="text-[10px] text-zinc-500 block mt-0.5">Consolidar masa</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -11,6 +11,8 @@ export type SexoBiometrico = 'Masculino' | 'Femenino';
 
 export interface SegmentalZone {
   musculo_kg: number;
+  musculo_pct?: number;
+  grasa_kg?: number;
   grasa_pct: number;
 }
 
@@ -38,14 +40,25 @@ export interface EvaluacionCorporal {
   imc: number;
   grasa_corporal_pct: number;
   grasa_corporal_kg: number;
+  masa_libre_grasa_kg?: number;
   masa_muscular_kg: number;
   masa_muscular_pct: number;
+  musculo_esqueletico_pct?: number;
   grasa_visceral: number; // 1 - 50
+  grasa_subcutanea_pct?: number;
   agua_pct: number;
+  agua_kg?: number;
   masa_osea_kg: number;
   bmr_kcal: number;
   edad_metabolica: number;
   proteina_pct: number;
+  proteina_kg?: number;
+  whr?: number;
+  peso_estandar_kg?: number;
+  peso_objetivo_kg?: number;
+  control_peso_kg?: number;
+  control_grasa_kg?: number;
+  control_muscular_kg?: number;
   puntuacion_corporal: number; // 0 - 100
   
   // Desglose Segmental (8 electrodos)

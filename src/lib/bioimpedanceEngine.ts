@@ -44,41 +44,65 @@ export interface EntradaMedicion {
  * Deriva las 5 zonas segmentales a partir de la masa muscular y grasa corporal
  * si la báscula solo transmitió valores agregados o si es captura rápida.
  */
+/**
+ * Deriva las 5 zonas segmentales a partir de la masa muscular y grasa corporal
+ * según las proporciones biométricas del estándar Fitdays / Lefu (8 electrodos).
+ */
 function generarSegmentalEstimado(
   masaMuscularKg: number,
+  grasaCorporalKg: number,
   grasaCorporalPct: number,
   sexo: SexoBiometrico
 ): SegmentalData {
-  // Distribución antropométrica típica de masa muscular y grasa
-  const factorBrazo = sexo === 'Masculino' ? 0.095 : 0.085;
-  const factorPierna = sexo === 'Masculino' ? 0.26 : 0.275;
-  const factorTorso = 1 - 2 * factorBrazo - 2 * factorPierna;
+  const factorBrazoMusculo = sexo === 'Masculino' ? 0.062 : 0.058;
+  const factorPiernaMusculo = sexo === 'Masculino' ? 0.177 : 0.185;
+  const factorTorsoMusculo = 1 - 2 * factorBrazoMusculo - 2 * factorPiernaMusculo;
 
-  const musculoBrazoIzq = Number((masaMuscularKg * factorBrazo * 0.99).toFixed(1));
-  const musculoBrazoDer = Number((masaMuscularKg * factorBrazo * 1.01).toFixed(1));
-  const musculoPiernaIzq = Number((masaMuscularKg * factorPierna * 0.995).toFixed(1));
-  const musculoPiernaDer = Number((masaMuscularKg * factorPierna * 1.005).toFixed(1));
-  const musculoTorso = Number((masaMuscularKg * factorTorso).toFixed(1));
+  const factorBrazoGrasa = 0.067;
+  const factorPiernaGrasa = 0.147;
+  const factorTorsoGrasa = 1 - 2 * factorBrazoGrasa - 2 * factorPiernaGrasa;
+
+  const musculoBrazoIzq = Number((masaMuscularKg * factorBrazoMusculo).toFixed(1));
+  const musculoBrazoDer = Number((masaMuscularKg * factorBrazoMusculo).toFixed(1));
+  const musculoPiernaIzq = Number((masaMuscularKg * factorPiernaMusculo).toFixed(1));
+  const musculoPiernaDer = Number((masaMuscularKg * factorPiernaMusculo).toFixed(1));
+  const musculoTorso = Number((masaMuscularKg * factorTorsoMusculo).toFixed(1));
+
+  const grasaBrazoIzqKg = Number((grasaCorporalKg * factorBrazoGrasa).toFixed(1));
+  const grasaBrazoDerKg = Number((grasaCorporalKg * factorBrazoGrasa).toFixed(1));
+  const grasaPiernaIzqKg = Number((grasaCorporalKg * factorPiernaGrasa).toFixed(1));
+  const grasaPiernaDerKg = Number((grasaCorporalKg * factorPiernaGrasa).toFixed(1));
+  const grasaTorsoKg = Number((grasaCorporalKg * factorTorsoGrasa).toFixed(1));
 
   return {
     brazo_izq: {
       musculo_kg: musculoBrazoIzq,
+      musculo_pct: 105,
+      grasa_kg: grasaBrazoIzqKg,
       grasa_pct: Number((grasaCorporalPct * 0.9).toFixed(1)),
     },
     brazo_der: {
       musculo_kg: musculoBrazoDer,
-      grasa_pct: Number((grasaCorporalPct * 0.88).toFixed(1)),
+      musculo_pct: 105,
+      grasa_kg: grasaBrazoDerKg,
+      grasa_pct: Number((grasaCorporalPct * 0.9).toFixed(1)),
     },
     pierna_izq: {
       musculo_kg: musculoPiernaIzq,
+      musculo_pct: 108,
+      grasa_kg: grasaPiernaIzqKg,
       grasa_pct: Number((grasaCorporalPct * 0.95).toFixed(1)),
     },
     pierna_der: {
       musculo_kg: musculoPiernaDer,
-      grasa_pct: Number((grasaCorporalPct * 0.94).toFixed(1)),
+      musculo_pct: 108,
+      grasa_kg: grasaPiernaDerKg,
+      grasa_pct: Number((grasaCorporalPct * 0.95).toFixed(1)),
     },
     tronco: {
       musculo_kg: musculoTorso,
+      musculo_pct: 100,
+      grasa_kg: grasaTorsoKg,
       grasa_pct: Number((grasaCorporalPct * 1.08).toFixed(1)),
     },
   };
@@ -184,6 +208,19 @@ export function calcularMetricasCompletas(entrada: EntradaMedicion): EvaluacionC
 
   // 8. Proteína (%)
   const proteinaPct = entrada.proteina_pct || Number(((musculoKg * 0.22 / peso) * 100).toFixed(1));
+  const proteinaKg = Number(((peso * proteinaPct) / 100).toFixed(1));
+  const aguaKg = Number(((peso * (aguaPct / 100))).toFixed(1));
+  const musculoEsqueleticoPct = Number((musculoPct * (entrada.sexo === 'Masculino' ? 0.61 : 0.58)).toFixed(1));
+  const grasaSubcutaneaPct = Number((grasaPct * (entrada.sexo === 'Masculino' ? 0.71 : 0.74)).toFixed(1));
+  const whr = entrada.sexo === 'Masculino'
+    ? Number((0.82 + Math.max(0, imc - 22) * 0.013).toFixed(2))
+    : Number((0.74 + Math.max(0, imc - 22) * 0.014).toFixed(2));
+  const pesoEstandar = Number((22.0 * Math.pow(estaturaM, 2)).toFixed(1));
+  const grasaOptimaRatio = entrada.sexo === 'Masculino' ? 0.15 : 0.22;
+  const pesoObjetivo = Number((masaLibreGrasa / (1 - grasaOptimaRatio)).toFixed(1));
+  const controlPeso = Number((pesoObjetivo - peso).toFixed(1));
+  const controlGrasa = Number((grasaKg - (pesoObjetivo * grasaOptimaRatio)).toFixed(1));
+  const controlMuscular = 0.0;
 
   // 9. Puntuación Corporal
   const puntuacion = entrada.puntuacion_corporal || calcularPuntuacionCorporal(
@@ -195,7 +232,7 @@ export function calcularMetricasCompletas(entrada: EntradaMedicion): EvaluacionC
   );
 
   // 10. Datos segmentales
-  const segmental = entrada.segmental_data || generarSegmentalEstimado(musculoKg, grasaPct, entrada.sexo);
+  const segmental = entrada.segmental_data || generarSegmentalEstimado(musculoKg, grasaKg, grasaPct, entrada.sexo);
 
   return {
     id: entrada.id || `eval-${entrada.socio_dni}-${Date.now()}`,
@@ -209,14 +246,25 @@ export function calcularMetricasCompletas(entrada: EntradaMedicion): EvaluacionC
     imc,
     grasa_corporal_pct: Number(grasaPct.toFixed(1)),
     grasa_corporal_kg: grasaKg,
+    masa_libre_grasa_kg: masaLibreGrasa,
     masa_muscular_kg: Number(musculoKg.toFixed(2)),
     masa_muscular_pct: musculoPct,
+    musculo_esqueletico_pct: musculoEsqueleticoPct,
     grasa_visceral: visceral,
+    grasa_subcutanea_pct: grasaSubcutaneaPct,
     agua_pct: Number(aguaPct.toFixed(1)),
+    agua_kg: aguaKg,
     masa_osea_kg: masaOsea,
     bmr_kcal: bmr,
     edad_metabolica: edadMeta,
     proteina_pct: proteinaPct,
+    proteina_kg: proteinaKg,
+    whr,
+    peso_estandar_kg: pesoEstandar,
+    peso_objetivo_kg: pesoObjetivo,
+    control_peso_kg: controlPeso,
+    control_grasa_kg: controlGrasa,
+    control_muscular_kg: controlMuscular,
     puntuacion_corporal: puntuacion,
     segmental_data: segmental,
     evaluador_id: entrada.evaluador_id,
@@ -225,6 +273,108 @@ export function calcularMetricasCompletas(entrada: EntradaMedicion): EvaluacionC
     origen: entrada.origen || 'bluetooth_g78',
     created_at: new Date().toISOString(),
   };
+}
+
+export type NivelEstandarFitdays = 'Excelente' | 'Estándar' | 'Alto' | 'Demasiado alto' | 'Bajo';
+
+export interface EstandarMetricaInfo {
+  nivel: NivelEstandarFitdays;
+  colorClass: string;
+}
+
+export function obtenerEstandarFitdays(
+  metrica: string,
+  valor: number,
+  sexo: SexoBiometrico,
+  imc: number
+): EstandarMetricaInfo {
+  let nivel: NivelEstandarFitdays = 'Estándar';
+
+  switch (metrica) {
+    case 'peso':
+    case 'imc':
+      if (imc < 18.5) nivel = 'Bajo';
+      else if (imc <= 24.9) nivel = 'Estándar';
+      else if (imc <= 29.9) nivel = 'Alto';
+      else nivel = 'Demasiado alto';
+      break;
+
+    case 'grasa':
+      const maxGrasaStd = sexo === 'Masculino' ? 20 : 28;
+      const maxGrasaAlta = sexo === 'Masculino' ? 25 : 34;
+      const minGrasaStd = sexo === 'Masculino' ? 10 : 18;
+      if (valor < minGrasaStd) nivel = 'Bajo';
+      else if (valor <= maxGrasaStd) nivel = 'Estándar';
+      else if (valor <= maxGrasaAlta) nivel = 'Alto';
+      else nivel = 'Demasiado alto';
+      break;
+
+    case 'musculo':
+    case 'frecuencia_muscular':
+      const minMusculoExc = sexo === 'Masculino' ? 64 : 52;
+      const minMusculoStd = sexo === 'Masculino' ? 55 : 45;
+      if (valor >= minMusculoExc) nivel = 'Excelente';
+      else if (valor >= minMusculoStd) nivel = 'Estándar';
+      else nivel = 'Bajo';
+      break;
+
+    case 'musculo_esqueletico':
+      const minEsqExc = sexo === 'Masculino' ? 38 : 30;
+      const minEsqStd = sexo === 'Masculino' ? 32 : 25;
+      if (valor >= minEsqExc) nivel = 'Excelente';
+      else if (valor >= minEsqStd) nivel = 'Estándar';
+      else nivel = 'Bajo';
+      break;
+
+    case 'proteina':
+      if (valor >= 13.0) nivel = 'Excelente';
+      else if (valor >= 11.0) nivel = 'Estándar';
+      else nivel = 'Bajo';
+      break;
+
+    case 'agua':
+      const minAguaExc = sexo === 'Masculino' ? 55 : 50;
+      const minAguaStd = sexo === 'Masculino' ? 45 : 40;
+      if (valor >= minAguaExc) nivel = 'Excelente';
+      else if (valor >= minAguaStd) nivel = 'Estándar';
+      else nivel = 'Bajo';
+      break;
+
+    case 'visceral':
+      if (valor <= 9) nivel = 'Estándar';
+      else if (valor <= 14) nivel = 'Alto';
+      else nivel = 'Demasiado alto';
+      break;
+
+    case 'subcutanea':
+      const maxSubStd = sexo === 'Masculino' ? 18 : 25;
+      if (valor <= maxSubStd) nivel = 'Estándar';
+      else nivel = 'Alto';
+      break;
+
+    case 'whr':
+      const maxWhrStd = sexo === 'Masculino' ? 0.90 : 0.85;
+      if (valor <= maxWhrStd) nivel = 'Estándar';
+      else nivel = 'Alto';
+      break;
+
+    case 'edad':
+      if (valor <= 0) nivel = 'Excelente';
+      else if (valor <= 3) nivel = 'Estándar';
+      else nivel = 'Alto';
+      break;
+
+    default:
+      nivel = 'Estándar';
+  }
+
+  let colorClass = 'text-emerald-400';
+  if (nivel === 'Excelente' || nivel === 'Estándar') colorClass = 'text-emerald-400';
+  else if (nivel === 'Alto') colorClass = 'text-amber-400';
+  else if (nivel === 'Demasiado alto') colorClass = 'text-rose-400 font-bold';
+  else if (nivel === 'Bajo') colorClass = 'text-blue-400';
+
+  return { nivel, colorClass };
 }
 
 /**
