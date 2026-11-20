@@ -1,113 +1,59 @@
-/**
- * ==============================================================================
- * TRANKILANDIA GYM · GESTIÓN DE CONTRASEÑAS VINCULADAS AL DNI (LOCAL-FIRST & CLOUD)
- * ==============================================================================
- * Permite que cada socio cambie su contraseña vinculada al DNI en cualquier momento.
- * La contraseña inicial es su mismo número de DNI (8 dígitos).
- * Funciona de forma resiliente en localStorage y sincroniza con Supabase Auth si está conectado.
- * ==============================================================================
- */
-
 import { supabase, isSupabaseConfigured } from './supabase';
-import { extraerDniPeru } from './dniParser';
 
-const PASSWORDS_STORAGE_KEY = 'trankilandia_member_passwords_v1';
+const LEGACY_PASSWORDS_KEY = 'trankilandia_member_passwords_v1';
+function clearLegacyPasswords(): void {
+  try { localStorage.removeItem(LEGACY_PASSWORDS_KEY); } catch { /* Storage can be unavailable. */ }
+}
+clearLegacyPasswords();
 
-/**
- * Obtiene la contraseña personalizada de un socio si la ha modificado.
- * Si nunca la ha cambiado, retorna null (indicando que su contraseña es su DNI).
- */
-export function getStoredCustomPassword(dni: string): string | null {
-  try {
-    const clean = extraerDniPeru(dni) || dni.trim().replace(/\D/g, '').slice(0, 8);
-    if (!clean) return null;
-    const raw = localStorage.getItem(PASSWORDS_STORAGE_KEY);
-    if (raw) {
-      const map = JSON.parse(raw);
-      return typeof map[clean] === 'string' ? map[clean] : null;
-    }
-  } catch {}
+/** @deprecated Passwords are managed exclusively by Supabase Auth. */
+export function getStoredCustomPassword(_dni: string): null {
+  clearLegacyPasswords();
   return null;
 }
-
-/**
- * Guarda o actualiza la contraseña personalizada de un DNI en almacenamiento local.
- */
-export function saveStoredCustomPassword(dni: string, newPassword: string): void {
-  try {
-    const clean = extraerDniPeru(dni) || dni.trim().replace(/\D/g, '').slice(0, 8);
-    if (!clean) return;
-    const raw = localStorage.getItem(PASSWORDS_STORAGE_KEY);
-    const map = raw ? JSON.parse(raw) : {};
-    map[clean] = newPassword;
-    localStorage.setItem(PASSWORDS_STORAGE_KEY, JSON.stringify(map));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gym-password-updated', { detail: { dni: clean } }));
-    }
-  } catch {}
+/** @deprecated Never persist credentials in browser storage. */
+export function saveStoredCustomPassword(_dni: string, _newPassword: string): void {
+  clearLegacyPasswords();
 }
 
-/**
- * Cambia la contraseña de acceso vinculada al DNI.
- * Valida la contraseña anterior (o que sea su DNI si es el primer cambio).
- */
 export async function actualizarPasswordSocio(
   dni: string,
   nuevoPassword: string,
   passwordActual?: string
 ): Promise<{ success: boolean; message: string }> {
-  const cleanDni = extraerDniPeru(dni) || dni.trim().replace(/\D/g, '').slice(0, 8);
-  if (!cleanDni || cleanDni.length !== 8) {
-    return { success: false, message: 'DNI inválido. Debe tener exactamente 8 dígitos.' };
-  }
+  clearLegacyPasswords();
+  const cleanDni = dni.trim();
+  if (!/^\d{8}$/.test(cleanDni)) return { success: false, message: 'DNI inválido. Debe tener exactamente 8 dígitos.' };
+  if (nuevoPassword.length < 6) return { success: false, message: 'La nueva contraseña debe tener al menos 6 caracteres.' };
+  if (!passwordActual) return { success: false, message: 'Ingresa tu contraseña actual para confirmar tu identidad. Si la olvidaste, solicita ayuda en recepción.' };
+  if (!isSupabaseConfigured()) return { success: false, message: 'El servicio de autenticación no está configurado.' };
 
-  const cleanNewPw = nuevoPassword.trim();
-  if (cleanNewPw.length < 6) {
-    return { success: false, message: 'La nueva contraseña debe tener al menos 6 caracteres.' };
-  }
-
-  // Verificar la contraseña anterior si se especificó
-  const savedPw = getStoredCustomPassword(cleanDni);
-  const expectedCurrent = savedPw || cleanDni;
-
-  if (passwordActual && passwordActual.trim() !== expectedCurrent) {
-    return {
-      success: false,
-      message: 'La contraseña actual no es correcta. Recuerda que si es tu primer cambio, tu clave inicial es tu DNI.',
-    };
-  }
-
-  // 1. Guardar de inmediato en local-first
-  saveStoredCustomPassword(cleanDni, cleanNewPw);
-
-  // 2. Si Supabase está conectado, actualizar la contraseña en Supabase Auth
-  if (isSupabaseConfigured()) {
-    try {
-      // Si el usuario actual está logueado en Supabase
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (sessionData?.session) {
-        const { error: updateErr } = await supabase.auth.updateUser({ password: cleanNewPw });
-        if (updateErr) {
-          console.warn('Nota Supabase Auth updateUser:', updateErr.message);
-        }
-      }
-    } catch (err) {
-      console.warn('Error sincronizando contraseña remota:', err);
+  try {
+    const canonicalEmail = `${cleanDni}@socio.trankilandia.pe`;
+    const { data: currentData } = await supabase.auth.getUser();
+    const current = currentData?.user;
+    if (current && current.email?.toLowerCase() !== canonicalEmail) {
+      // An OAuth account must already be linked by the server to this member.
+      const { data: member, error } = await supabase.from('socios').select('id').eq('user_id', current.id).eq('dni', cleanDni).maybeSingle();
+      if (error || !member) return { success: false, message: 'El DNI no corresponde a la cuenta de la sesión actual.' };
     }
-  }
 
-  return {
-    success: true,
-    message: '¡Contraseña actualizada con éxito! Ahora puedes ingresar con tu DNI y tu nueva clave.',
-  };
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: current?.email || canonicalEmail,
+      password: passwordActual,
+    });
+    if (error || !data.user || !data.session || (current && data.user.id !== current.id) || (!current && data.user.email?.toLowerCase() !== canonicalEmail)) {
+      return { success: false, message: 'La contraseña actual no es correcta o no se pudo verificar tu cuenta.' };
+    }
+    const { error: updateError } = await supabase.auth.updateUser({ password: nuevoPassword });
+    if (updateError) return { success: false, message: 'No se pudo actualizar la contraseña. Inténtalo de nuevo.' };
+    window.dispatchEvent(new CustomEvent('gym-password-updated', { detail: { dni: cleanDni } }));
+    return { success: true, message: 'Contraseña actualizada. Usa tu nueva clave en el próximo ingreso.' };
+  } catch {
+    return { success: false, message: 'No se pudo verificar la cuenta o guardar la contraseña. Revisa tu conexión.' };
+  }
 }
 
-/**
- * Restablece la contraseña de un socio de forma rápida (autorrecuperación o soporte recepción).
- */
-export async function restablecerPasswordSocio(
-  dni: string,
-  nuevoPassword: string
-): Promise<{ success: boolean; message: string }> {
-  return actualizarPasswordSocio(dni, nuevoPassword);
+export async function restablecerPasswordSocio(dni: string, nuevoPassword: string, passwordActual?: string): Promise<{ success: boolean; message: string }> {
+  return actualizarPasswordSocio(dni, nuevoPassword, passwordActual);
 }

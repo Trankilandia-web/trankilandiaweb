@@ -31,6 +31,7 @@ import {
   fetchSociosParaRecepcion,
   cargarAsistenciasActivas90Min,
   registerGymMember,
+  getPendingEnrollmentMember,
   renovarMembresiaSocio,
   obtenerProductosInventario,
   updateMemberProfile,
@@ -55,6 +56,8 @@ import {
 import { usePosCashier } from '../../hooks/usePosCashier';
 import { useMemberAttendance, playAttendanceTone } from '../../hooks/useMemberAttendance';
 import { playGymAlert } from '../../lib/audioVoiceAlerts';
+import { createScannerKeyHandler } from '../../lib/scannerKeyboard';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 export default function HubReceptionSimple() {
   const [activeTab, setActiveTab] = useState<'acceso' | 'crm' | 'inscripcion' | 'pos'>('acceso');
@@ -63,7 +66,7 @@ export default function HubReceptionSimple() {
   const [members, setMembers] = useState<GymMember[]>([]);
   const [asistencias, setAsistencias] = useState<AsistenciaActiva[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [supabaseConnected, setSupabaseConnected] = useState(true);
+  const [supabaseConnected, setSupabaseConnected] = useState(false);
 
   // Hook modular: Escáner de Acceso y Asistencia de Socios (con control estricto de aforo y duplicados)
   const {
@@ -88,6 +91,7 @@ export default function HubReceptionSimple() {
     posMetodoPago,
     setPosMetodoPago,
     posSuccessMsg,
+    posErrorMessage,
     subtotalCarrito,
     descuentoMonto,
     setDescuentoMonto,
@@ -135,6 +139,7 @@ export default function HubReceptionSimple() {
   const [formTipoPago, setFormTipoPago] = useState<'full' | 'adelanto'>('full');
   const [formAdelanto, setFormAdelanto] = useState(80);
   const [formIsRenewal, setFormIsRenewal] = useState(false);
+  const [hasPendingEnrollment, setHasPendingEnrollment] = useState(false);
   const [formDniLocked, setFormDniLocked] = useState(false);
   const [formSuccessMsg, setFormSuccessMsg] = useState<string | null>(null);
   const [formErrorMsg, setFormErrorMsg] = useState<string | null>(null);
@@ -362,8 +367,6 @@ export default function HubReceptionSimple() {
   }, [activeTab]);
 
   // Escáner Global Continuo (Detección de ráfaga de pistola láser en cualquier pestaña)
-  const barcodeBufferRef = useRef<string>('');
-  const lastKeyTimeRef = useRef<number>(0);
 
   // Notificación de Escáner en Punto de Venta (POS)
   const [posScannerNotice, setPosScannerNotice] = useState<{
@@ -476,35 +479,9 @@ export default function HubReceptionSimple() {
   };
 
   useEffect(() => {
-    const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        const buffer = barcodeBufferRef.current.trim();
-        if (buffer.length >= 6) {
-          e.preventDefault();
-          e.stopPropagation();
-          procesarCodigoEscaneado(buffer);
-          barcodeBufferRef.current = '';
-          return;
-        }
-        barcodeBufferRef.current = '';
-        return;
-      }
-
-      if (e.key.length !== 1 || e.ctrlKey || e.altKey || e.metaKey) {
-        return;
-      }
-
-      const now = performance.now();
-      const delta = now - lastKeyTimeRef.current;
-      lastKeyTimeRef.current = now;
-
-      // Las pistolas láser y escáneres Bluetooth disparan caracteres con ráfagas de hasta 220ms
-      if (delta > 220) {
-        barcodeBufferRef.current = e.key;
-      } else {
-        barcodeBufferRef.current += e.key;
-      }
-    };
+    const handleGlobalKeyDown = createScannerKeyHandler((code) => {
+      void procesarCodigoEscaneado(code);
+    });
 
     window.addEventListener('keydown', handleGlobalKeyDown, true);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
@@ -801,6 +778,14 @@ export default function HubReceptionSimple() {
   const iniciarRenovacionSocio = (socio: any) => {
     const rawDni = socio.dni || '';
     const cleanDni = extraerDniPeru(rawDni) || rawDni.replace(/\D/g, '').slice(0, 8);
+    try {
+      if (getPendingEnrollmentMember(cleanDni)) {
+        iniciarNuevoSocio();
+        handleDniChange(cleanDni);
+        return;
+      }
+    } catch { setFormErrorMsg('Revisa la inscripción pendiente antes de iniciar una renovación.'); setActiveTab('inscripcion'); return; }
+    setHasPendingEnrollment(false);
     const nombre = socio.nombre || socio.name || '';
     const celular = (socio.celular || socio.phone || '').replace(/\D/g, '').slice(0, 9);
     const planActual = socio.plan || 'Plan Libre Mensual (Adulto)';
@@ -837,6 +822,7 @@ export default function HubReceptionSimple() {
 
   // 6. INICIAR REGISTRO DE NUEVO SOCIO (EN BLANCO Y DNI DESBLOQUEADO)
   const iniciarNuevoSocio = () => {
+    setHasPendingEnrollment(false);
     setFormDni('');
     setFormNombre('');
     setFormTelefono('');
@@ -860,15 +846,24 @@ export default function HubReceptionSimple() {
     setFormDni(clean);
 
     if (clean.length === 8) {
-      const existing = members.find((m) => m.dni && m.dni.trim() === clean);
+      let pending: GymMember | null;
+      try { pending = getPendingEnrollmentMember(clean); }
+      catch { setFormErrorMsg('No se pudo revisar el registro pendiente. Solicita revisar este equipo antes de registrar otro cobro.'); return; }
+      setHasPendingEnrollment(Boolean(pending));
+      const existing = pending || members.find((m) => m.dni && m.dni.trim() === clean);
       if (existing) {
         setFormNombre(existing.name);
         setFormTelefono(existing.phone || '');
         setFormPlan(existing.plan || 'Plan Libre Mensual (Adulto)');
         setFormPrecio(existing.planPrice || 80);
         setFormTurno((existing.shift as any) || 'manana');
-        setFormIsRenewal(true);
+        setFormIsRenewal(!pending);
         setFormDniLocked(true);
+        if (pending) {
+          setFormTipoPago(pending.paymentType === 'full' ? 'full' : 'adelanto');
+          setFormAdelanto(pending.advancePaid);
+          setFormErrorMsg('Hay una inscripción pendiente de confirmación. El reintento enviará sus datos originales, sin generar otro cobro.');
+        }
         return;
       } else if (formIsRenewal) {
         // Si venía de una renovación de otro socio y cambió a un DNI nuevo, limpiar campos
@@ -962,15 +957,17 @@ export default function HubReceptionSimple() {
       const paid = formTipoPago === 'full' ? formPrecio : Math.min(formAdelanto, formPrecio);
       const balance = Math.max(0, formPrecio - paid);
 
-      const existing = members.find((m) => m.dni && m.dni.trim() === cleanDni);
-      const memberId = existing ? existing.id : generateNextMemberId(members);
+      const pendingEnrollment = getPendingEnrollmentMember(cleanDni);
+      const existing = pendingEnrollment ? undefined : members.find((m) => m.dni && m.dni.trim() === cleanDni);
+      const memberId = pendingEnrollment?.id || (existing ? existing.id : generateNextMemberId(members));
 
-      const memberToSave: GymMember = {
+      let memberToSave: GymMember = pendingEnrollment || {
+        ...existing,
         id: memberId,
         dni: cleanDni,
         name: formNombre.trim(),
         phone: formTelefono.trim(),
-        email: `${cleanDni}@socio.trankilandia.pe`,
+        email: existing?.email || `${cleanDni}@socio.trankilandia.pe`,
         plan: formPlan,
         planPrice: formPrecio,
         paymentType: formTipoPago === 'full' ? 'full' : 'advance',
@@ -980,7 +977,7 @@ export default function HubReceptionSimple() {
         receiptNumber: `B001-000${members.length + 515}`,
         membershipStatus: 'active',
         expiresAt: fechaFinCalculada,
-        coachName: formTurno === 'manana' ? 'Coach Marcos Rivas' : 'Coach Oficial',
+        coachName: existing?.coachName || 'Entrenador de sala',
         shift: formTurno,
         registeredAt: fechaInicioSeleccionada,
         ...({ updated_at: new Date().toISOString() } as any),
@@ -988,7 +985,20 @@ export default function HubReceptionSimple() {
 
       // 1. Guardar en Supabase
       try {
-        await registerGymMember(memberToSave);
+        if (existing) {
+          await renovarMembresiaSocio({
+            socioId: existing.id, plan: formPlan, precioPlan: formPrecio,
+            tipoPago: formTipoPago === 'full' ? 'full' : 'advance',
+            adelantoPagado: paid, saldoPendiente: balance,
+            fechaInicio: fechaInicioSeleccionada, fechaFin: fechaFinCalculada,
+            metodoPago: formMetodoPago, turno: formTurno,
+            numeroBoleta: memberToSave.receiptNumber,
+            coachAsignado: memberToSave.coachName,
+            operador: getActiveStaffSession()?.nombre || 'Recepción',
+          });
+        } else {
+          memberToSave = await registerGymMember(memberToSave);
+        }
         setSupabaseConnected(true);
       } catch (err: any) {
         console.error('[handleGuardarSocio] Error en base de datos:', err);
@@ -1006,18 +1016,21 @@ export default function HubReceptionSimple() {
       setFormCreatedMember(memberToSave);
       const duracionTexto = mesesDuracionPlan === 0 ? 'Pase Diario' : `${mesesDuracionPlan} mes(es)`;
       setFormSuccessMsg(
-        formIsRenewal
+        existing
           ? `¡Membresía de ${memberToSave.name} renovada con éxito por ${duracionTexto}! (Vence: ${fechaFinCalculada})`
-          : `¡Socio ${memberToSave.name} registrado con éxito en el sistema! Cuenta activada con DNI ${cleanDni}.`
+          : `Socio ${memberToSave.name} registrado. El acceso al portal requiere una cuenta verificada por recepción.`
       );
 
       // Si fue nuevo socio, resetear formulario para siguiente ingreso
-      if (!formIsRenewal) {
+      setHasPendingEnrollment(false);
+      if (!existing) {
         setFormDni('');
         setFormNombre('');
         setFormTelefono('');
         setFormDniLocked(false);
       }
+    } catch (error) {
+      setFormErrorMsg(error instanceof Error ? error.message : 'No se pudo confirmar el registro. Conservamos los datos para reintentar.');
     } finally {
       setIsSavingSocio(false);
     }
@@ -1161,6 +1174,10 @@ export default function HubReceptionSimple() {
     }
   };
 
+  const assignDniDialog = useModalFocus(Boolean(socioParaAsignarDni), () => setSocioParaAsignarDni(null));
+  const renewalDialog = useModalFocus(Boolean(socioParaRenovar), () => { if (!isRenewing) setSocioParaRenovar(null); });
+  const balanceDialog = useModalFocus(Boolean(liquidatingMember), () => { if (!isLiquidating) setLiquidatingMember(null); });
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center font-mono">
@@ -1173,7 +1190,7 @@ export default function HubReceptionSimple() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans flex flex-col selection:bg-amber-400 selection:text-black">
+    <div className="portal-shell min-h-screen bg-zinc-950 text-white font-sans flex flex-col selection:bg-amber-400 selection:text-black">
       {/* Cabecera Exclusiva para Caja & Admin (Cero opción de cliente) */}
       <PortalHeader
         currentRole="caja"
@@ -1182,33 +1199,35 @@ export default function HubReceptionSimple() {
       />
 
       {/* BARRA DE NAVEGACIÓN PRINCIPAL (4 PESTAÑAS GIGANTES Y TÁCTILES) */}
-      <nav className="bg-zinc-900 border-b border-white/10 px-4 sm:px-8 py-3 sticky top-[65px] z-30 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3 overflow-x-auto no-scrollbar">
-          <div className="flex items-center gap-2 sm:gap-4">
+      <nav aria-label="Módulos de recepción" className="bg-zinc-950 border-b border-white/10 px-4 sm:px-8 py-3 sticky top-[var(--portal-header-height,5rem)] z-30">
+        <div className="max-w-7xl mx-auto flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3">
+          <div className="portal-tabs portal-tabs-grid grid grid-cols-2 md:flex gap-2">
             <button
               type="button"
               onClick={() => setActiveTab('acceso')}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black transition-all cursor-pointer whitespace-nowrap shadow-md ${
+              aria-current={activeTab === 'acceso' ? 'page' : undefined}
+              className={`min-w-0 flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer text-left ${
                 activeTab === 'acceso'
-                  ? 'bg-amber-400 text-black shadow-amber-400/20 scale-[1.02]'
+                  ? 'bg-amber-400 text-black'
                   : 'bg-zinc-950 text-zinc-400 hover:text-white hover:bg-zinc-800'
               }`}
             >
               <QrCode className="w-5 h-5" />
-              <span>1. MARCAR INGRESO</span>
+              <span>Marcar ingreso</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('crm')}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black transition-all cursor-pointer whitespace-nowrap shadow-md ${
+              aria-current={activeTab === 'crm' ? 'page' : undefined}
+              className={`min-w-0 flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer text-left ${
                 activeTab === 'crm'
-                  ? 'bg-amber-400 text-black shadow-amber-400/20 scale-[1.02]'
+                  ? 'bg-amber-400 text-black'
                   : 'bg-zinc-950 text-zinc-400 hover:text-white hover:bg-zinc-800'
               }`}
             >
               <CalendarClock className="w-5 h-5" />
-              <span>2. VENCIMIENTOS & WHATSAPP</span>
+              <span>Socios y vencimientos</span>
               {crmCounts.porVencer > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-red-500 text-white text-xs font-bold">
                   {crmCounts.porVencer}
@@ -1219,27 +1238,29 @@ export default function HubReceptionSimple() {
             <button
               type="button"
               onClick={() => setActiveTab('inscripcion')}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black transition-all cursor-pointer whitespace-nowrap shadow-md ${
+              aria-current={activeTab === 'inscripcion' ? 'page' : undefined}
+              className={`min-w-0 flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer text-left ${
                 activeTab === 'inscripcion'
-                  ? 'bg-amber-400 text-black shadow-amber-400/20 scale-[1.02]'
+                  ? 'bg-amber-400 text-black'
                   : 'bg-zinc-950 text-zinc-400 hover:text-white hover:bg-zinc-800'
               }`}
             >
               <UserPlus className="w-5 h-5" />
-              <span>3. INSCRIBIR SOCIO</span>
+              <span>Inscribir socio</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('pos')}
-              className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-sm font-black transition-all cursor-pointer whitespace-nowrap shadow-md ${
+              aria-current={activeTab === 'pos' ? 'page' : undefined}
+              className={`min-w-0 flex items-center gap-2 px-3 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer text-left ${
                 activeTab === 'pos'
-                  ? 'bg-amber-400 text-black shadow-amber-400/20 scale-[1.02]'
+                  ? 'bg-amber-400 text-black'
                   : 'bg-zinc-950 text-zinc-400 hover:text-white hover:bg-zinc-800'
               }`}
             >
               <ShoppingCart className="w-5 h-5" />
-              <span>4. BEBIDAS & POS</span>
+              <span>Venta de productos</span>
               {carrito.length > 0 && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-400 text-black text-xs font-bold">
                   {carrito.reduce((s, i) => s + i.cantidad, 0)}
@@ -1253,7 +1274,7 @@ export default function HubReceptionSimple() {
               <span
                 className={`w-2.5 h-2.5 rounded-full ${supabaseConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}
               />
-              <span>{supabaseConnected ? 'Supabase en Vivo' : 'Modo Local-First'}</span>
+                <span>{supabaseConnected ? 'Datos actualizados' : 'Sin conexión verificada'}</span>
               <span className="text-zinc-600">|</span>
               <span className="text-zinc-300 font-bold">{members.length} Socios</span>
             </div>
@@ -1269,21 +1290,26 @@ export default function HubReceptionSimple() {
         {activeTab === 'acceso' && (
           <div className="space-y-6">
             {/* Buscador Gigante con Autofocus */}
-            <form onSubmit={handleFormSubmit} className="relative">
+            <form onSubmit={handleFormSubmit} className="space-y-3">
+              <label htmlFor="reception-member-search" className="block text-base font-semibold text-zinc-200">Busca o escanea un socio</label>
+              <div className="flex flex-col sm:flex-row gap-3">
               <input
+                id="reception-member-search"
                 ref={scanInputRef}
                 type="text"
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
-                placeholder="ESCANEE EL CARNET O INGRESE DNI / NOMBRE..."
-                className="w-full bg-zinc-900 border-2 border-amber-400/60 focus:border-amber-400 rounded-3xl py-6 px-8 text-xl sm:text-2xl font-black text-white placeholder-zinc-500 shadow-2xl focus:outline-none tracking-wide text-center uppercase font-display"
+                placeholder="DNI, nombre o código del carnet"
+                autoComplete="off"
+                className="min-w-0 flex-1 w-full bg-zinc-900 border border-white/20 focus:border-amber-400 rounded-xl py-4 px-4 text-base text-white placeholder-zinc-400 focus:outline-none"
               />
               <button
                 type="submit"
-                className="mt-3 w-full sm:w-auto sm:absolute sm:right-3 sm:top-3 sm:bottom-3 px-8 py-4 sm:py-0 rounded-2xl bg-amber-400 hover:bg-amber-300 text-black font-black text-base transition-transform active:scale-95 cursor-pointer shadow-lg uppercase"
+                className="w-full sm:w-auto px-6 py-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-base transition-colors cursor-pointer"
               >
                 Marcar Ingreso
               </button>
+              </div>
             </form>
 
             {/* Indicador Visual de Reglas de Escáner Continuo */}
@@ -1291,7 +1317,7 @@ export default function HubReceptionSimple() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-zinc-300 font-bold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Lector de Barras Activo:
+                  Compatible con lector de códigos:
                 </span>
                 <span className="px-2 py-0.5 rounded-lg bg-amber-400/10 text-amber-300 border border-amber-400/30 font-bold">
                   8 dígitos = DNI (Ingreso)
@@ -1875,7 +1901,7 @@ export default function HubReceptionSimple() {
                   </div>
                   <p className="text-[10px] text-zinc-500 mt-1 font-mono">
                     {formDniLocked
-                      ? 'DNI bloqueado como identificador de acceso al portal web (usuario y contraseña inicial).'
+                      ? 'DNI del socio seleccionado para renovar la membresía.'
                       : 'Al ingresar el DNI, se autocompletarán los datos si ya fue socio anteriormente.'}
                   </p>
                 </div>
@@ -2397,7 +2423,7 @@ export default function HubReceptionSimple() {
                           Saldo restante: S/. {Math.max(0, formPrecio - formAdelanto)}.00
                         </span>
                       </div>
-                      <input
+                      <input step="0.01"
                         type="number"
                         min={1}
                         max={formPrecio}
@@ -2437,9 +2463,10 @@ export default function HubReceptionSimple() {
                   >
                     {isSavingSocio
                       ? 'Procesando en Base de Datos...'
+                      : hasPendingEnrollment ? 'Reintentar inscripción pendiente'
                       : formIsRenewal
                       ? `Confirmar Renovación (${formPlan} · S/. ${formTipoPago === 'full' ? formPrecio : formAdelanto})`
-                      : `Inscribir Socio & Activar Cuenta (S/. ${formTipoPago === 'full' ? formPrecio : formAdelanto})`}
+                      : `Registrar inscripción (S/. ${Number(formTipoPago === 'full' ? formPrecio : formAdelanto).toFixed(2)})`}
                   </button>
                 </div>
               </div>
@@ -2535,11 +2562,12 @@ export default function HubReceptionSimple() {
               <form onSubmit={handlePosSearchSubmit} className="relative">
                 <Search className="w-5 h-5 text-amber-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
+                  aria-label="Buscar o escanear producto"
                   ref={posSearchInputRef}
                   type="text"
                   value={posSearchQuery}
                   onChange={(e) => setPosSearchQuery(e.target.value)}
-                  placeholder="Escanear código de barras (12/13 dígitos) o buscar producto por nombre..."
+                  placeholder="Nombre o código del producto"
                   className="w-full bg-zinc-900 border border-white/10 focus:border-amber-400 rounded-2xl py-3 pl-12 pr-28 text-sm text-white placeholder:text-zinc-500 font-mono shadow-inner focus:outline-none transition-colors"
                 />
                 {posSearchQuery && (
@@ -2548,14 +2576,14 @@ export default function HubReceptionSimple() {
                     onClick={() => setPosSearchQuery('')}
                     className="absolute right-16 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white text-xs px-2 py-1 cursor-pointer"
                   >
-                    ✕
+                    <X aria-label="Limpiar búsqueda" className="w-4 h-4" />
                   </button>
                 )}
                 <button
                   type="submit"
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs uppercase tracking-wider transition-colors cursor-pointer shadow-sm"
                 >
-                  Enter
+                  Buscar
                 </button>
               </form>
 
@@ -2635,8 +2663,15 @@ export default function HubReceptionSimple() {
                 </h3>
 
                 {posSuccessMsg && (
-                  <div className="my-3 p-3 rounded-xl bg-emerald-500/20 border border-emerald-500 text-emerald-300 text-xs font-mono">
+                  <div role="status" className="my-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm">
                     {posSuccessMsg}
+                  </div>
+                )}
+
+                {posErrorMessage && (
+                  <div role="alert" className="my-3 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-200 text-sm leading-relaxed">
+                    <p className="font-semibold">No se pudo completar el cobro</p>
+                    <p>{posErrorMessage}</p>
                   </div>
                 )}
 
@@ -2656,6 +2691,7 @@ export default function HubReceptionSimple() {
                           <button
                             type="button"
                             onClick={() => modificarCantidad(item.id, -1)}
+                            aria-label={`Disminuir cantidad de ${item.nombre}`}
                             className="w-6 h-6 rounded-lg bg-zinc-800 text-zinc-300 flex items-center justify-center hover:bg-zinc-700 cursor-pointer"
                           >
                             <Minus className="w-3 h-3" />
@@ -2664,6 +2700,7 @@ export default function HubReceptionSimple() {
                           <button
                             type="button"
                             onClick={() => modificarCantidad(item.id, 1)}
+                            aria-label={`Aumentar cantidad de ${item.nombre}`}
                             className="w-6 h-6 rounded-lg bg-zinc-800 text-zinc-300 flex items-center justify-center hover:bg-zinc-700 cursor-pointer"
                           >
                             <Plus className="w-3 h-3" />
@@ -2783,7 +2820,7 @@ export default function HubReceptionSimple() {
                         : 'bg-zinc-950 border-white/10 text-zinc-400'
                     }`}
                   >
-                    Yape / Plin
+                    Yape
                   </button>
                 </div>
 
@@ -2805,7 +2842,7 @@ export default function HubReceptionSimple() {
       {/* Modal para Asignar DNI a Socio Buscado por Nombre */}
       {socioParaAsignarDni && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-          <div className="w-full max-w-md bg-zinc-900 border border-amber-400/40 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div ref={assignDniDialog} role="dialog" aria-modal="true" aria-label="Asignar DNI a socio" tabIndex={-1} className="portal-panel w-full max-w-md max-h-[90dvh] overflow-y-auto bg-zinc-900 border border-amber-400/40 rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div>
                 <h3 className="text-base font-black text-white font-display uppercase">
@@ -2823,7 +2860,7 @@ export default function HubReceptionSimple() {
             </div>
 
             <p className="text-xs text-zinc-300 font-sans leading-relaxed">
-              Al asignar su número de DNI, el socio podrá ingresar de inmediato al portal web de clientes utilizando su DNI como usuario y primera contraseña.
+              El DNI identifica al socio para su carnet. El acceso al portal se habilita por separado, con una cuenta verificada y una contraseña privada.
             </p>
 
             {dniAsignadoError && (
@@ -2878,7 +2915,7 @@ export default function HubReceptionSimple() {
       {/* MODAL DE RENOVACIÓN RÁPIDA EN VIVO (EVITA ERRORES DE FECHAS PASADAS Y TRAPS DE UX) */}
       {socioParaRenovar && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 font-mono text-xs overflow-y-auto">
-          <div className="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-xl p-6 sm:p-7 shadow-2xl space-y-4 my-8">
+          <div ref={renewalDialog} role="dialog" aria-modal="true" aria-label="Renovar membresía" tabIndex={-1} className="portal-panel bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-xl max-h-[90dvh] overflow-y-auto p-6 sm:p-7 space-y-4">
             <div className="flex items-start justify-between border-b border-white/10 pb-4">
               <div>
                 <span className="text-[10px] text-amber-400 uppercase font-black tracking-wider flex items-center gap-1.5">
@@ -3226,7 +3263,7 @@ export default function HubReceptionSimple() {
       {/* MODAL DE LIQUIDACIÓN DE DEUDAS / COBRO DE SALDO */}
       {liquidatingMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 font-mono text-xs">
-          <div className="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-lg p-6 sm:p-7 shadow-2xl space-y-5">
+          <div ref={balanceDialog} role="dialog" aria-modal="true" aria-label="Cobrar saldo pendiente" tabIndex={-1} className="portal-panel bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-lg max-h-[90dvh] overflow-y-auto p-6 sm:p-7 space-y-5">
             <div className="flex items-start justify-between border-b border-white/10 pb-4">
               <div>
                 <span className="text-[10px] text-orange-400 uppercase font-black tracking-wider flex items-center gap-1.5">

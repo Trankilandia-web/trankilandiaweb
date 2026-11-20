@@ -6,8 +6,18 @@ export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
+    // Each happy-dom worker owns a complete app environment; bound memory use.
+    maxWorkers: 4,
     environment: 'happy-dom',
     setupFiles: ['./src/tests/setup.ts'],
-    include: ['src/tests/**/*.test.{ts,tsx}'],
+    include: ['src/tests/unit/**/*.test.{ts,tsx}'],
+    env: {
+      VITE_SUPABASE_URL: '',
+      VITE_SUPABASE_ANON_KEY: '',
+      NEXT_PUBLIC_SUPABASE_URL: '',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: '',
+      SUPABASE_URL: '',
+      SUPABASE_ANON_KEY: '',
+    },
   },
 });

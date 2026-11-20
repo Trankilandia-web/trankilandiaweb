@@ -1,450 +1,100 @@
-import React, { useState, useEffect } from 'react';
-import { X, CheckCircle2, Calendar, Clock, Sparkles, ShieldCheck, Ticket } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
-import trankilandiaLogo from '../assets/trankilandia-logo.png';
+import React, { useEffect, useState } from 'react';
+import { ArrowLeft, ArrowRight, MessageCircle, X } from 'lucide-react';
+import { GYM_CONTACT } from '../data/gymData';
+import { useModalFocus } from '../hooks/useModalFocus';
 
-export interface TourModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  initialPlan?: string;
-}
+export interface TourModalProps { isOpen: boolean; onClose: () => void; initialPlan?: string; }
 
 const SHIFTS = [
   { id: 'morning', label: 'Mañana', hours: '06:00 - 12:00' },
   { id: 'afternoon', label: 'Tarde', hours: '12:00 - 18:00' },
   { id: 'evening', label: 'Noche', hours: '18:00 - 22:00' },
 ] as const;
+type Shift = (typeof SHIFTS)[number]['id'];
+const GOALS = ['Musculación & Peso Libre (Ingreso Libre)', 'Clases de Boxeo (Actividad Adicional)', 'Acondicionamiento Funcional & HIIT', 'Salud, Resistencia & Tonificación'];
+function localDate(offset = 0) {
+  const date = new Date(); date.setDate(date.getDate() + offset);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
 
-type ShiftType = (typeof SHIFTS)[number]['id'];
-
-const GOALS = [
-  'Musculación & Peso Libre (Ingreso Libre)',
-  'Clases de Boxeo (Actividad Adicional)',
-  'Acondicionamiento Funcional & HIIT',
-  'Salud, Resistencia & Tonificación',
-];
-
-const getTomorrowDate = () => {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
-};
-
-const getTodayDate = () => {
-  return new Date().toISOString().split('T')[0];
-};
-
-const generatePassCode = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let result = '';
-  for (let i = 0; i < 4; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return `TRK-VIP-${result}`;
-};
-
-export default function TourModal({
-  isOpen,
-  onClose,
-  initialPlan,
-}: TourModalProps): React.JSX.Element | null {
+export default function TourModal({ isOpen, onClose, initialPlan }: TourModalProps): React.JSX.Element | null {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [goal, setGoal] = useState(GOALS[0]);
-  const [shift, setShift] = useState<ShiftType>('morning');
-  const [date, setDate] = useState(getTomorrowDate());
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [passCode, setPassCode] = useState('');
+  const [shift, setShift] = useState<Shift>('morning');
+  const [date, setDate] = useState(() => localDate(1));
+  const [prepared, setPrepared] = useState(false);
+  const [error, setError] = useState('');
+  const dialogRef = useModalFocus(isOpen, onClose, { initialFocus: '#tour-name' });
 
-  // Lock body scroll while open and restore on close/unmount
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
+    if (isOpen) return;
+    setPrepared(false); setName(''); setPhone(''); setEmail(''); setGoal(GOALS[0]);
+    setShift('morning'); setDate(localDate(1)); setError('');
   }, [isOpen]);
 
-  // Handle Escape key
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        handleModalClose();
-      }
-    };
+    if (prepared) dialogRef.current?.querySelector<HTMLElement>('#tour-request-summary')?.focus();
+  }, [prepared, dialogRef]);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen]);
+  const selectedShift = SHIFTS.find((item) => item.id === shift)!;
+  const message = [
+    'Hola Trankilandia Gym, quisiera solicitar un pase de cortesía y coordinar mi visita.',
+    `Nombre: ${name.trim()}`, `Teléfono: ${phone.trim()}`, `Correo: ${email.trim()}`,
+    `Fecha preferida: ${date}`, `Turno: ${selectedShift.label} (${selectedShift.hours})`,
+    `Objetivo: ${goal}`, initialPlan ? `Plan de interés: ${initialPlan}` : '',
+    'Quedo pendiente de la confirmación de recepción.',
+  ].filter(Boolean).join('\n');
+  const whatsappUrl = `https://wa.me/${GYM_CONTACT.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`;
 
-  const handleModalClose = () => {
-    onClose();
-    setTimeout(() => {
-      setIsSubmitted(false);
-      setName('');
-      setPhone('');
-      setEmail('');
-      setGoal(GOALS[0]);
-      setShift('morning');
-      setDate(getTomorrowDate());
-      setPassCode('');
-    }, 250);
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (name.trim().length < 2) { setError('Escribe tu nombre completo.'); return; }
+    if (phone.replace(/\D/g, '').length < 9) { setError('Ingresa un teléfono válido con al menos 9 dígitos.'); return; }
+    if (!date || date < localDate()) { setError('Selecciona hoy o una fecha futura para tu visita.'); return; }
+    setError(''); setPrepared(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim() || !phone.trim() || !email.trim()) return;
-
-    setPassCode(generatePassCode());
-    setIsSubmitted(true);
-  };
-
-  const selectedShiftObj = SHIFTS.find((s) => s.id === shift) || SHIFTS[0];
-
+  if (!isOpen) return null;
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="tour-modal-title"
-          onClick={handleModalClose}
-        >
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: 10 }}
-            transition={{ type: 'spring', duration: 0.35, bounce: 0.12 }}
-            className="relative w-full max-w-xl bg-zinc-900 border border-white/10 rounded-3xl shadow-2xl p-6 sm:p-8 max-h-[92vh] overflow-y-auto text-white"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Close Button */}
-            <motion.button
-              type="button"
-              whileTap={{ scale: 0.92 }}
-              onClick={handleModalClose}
-              aria-label="Cerrar modal"
-              className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </motion.button>
-
-            {!isSubmitted ? (
-              /* ================= ESTADO 1: FORMULARIO DE REGISTRO ================= */
-              <div>
-                {/* Header Badge & Title */}
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-9 h-9 rounded-full overflow-hidden border border-amber-400/40 shadow-sm shrink-0">
-                    <img
-                      src={trankilandiaLogo}
-                      alt="Logo Trankilandia"
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                  <span className="text-xs font-mono font-bold tracking-widest text-amber-400 uppercase">
-                    PASE DE CORTESÍA VIP
-                  </span>
-                </div>
-
-                <h2
-                  id="tour-modal-title"
-                  className="text-xl sm:text-2xl font-black text-white tracking-tight font-display uppercase leading-tight"
-                >
-                  AGENDA TU TOUR & DÍA DE ENTRENAMIENTO
-                </h2>
-
-                <p className="mt-2 text-sm text-zinc-400 leading-relaxed font-sans">
-                  Acceso libre de cortesía a todas las instalaciones por 24 horas y recorrido guiado con un coach certificado.
-                </p>
-
-                {initialPlan && (
-                  <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-400 font-mono">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Interés en plan: <strong className="uppercase">{initialPlan}</strong></span>
-                  </div>
-                )}
-
-                {/* Registration Form */}
-                <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-                  {/* Shift Selector */}
-                  <div>
-                    <label className="block text-xs font-mono uppercase tracking-wider text-zinc-400 mb-2">
-                      Selecciona tu Turno Preferido
-                    </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {SHIFTS.map((item) => {
-                        const isSelected = shift === item.id;
-                        return (
-                          <motion.button
-                            type="button"
-                            key={item.id}
-                            whileTap={{ scale: 0.96 }}
-                            onClick={() => setShift(item.id)}
-                            className={`flex flex-col items-center justify-center py-2.5 px-3 rounded-xl border text-center transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-amber-400 border-amber-400 text-black font-bold shadow-lg shadow-amber-400/20'
-                                : 'bg-zinc-800/80 border-white/5 text-zinc-300 hover:bg-zinc-800'
-                            }`}
-                          >
-                            <span className="text-sm font-bold tracking-tight">
-                              {item.label}
-                            </span>
-                            <span
-                              className={`text-[11px] font-mono mt-0.5 ${
-                                isSelected ? 'text-black/80 font-semibold' : 'text-zinc-400'
-                              }`}
-                            >
-                              {item.hours}
-                            </span>
-                          </motion.button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Date Selector */}
-                  <div>
-                    <label
-                      htmlFor="tour-date"
-                      className="block text-xs font-mono uppercase tracking-wider text-zinc-400 mb-1.5"
-                    >
-                      Fecha del Tour
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-zinc-400">
-                        <Calendar className="w-4 h-4" />
-                      </div>
-                      <input
-                        id="tour-date"
-                        type="date"
-                        min={getTodayDate()}
-                        value={date}
-                        onChange={(e) => setDate(e.target.value)}
-                        required
-                        className="w-full bg-zinc-800/90 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Name & Phone */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label
-                        htmlFor="tour-name"
-                        className="block text-xs font-mono uppercase tracking-wider text-zinc-400 mb-1.5"
-                      >
-                        Nombre Completo <span className="text-amber-400">*</span>
-                      </label>
-                      <input
-                        id="tour-name"
-                        type="text"
-                        required
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Ej. Carlos Mendoza"
-                        className="w-full bg-zinc-800/90 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors"
-                      />
-                    </div>
-
-                    <div>
-                      <label
-                        htmlFor="tour-phone"
-                        className="block text-xs font-mono uppercase tracking-wider text-zinc-400 mb-1.5"
-                      >
-                        WhatsApp / Teléfono <span className="text-amber-400">*</span>
-                      </label>
-                      <input
-                        id="tour-phone"
-                        type="tel"
-                        required
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="Ej. 999 787 489"
-                        className="w-full bg-zinc-800/90 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Email */}
-                  <div>
-                    <label
-                      htmlFor="tour-email"
-                      className="block text-xs font-mono uppercase tracking-wider text-zinc-400 mb-1.5"
-                    >
-                      Correo Electrónico <span className="text-amber-400">*</span>
-                    </label>
-                    <input
-                      id="tour-email"
-                      type="email"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="carlos@ejemplo.com"
-                      className="w-full bg-zinc-800/90 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 transition-colors"
-                    />
-                  </div>
-
-                  {/* Goal Selector */}
-                  <div>
-                    <label
-                      htmlFor="tour-goal"
-                      className="block text-xs font-mono uppercase tracking-wider text-zinc-400 mb-1.5"
-                    >
-                      Objetivo de Entrenamiento
-                    </label>
-                    <select
-                      id="tour-goal"
-                      value={goal}
-                      onChange={(e) => setGoal(e.target.value)}
-                      className="w-full bg-zinc-800/90 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 transition-colors"
-                    >
-                      {GOALS.map((g) => (
-                        <option key={g} value={g} className="bg-zinc-900 text-white">
-                          {g}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Submit Button */}
-                  <motion.button
-                    type="submit"
-                    whileTap={{ scale: 0.97 }}
-                    className="w-full mt-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold py-3.5 rounded-xl text-sm uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-400/20"
-                  >
-                    CONFIRMAR PASE DE CORTESÍA →
-                  </motion.button>
-                </form>
+    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="tour-modal-title" aria-describedby="tour-modal-description" tabIndex={-1} className="modal-panel max-w-xl">
+        <button type="button" onClick={onClose} aria-label="Cerrar solicitud de visita" className="modal-close"><X size={20} /></button>
+        {!prepared ? (
+          <>
+            <h2 id="tour-modal-title" className="modal-title">Solicita tu pase de cortesía</h2>
+            <p id="tour-modal-description" className="modal-description">Cuéntanos cuándo quieres visitarnos. Al finalizar, envía la solicitud por WhatsApp para que recepción confirme tu visita.</p>
+            {initialPlan && <p className="mt-4 text-sm text-amber-300 break-words">Plan de interés: <strong>{initialPlan}</strong></p>}
+            {error && <p role="alert" className="form-message form-message-error">{error}</p>}
+            <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+              <div><label htmlFor="tour-name" className="field-label">Nombre completo</label><input id="tour-name" type="text" autoComplete="name" required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} className="field-input" placeholder="¿Cómo te llamas?" /></div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div><label htmlFor="tour-phone" className="field-label">WhatsApp o teléfono</label><input id="tour-phone" type="tel" autoComplete="tel" required maxLength={20} value={phone} onChange={(event) => setPhone(event.target.value)} className="field-input" placeholder="999 123 456" /></div>
+                <div><label htmlFor="tour-date" className="field-label">Fecha preferida</label><input id="tour-date" type="date" required min={localDate()} value={date} onChange={(event) => setDate(event.target.value)} className="field-input" /></div>
               </div>
-            ) : (
-              /* ================= ESTADO 2: PASE VIP CONFIRMADO ================= */
-              <div className="py-2 text-center">
-                <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-400/10 border-2 border-amber-400 text-amber-400 mb-4">
-                  <CheckCircle2 className="w-9 h-9 text-amber-400" />
-                </div>
-
-                <div className="inline-block px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-400 text-xs font-mono font-bold tracking-wider mb-2">
-                  PASE VIP GENERADO
-                </div>
-
-                <h2
-                  id="tour-modal-title"
-                  className="text-2xl font-black text-white tracking-tight font-display uppercase"
-                >
-                  ¡TODO LISTO, {name.split(' ')[0]}!
-                </h2>
-                <p className="mt-1 text-sm text-zinc-400 max-w-md mx-auto font-sans">
-                  Tu pase de 1 día y recorrido VIP han sido registrados en recepción.
-                </p>
-
-                {/* Ticket Digital Card */}
-                <div className="mt-6 text-left relative bg-zinc-950 border border-amber-400/40 rounded-2xl p-6 shadow-2xl overflow-hidden">
-                  <div className="flex items-center justify-between border-b border-dashed border-white/10 pb-4 mb-4">
-                    <div className="flex items-center gap-2">
-                      <Ticket className="w-5 h-5 text-amber-400" />
-                      <span className="text-xs font-bold font-mono tracking-widest text-zinc-300 uppercase">
-                        CÓDIGO DE ACCESO VIP
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold uppercase">
-                      Válido 24 hrs
-                    </span>
-                  </div>
-
-                  {/* Pass Code */}
-                  <div className="bg-zinc-900/90 border border-white/5 rounded-xl p-4 text-center mb-5">
-                    <p className="text-[11px] text-zinc-400 uppercase tracking-wider mb-1 font-mono">
-                      Muestra este código al llegar
-                    </p>
-                    <p className="font-mono text-2xl sm:text-3xl font-black text-amber-400 tracking-widest">
-                      {passCode}
-                    </p>
-                  </div>
-
-                  {/* Pass Details */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs mb-5 border-b border-dashed border-white/10 pb-5">
-                    <div>
-                      <span className="text-zinc-500 uppercase tracking-wider font-semibold block font-mono">
-                        Titular
-                      </span>
-                      <span className="text-white font-bold text-sm truncate block">
-                        {name}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 uppercase tracking-wider font-semibold block font-mono">
-                        Objetivo
-                      </span>
-                      <span className="text-zinc-200 font-medium truncate block">
-                        {goal}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 uppercase tracking-wider font-semibold block font-mono">
-                        Fecha Reservada
-                      </span>
-                      <span className="text-white font-medium flex items-center gap-1 mt-0.5">
-                        <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                        {date}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-zinc-500 uppercase tracking-wider font-semibold block font-mono">
-                        Turno & Horario
-                      </span>
-                      <span className="text-white font-medium flex items-center gap-1 mt-0.5">
-                        <Clock className="w-3.5 h-3.5 text-amber-400" />
-                        {selectedShiftObj.label} ({selectedShiftObj.hours})
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Guide */}
-                  <div>
-                    <p className="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2 flex items-center gap-1.5 font-mono">
-                      <ShieldCheck className="w-4 h-4 text-amber-400" />
-                      Recomendaciones para tu visita:
-                    </p>
-                    <ul className="text-xs text-zinc-300 space-y-1.5 font-sans">
-                      <li className="flex items-start gap-2">
-                        <span className="text-amber-400 font-bold">•</span>
-                        <span>Ropa deportiva cómoda y calzado deportivo limpio para sala.</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-amber-400 font-bold">•</span>
-                        <span>Toalla de mano individual y termo de hidratación.</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-amber-400 font-bold">•</span>
-                        <span>Identificación oficial (INE o Pasaporte) para validar tu acceso en mostrador.</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-
-                {/* Confirm & Close Button */}
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.97 }}
-                  onClick={handleModalClose}
-                  className="mt-6 w-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold py-3.5 rounded-xl text-sm uppercase tracking-wider transition-all cursor-pointer shadow-lg shadow-amber-400/20"
-                >
-                  ENTENDIDO, NOS VEMOS EN EL CLUB
-                </motion.button>
-              </div>
-            )}
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+              <fieldset><legend className="field-label">Turno preferido</legend><div className="grid grid-cols-3 gap-2">{SHIFTS.map((item) => <label key={item.id} className={`shift-option ${shift === item.id ? 'shift-option-selected' : ''}`}><input type="radio" name="tour-shift" value={item.id} checked={shift === item.id} onChange={() => setShift(item.id)} className="sr-only" /><span className="font-semibold">{item.label}</span><span className="mt-1 text-xs tabular-nums">{item.hours}</span></label>)}</div></fieldset>
+              <div><label htmlFor="tour-email" className="field-label">Correo electrónico</label><input id="tour-email" type="email" autoComplete="email" required maxLength={160} value={email} onChange={(event) => setEmail(event.target.value)} className="field-input" placeholder="tu@correo.com" /></div>
+              <div><label htmlFor="tour-goal" className="field-label">Objetivo de entrenamiento</label><select id="tour-goal" value={goal} onChange={(event) => setGoal(event.target.value)} className="field-input">{GOALS.map((item) => <option key={item}>{item}</option>)}</select></div>
+              <button type="submit" className="button-primary w-full">Revisar solicitud<ArrowRight size={18} /></button>
+            </form>
+          </>
+        ) : (
+          <>
+            <h2 id="tour-modal-title" className="modal-title">Tu solicitud está preparada</h2>
+            <p id="tour-modal-description" className="modal-description">Aún no está registrada ni confirmada. Envía estos datos a recepción por WhatsApp y espera su respuesta para coordinar el pase.</p>
+            <dl id="tour-request-summary" tabIndex={-1} className="mt-6 space-y-4 border-y border-white/10 py-5 text-sm outline-none">
+              <div><dt className="text-zinc-400">Nombre</dt><dd className="mt-1 break-words text-white">{name}</dd></div>
+              <div><dt className="text-zinc-400">Fecha y turno preferidos</dt><dd className="mt-1 text-white">{date} · {selectedShift.label} ({selectedShift.hours})</dd></div>
+              <div><dt className="text-zinc-400">Objetivo</dt><dd className="mt-1 text-white">{goal}</dd></div>
+              <div><dt className="text-zinc-400">Contacto</dt><dd className="mt-1 break-words text-white">{phone}<br />{email}</dd></div>
+            </dl>
+            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="button-primary mt-6 w-full"><MessageCircle size={18} />Enviar por WhatsApp</a>
+            <p className="field-hint mt-3">Se abrirá WhatsApp con el mensaje preparado. Debes enviarlo allí; cerrar esta ventana no guarda una reserva.</p>
+            <button type="button" onClick={() => setPrepared(false)} className="button-secondary mt-4 w-full"><ArrowLeft size={17} />Editar solicitud</button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }

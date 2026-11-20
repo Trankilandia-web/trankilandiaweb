@@ -94,16 +94,8 @@ export default function PlansPage({
   };
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
+    <div className="public-page min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
       {/* Luces ambientales cinemáticas */}
-      <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[90vw] max-w-[800px] h-[450px] bg-amber-400/10 blur-[150px] rounded-full pointer-events-none overflow-hidden"
-        aria-hidden="true"
-      />
-      <div
-        className="absolute top-[800px] right-0 w-[50vw] max-w-[500px] h-[500px] bg-amber-400/5 blur-[160px] rounded-full pointer-events-none overflow-hidden"
-        aria-hidden="true"
-      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
@@ -112,10 +104,7 @@ export default function PlansPage({
         <div className="pb-12 mb-16 border-b border-white/10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
             <div className="lg:col-span-7">
-              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                MEMBRESÍAS &amp; PLANES
-              </span>
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
+<h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tight text-white leading-[0.95]">
                 ELIGE TU COMPROMISO.
               </h1>
               <p className="mt-4 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-xl font-sans">
@@ -143,6 +132,7 @@ export default function PlansPage({
                       key={item.id}
                       type="button"
                       onClick={() => setBillingPeriod(item.id)}
+                      aria-pressed={isSelected}
                       className={`relative px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer z-10 flex items-center gap-1.5 ${
                         isSelected ? 'text-black' : 'text-zinc-400 hover:text-white'
                       }`}
@@ -210,7 +200,7 @@ export default function PlansPage({
                 key={plan.id}
                 whileHover={{ y: -6 }}
                 transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-                className={`relative flex flex-col rounded-3xl p-8 transition-colors ${
+                className={`relative flex flex-col rounded-2xl p-8 transition-colors ${
                   plan.isPopular
                     ? 'bg-zinc-900 border-2 border-amber-400 shadow-2xl shadow-amber-400/10 lg:-translate-y-3 z-20'
                     : 'bg-zinc-900/70 border border-white/10 hover:border-white/20 hover:bg-zinc-900/90 z-10'
@@ -266,7 +256,7 @@ export default function PlansPage({
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-zinc-500 font-mono">
+                      <p className="text-[11px] text-zinc-400 font-mono">
                         Pago único por los {billingPeriod === 'trimestral' ? '3 meses' : billingPeriod === 'semestral' ? '6 meses' : '12 meses'} completos
                       </p>
                     </div>
@@ -327,7 +317,7 @@ export default function PlansPage({
         {/* ========================================================= */}
         {/* 3. BLOQUE DESTACADO: ACTIVIDAD ADICIONAL DE BOXEO */}
         {/* ========================================================= */}
-        <div className="mb-28 rounded-3xl bg-zinc-900/90 border border-amber-400/30 p-8 sm:p-10 relative overflow-hidden">
+        <div className="mb-28 rounded-2xl bg-zinc-900/90 border border-amber-400/30 p-8 sm:p-10 relative overflow-hidden">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             <div className="lg:col-span-8">
               <div className="inline-flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-amber-400 font-bold mb-3">
@@ -382,10 +372,7 @@ export default function PlansPage({
         {/* ========================================================= */}
         <section id="comparativa" className="mb-28">
           <div className="max-w-3xl mb-12">
-            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
-              DESGLOSE COMPLETO DE SERVICIOS
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
+<h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
               COMPARATIVA DETALLADA DE PLANES
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
@@ -393,7 +380,7 @@ export default function PlansPage({
             </p>
           </div>
 
-          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 backdrop-blur-sm overflow-hidden shadow-2xl">
+          <div className="rounded-2xl border border-white/10 bg-zinc-900/60 overflow-hidden shadow-2xl">
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[720px]">
                 <thead>
@@ -520,10 +507,7 @@ export default function PlansPage({
         {/* ========================================================= */}
         <section id="faqs" className="mb-28 max-w-4xl mx-auto">
           <div className="max-w-2xl mb-12">
-            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
-              RESPUESTAS DIRECTAS
-            </span>
-            <h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
+<h2 className="text-3xl sm:text-4xl font-black uppercase tracking-tight text-white">
               PREGUNTAS FRECUENTES SOBRE PLANES
             </h2>
             <p className="mt-3 text-zinc-400 text-sm sm:text-base font-sans">
@@ -585,12 +569,9 @@ export default function PlansPage({
         {/* ========================================================= */}
         {/* 6. BANNER FINAL DE PASE DE CORTESÍA */}
         {/* ========================================================= */}
-        <div className="rounded-3xl bg-zinc-900 border border-white/10 p-8 sm:p-12 flex flex-col md:flex-row items-center justify-between gap-8">
+        <div className="rounded-2xl bg-zinc-900 border border-white/10 p-8 sm:p-12 flex flex-col md:flex-row items-center justify-between gap-8">
           <div>
-            <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-2">
-              EXPERIENCIA SIN COSTO
-            </span>
-            <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
+<h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
               ¿Quieres Conocer el Gimnasio Antes de Decidir?
             </h3>
             <p className="text-zinc-400 text-sm mt-2 max-w-xl font-sans">

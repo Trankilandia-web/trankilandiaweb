@@ -5,10 +5,6 @@ export default function AboutSection() {
   return (
     <section id="nosotros" className="py-24 bg-zinc-900/40 border-y border-white/5 relative overflow-hidden">
       {/* Subtle ambient glow */}
-      <div
-        className="absolute top-1/2 left-0 -translate-y-1/2 w-[500px] h-[500px] bg-amber-400/5 blur-[140px] rounded-full pointer-events-none"
-        aria-hidden="true"
-      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
@@ -31,7 +27,7 @@ export default function AboutSection() {
               />
 
               {/* Badge flotante interior estilizado - branding ambiental */}
-              <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 p-4 rounded-xl bg-zinc-950/85 backdrop-blur-md border border-white/10 flex items-center justify-between gap-3 shadow-lg">
+              <div className="absolute bottom-4 left-4 right-4 sm:bottom-6 sm:left-6 sm:right-6 p-4 rounded-xl bg-zinc-950/85 border border-white/10 flex items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 rounded-full bg-amber-400" />
                   <div>
@@ -53,12 +49,8 @@ export default function AboutSection() {
           {/* Columna Derecha (Manifiesto y Métricas) */}
           <div className="flex flex-col items-start">
             {/* Athletic Brand Tag */}
-            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-              FILOSOFÍA DEL CLUB
-            </span>
-
-            {/* H2 Display */}
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tighter text-white uppercase leading-[0.95]">
+{/* H2 Display */}
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-white uppercase leading-[0.95]">
               MÁS QUE UN GIMNASIO, <br className="hidden sm:inline" />
               <span className="text-amber-400">SOMOS FAMILIA.</span>
             </h2>

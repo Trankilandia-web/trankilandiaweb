@@ -28,7 +28,7 @@ describe('HubReceptionSimple Full Render Test', () => {
     // Esperar a que termine de cargar y aparezca la barra de navegación de Recepción
     await waitFor(
       () => {
-        expect(screen.getByText('1. MARCAR INGRESO')).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Marcar ingreso' })).toBeDefined();
       },
       { timeout: 8000 }
     );

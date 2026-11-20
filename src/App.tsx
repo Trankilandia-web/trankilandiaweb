@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from 'react';
+import { MotionConfig } from 'motion/react';
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/Navbar';
@@ -17,6 +18,7 @@ const HubReceptionSimple = lazy(() => import('./pages/portal/HubReceptionSimple'
 const ClientePortal = lazy(() => import('./pages/portal/ClientePortal'));
 const PortalRedirect = lazy(() => import('./pages/portal/PortalRedirect'));
 const DesktopStaffLogin = lazy(() => import('./pages/portal/DesktopStaffLogin'));
+const EntrenadorDashboard = lazy(() => import('./pages/portal/EntrenadorDashboard'));
 const PlansPage = lazy(() => import('./pages/PlansPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const FacilitiesPage = lazy(() => import('./pages/FacilitiesPage'));
@@ -27,8 +29,7 @@ export function isDesktopEnvironment(): boolean {
   return (
     window.location.protocol === 'file:' ||
     /electron|trankilandiadesktopapp/i.test(navigator.userAgent) ||
-    Boolean((window as any).electronAPI?.isElectron) ||
-    sessionStorage.getItem('trankilandia_desktop_mode') === 'true'
+    Boolean((window as any).electronAPI?.isElectron)
   );
 }
 
@@ -81,6 +82,7 @@ function AppContent() {
           }
         >
           <Routes>
+            <Route path="/entrenador" element={<ProtectedRoute allowedRoles={['admin', 'entrenador']}><EntrenadorDashboard /></ProtectedRoute>} />
             {isDesktopMode ? (
               /* ==============================================================
                  MODO ESCRITORIO (PC DEL GIMNASIO · ELECTRON · HUB TERMINAL)
@@ -205,6 +207,7 @@ export default function App() {
   const Router = isDesktop ? HashRouter : BrowserRouter;
 
   return (
+    <MotionConfig reducedMotion="user">
     <Router>
       <AuthProvider>
         <ErrorBoundary>
@@ -212,5 +215,6 @@ export default function App() {
         </ErrorBoundary>
       </AuthProvider>
     </Router>
+    </MotionConfig>
   );
 }

@@ -19,7 +19,6 @@ import {
   ProgressRecord,
   getStoredMembers,
   saveStoredMembers,
-  generateNextMemberId,
   getStoredRoutines,
   saveStoredRoutines,
   getStoredProgress,
@@ -90,6 +89,8 @@ export interface DescuentoPOS {
 
 export interface ResultadoVentaPOS {
   success: boolean;
+  pendiente_sync?: boolean;
+  productos_actualizados?: ProductoPOS[];
   venta_id?: number | string;
   numero_ticket: string;
   subtotal?: number;
@@ -107,6 +108,10 @@ const LOCAL_PRODUCTS_KEY = 'trankilandia_productos_inventario';
 
 export interface VentaOfflineQueued {
   id: string;
+  request_version?: 2;
+  estado?: 'pendiente' | 'requiere_revision';
+  error_sync?: string;
+  error_ambiguo?: boolean;
   items: ItemVentaPOS[];
   metodo_pago: 'yape' | 'plin' | 'efectivo' | 'tarjeta';
   cliente_nombre: string;
@@ -488,13 +493,19 @@ export async function obtenerProductosInventario(): Promise<ProductoPOS[]> {
         console.warn('[obtenerProductosInventario] Error consultando productos en Supabase:', error.message);
       }
 
-      if (!error && Array.isArray(data)) {
+      if (!error && inventarioValido(data)) {
+        const reservadas = new Map<string, number>();
+        for (const venta of leerColaVentas()) {
+          if (venta.request_version !== 2) continue;
+          for (const item of venta.items) reservadas.set(item.producto_id, (reservadas.get(item.producto_id) || 0) + item.cantidad);
+        }
+        const disponibles = data.map((p) => ({ ...p, stock_actual: Math.max(0, p.stock_actual - (reservadas.get(p.id) || 0)) }));
         try {
-          localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(data));
+          localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(disponibles));
         } catch (cacheErr) {
           console.warn('[obtenerProductosInventario] Error cacheando productos localmente:', cacheErr);
         }
-        return data as ProductoPOS[];
+        return disponibles;
       }
     } catch (err: any) {
       console.warn('[obtenerProductosInventario] Excepción consultando inventario en Supabase:', err?.message || err);
@@ -504,12 +515,21 @@ export async function obtenerProductosInventario(): Promise<ProductoPOS[]> {
   // Fallback con localStorage o catálogo base
   try {
     const cached = localStorage.getItem(LOCAL_PRODUCTS_KEY);
-    if (cached !== null) return JSON.parse(cached);
+    if (cached !== null) {
+      const data: unknown = JSON.parse(cached);
+      if (inventarioValido(data)) return data;
+    }
   } catch (storageErr) {
     console.warn('[obtenerProductosInventario] Error leyendo inventario de localStorage:', storageErr);
   }
 
-  return CATALOGO_PRODUCTOS_BASE;
+  return [];
+}
+
+function inventarioValido(data: unknown): data is ProductoPOS[] {
+  return Array.isArray(data) && data.every((p) => p && typeof p.id === 'string' && p.id &&
+    typeof p.nombre === 'string' && Number.isFinite(Number(p.precio_venta)) && Number(p.precio_venta) >= 0 &&
+    Number.isSafeInteger(p.stock_actual) && p.stock_actual >= 0);
 }
 
 /**
@@ -621,6 +641,69 @@ export async function vincularCodigoBarrasAProducto(
  * Valida stock con bloqueo FOR UPDATE, descuenta existencias y genera ticket oficial.
  * Admite descuento proporcionado y auditado por operador de caja.
  */
+function leerColaVentas(): VentaOfflineQueued[] {
+  const raw = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
+  const queue = raw ? JSON.parse(raw) : [];
+  if (!Array.isArray(queue)) throw new Error('La cola de ventas no es válida. Requiere revisión antes de cobrar.');
+  return queue;
+}
+
+function guardarColaVentas(queue: VentaOfflineQueued[]): void {
+  try { localStorage.setItem(LOCAL_OFFLINE_SALES_KEY, JSON.stringify(queue)); }
+  catch { throw new Error('No se pudo guardar el cobro en este equipo. Libera espacio y vuelve a intentar.'); }
+}
+
+function quitarVentaDeCola(id: string): void {
+  guardarColaVentas(leerColaVentas().filter((venta) => venta.id !== id));
+}
+
+function parametrosVentaPOS(venta: VentaOfflineQueued) {
+  return {
+    p_venta_id: venta.id,
+    p_items: venta.items.map(({ producto_id, cantidad }) => ({ producto_id, cantidad })),
+    p_metodo_pago: venta.metodo_pago,
+    p_cliente_nombre: venta.cliente_nombre,
+    p_cliente_dni: venta.cliente_dni || null,
+    p_numero_ticket: venta.numero_ticket,
+    p_fecha: venta.fecha,
+    p_descuento: venta.descuento?.monto || 0,
+    p_descuento_motivo: venta.descuento?.motivo || '',
+    p_descuento_autorizado_por: venta.descuento?.autorizadoPor || '',
+    p_subtotal_esperado: venta.subtotal,
+  };
+}
+
+// Permissions, stock, validation and missing migrations must reach the cashier.
+function esFalloDeRed(error: unknown): boolean {
+  const value = error as { message?: string; code?: string };
+  if (value?.code) return false;
+  return /failed to fetch|fetch failed|networkerror|network request failed|network connection|load failed/i.test(value?.message || '');
+}
+
+function esRechazoDeterminista(error: unknown): boolean {
+  const value = error as { code?: string; status?: number };
+  if (value?.status && value.status >= 500) return false;
+  return /^(?:[0-9A-Z]{5}|PGRST\d+)$/.test(value?.code || '');
+}
+
+async function enviarVentaPOS(venta: VentaOfflineQueued): Promise<ResultadoVentaPOS> {
+  const { data, error, status } = await supabase.rpc('registrar_venta_pos_v2', parametrosVentaPOS(venta));
+  if (error) throw Object.assign(new Error(error.message), error, { status });
+  if (!data?.success || !data.numero_ticket || !Number.isFinite(Number(data.total))) {
+    throw new Error('Respuesta de cobro no válida. Revisa el ticket pendiente antes de volver a cobrar.');
+  }
+  return data as ResultadoVentaPOS;
+}
+
+function marcarVentaParaRevision(venta: VentaOfflineQueued, error: unknown): void {
+  guardarColaVentas(leerColaVentas().map((item) => item.id === venta.id ? {
+    ...item, estado: 'requiere_revision', error_ambiguo: true,
+    error_sync: (error as { message?: string })?.message || 'Resultado de cobro no confirmado.',
+  } : item));
+}
+
+let isRegisteringSale = false;
+
 export async function registrarVentaPOS(
   items: ItemVentaPOS[],
   metodoPago: 'yape' | 'plin' | 'efectivo' | 'tarjeta',
@@ -628,239 +711,134 @@ export async function registrarVentaPOS(
   clienteDni: string = '',
   descuento?: DescuentoPOS
 ): Promise<ResultadoVentaPOS> {
-  if (items.length === 0) {
-    throw new Error('El carrito de venta no contiene ningún producto.');
-  }
-
-  const montoDescuento = descuento && descuento.monto > 0 ? Number(descuento.monto) : 0;
-  const motivoDescuento = descuento?.motivo?.trim() || (montoDescuento > 0 ? 'Descuento autorizado' : '');
-  const auditString = montoDescuento > 0
-    ? ` [Desc: S/. ${montoDescuento.toFixed(2)} - Motivo: ${motivoDescuento}]`
-    : '';
-  const clienteNombreAuditado = `${clienteNombre.trim() || 'Cliente Mostrador'}${auditString}`;
-
-  if (isSupabaseConfigured()) {
-    try {
-      const { data, error } = await supabase.rpc('registrar_venta_pos', {
-        p_items: items,
-        p_metodo_pago: metodoPago,
-        p_cliente_nombre: clienteNombreAuditado,
-        p_cliente_dni: clienteDni.trim() || null,
-      });
-
-      if (!error && data) {
-        const subtotalRpc = Number(data.total);
-        const totalFinalRpc = Math.max(0, subtotalRpc - montoDescuento);
-
-        if (montoDescuento > 0) {
-          try {
-            await supabase.from('ingresos').insert({
-              venta_id: data.venta_id,
-              monto: -montoDescuento,
-              metodo_pago: metodoPago,
-              tipo: 'Descuento POS',
-              observacion: `Ajuste por descuento en Ticket ${data.numero_ticket} (${motivoDescuento}) - Autorizado por: ${descuento?.autorizadoPor || clienteNombre}`,
-            });
-          } catch (descErr) {
-            console.warn('[registrarVentaPOS] Error registrando contra-asiento de descuento:', descErr);
-          }
-        }
-
-        return {
-          success: true,
-          venta_id: data.venta_id,
-          numero_ticket: data.numero_ticket,
-          subtotal: subtotalRpc,
-          descuento: montoDescuento,
-          total: totalFinalRpc,
-          metodo_pago: data.metodo_pago,
-          cliente_nombre: clienteNombre,
-          cliente_dni: clienteDni,
-          fecha: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-        };
-      }
-      console.warn('Supabase RPC registrar_venta_pos no disponible, usando procesamiento POS local-first:', error?.message);
-    } catch (err: any) {
-      console.warn('Error en conexión con RPC registrar_venta_pos, usando procesamiento POS local-first:', err?.message);
-    }
-  }
-
-  // Fallback Offline / Mock POS
-  const prods = await obtenerProductosInventario();
-
-  // Validar que cada producto exista y tenga stock suficiente
+  if (isRegisteringSale) throw new Error('Ya hay un cobro en proceso. Espera a que termine.');
+  if (items.length === 0) throw new Error('El carrito de venta no contiene ningún producto.');
+  const cantidades = new Map<string, number>();
   for (const item of items) {
-    const prod = prods.find((p) => p.id === item.producto_id);
-    if (!prod) {
-      throw new Error(`Producto con ID ${item.producto_id} no encontrado en el inventario.`);
-    }
-    if (prod.stock_actual < item.cantidad) {
-      throw new Error(`Stock insuficiente para ${prod.nombre} (Stock actual: ${prod.stock_actual})`);
-    }
+    if (!item.producto_id || !Number.isSafeInteger(item.cantidad) || item.cantidad <= 0) throw new Error('Cada producto debe tener una cantidad entera mayor que cero.');
+    const cantidad = (cantidades.get(item.producto_id) || 0) + item.cantidad;
+    if (!Number.isSafeInteger(cantidad)) throw new Error('Cantidad de producto fuera de rango.');
+    cantidades.set(item.producto_id, cantidad);
   }
-
-  let subtotalCalculado = 0;
-  const updatedProds = prods.map((p) => {
-    const item = items.find((i) => i.producto_id === p.id);
-    if (item) {
-      subtotalCalculado += p.precio_venta * item.cantidad;
-      return { ...p, stock_actual: p.stock_actual - item.cantidad };
-    }
-    return p;
-  });
-
-  const totalCalculado = Math.max(0, subtotalCalculado - montoDescuento);
-
+  if (!['yape', 'plin', 'efectivo', 'tarjeta'].includes(metodoPago)) throw new Error('Método de pago no válido.');
+  const montoDescuento = Number(descuento?.monto ?? 0);
+  if (!Number.isFinite(montoDescuento) || montoDescuento < 0) throw new Error('El descuento debe ser un monto válido mayor o igual a cero.');
+  isRegisteringSale = true;
   try {
-    localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updatedProds));
-  } catch (storageErr) {
-    console.warn('[registrarVentaPOS] Error cacheando productos localmente:', storageErr);
-  }
-
-  // Descontar inmediatamente el stock en la base de datos Supabase Cloud
-  if (isSupabaseConfigured()) {
-    for (const item of items) {
-      const prod = prods.find((p) => p.id === item.producto_id);
-      if (prod) {
-        const newStock = Math.max(0, prod.stock_actual - item.cantidad);
-        try {
-          await supabase
-            .from('productos')
-            .update({ stock_actual: newStock, updated_at: new Date().toISOString() })
-            .eq('id', item.producto_id);
-        } catch (dbErr) {
-          console.warn('[registrarVentaPOS] Error descontando stock en Supabase:', dbErr);
+    const configured = isSupabaseConfigured();
+    const online = typeof navigator === 'undefined' || navigator.onLine;
+    // A previous unknown response is a retry of the same operation, even when
+    // its first request already consumed the last item on the server.
+    const ambigua = leerColaVentas().find((venta) => venta.request_version === 2 && venta.error_ambiguo &&
+      venta.metodo_pago === metodoPago && venta.cliente_nombre === (clienteNombre.trim() || 'Cliente Mostrador') &&
+      venta.cliente_dni === clienteDni.trim() && Number(venta.descuento?.monto || 0) === montoDescuento &&
+      (venta.descuento?.motivo || '') === (montoDescuento > 0 ? descuento?.motivo?.trim() || 'Descuento autorizado' : '') &&
+      (venta.descuento?.autorizadoPor || '') === (montoDescuento > 0 ? descuento?.autorizadoPor || '' : '') &&
+      venta.items.length === cantidades.size && venta.items.every((item) => cantidades.get(item.producto_id) === item.cantidad));
+    if (ambigua) {
+      if (!configured || !online) throw new Error('El ticket pendiente requiere conexión para confirmar su resultado. No vuelvas a cobrarlo.');
+      let data: ResultadoVentaPOS;
+      try { data = await enviarVentaPOS(ambigua); }
+      catch (error) {
+        marcarVentaParaRevision(ambigua, error);
+        throw new Error((error as { message?: string })?.message || 'No se pudo confirmar el ticket pendiente.');
+      }
+      try { quitarVentaDeCola(ambigua.id); } catch { /* Idempotent retry remains safe. */ }
+      const productosConfirmados = await obtenerProductosInventario();
+      return { ...data, cliente_nombre: ambigua.cliente_nombre, cliente_dni: ambigua.cliente_dni, fecha: ambigua.fecha, pendiente_sync: false, productos_actualizados: productosConfirmados };
+    }
+    let prods: ProductoPOS[];
+    if (configured && !online) {
+      const cache = localStorage.getItem(LOCAL_PRODUCTS_KEY);
+      if (!cache) throw new Error('No hay inventario guardado para cobrar sin conexión.');
+      prods = JSON.parse(cache);
+      if (!inventarioValido(prods)) throw new Error('El inventario guardado no es válido para cobrar sin conexión.');
+    } else prods = await obtenerProductosInventario();
+    let subtotal = 0;
+    const snapshot = Array.from(cantidades, ([producto_id, cantidad]) => {
+      const prod = prods.find((p) => p.id === producto_id && p.activo !== false);
+      if (!prod) throw new Error('Producto con ID ' + producto_id + ' no encontrado en el inventario.');
+      if (prod.stock_actual < cantidad) throw new Error('Stock insuficiente para ' + prod.nombre + ' (Stock actual: ' + prod.stock_actual + ')');
+      if (!Number.isFinite(Number(prod.precio_venta)) || Number(prod.precio_venta) < 0) throw new Error('El precio del producto no es válido.');
+      const importe = Math.round(Number(prod.precio_venta) * cantidad * 100) / 100;
+      subtotal += importe;
+      return { producto_id, cantidad, nombre_producto: prod.nombre, precio_unitario: Number(prod.precio_venta), subtotal: importe };
+    });
+    subtotal = Math.round(subtotal * 100) / 100;
+    if (montoDescuento > subtotal) throw new Error('El descuento no puede superar el subtotal del carrito.');
+    const total = Math.round((subtotal - montoDescuento) * 100) / 100;
+    const id = crypto.randomUUID();
+    const fecha = new Date().toISOString();
+    const venta: VentaOfflineQueued = {
+      id, request_version: 2, estado: 'pendiente', items: snapshot,
+      metodo_pago: metodoPago, cliente_nombre: clienteNombre.trim() || 'Cliente Mostrador', cliente_dni: clienteDni.trim(), subtotal,
+      descuento: montoDescuento > 0 ? { monto: montoDescuento, motivo: descuento?.motivo?.trim() || 'Descuento autorizado', autorizadoPor: descuento?.autorizadoPor || '' } : undefined,
+      total, numero_ticket: 'TK-' + getLocalPeruDateString().replace(/-/g, '') + '-' + id, fecha,
+    };
+    // Persist immutable identity before a request: a lost response is safe to retry.
+    guardarColaVentas([...leerColaVentas(), venta]);
+    let rpcData: ResultadoVentaPOS | null = null;
+    if (configured && online) {
+      try {
+        rpcData = await enviarVentaPOS(venta);
+      } catch (error) {
+        if (esRechazoDeterminista(error)) {
+          quitarVentaDeCola(id);
+          throw new Error((error as { message?: string })?.message || 'No se pudo registrar el cobro.');
+        }
+        if (!esFalloDeRed(error)) {
+          marcarVentaParaRevision(venta, error);
+          throw new Error((error as { message?: string })?.message || 'No se confirmó el cobro. Revisa el ticket pendiente.');
         }
       }
     }
-  }
-
-  // Notificar a toda la aplicación para actualizar inventario en tiempo real
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('gym-products-updated'));
-  }
-
-  const dateStr = getLocalPeruDateString().replace(/-/g, '');
-  const randomTicket = `TK-${dateStr}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-  // Encolar en storage persistente para sincronizar con Supabase al recuperar la red
-  const ventaOffline: VentaOfflineQueued = {
-    id: `sale-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    items,
-    metodo_pago: metodoPago,
-    cliente_nombre: clienteNombreAuditado,
-    cliente_dni: clienteDni,
-    subtotal: subtotalCalculado,
-    descuento: montoDescuento > 0 ? { monto: montoDescuento, motivo: motivoDescuento } : undefined,
-    total: totalCalculado,
-    numero_ticket: randomTicket,
-    fecha: new Date().toISOString(),
-  };
-  encolarVentaOffline(ventaOffline);
-
-  return {
-    success: true,
-    numero_ticket: randomTicket,
-    subtotal: subtotalCalculado,
-    descuento: montoDescuento,
-    total: totalCalculado,
-    metodo_pago: metodoPago,
-    cliente_nombre: clienteNombre,
-    cliente_dni: clienteDni,
-    fecha: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-  };
-}
-
-function encolarVentaOffline(venta: VentaOfflineQueued): void {
-  try {
-    const raw = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
-    const queue: VentaOfflineQueued[] = raw ? JSON.parse(raw) : [];
-    queue.push(venta);
-    localStorage.setItem(LOCAL_OFFLINE_SALES_KEY, JSON.stringify(queue));
-  } catch (err) {
-    console.warn('[encolarVentaOffline] Error encolando venta offline:', err);
-  }
+    const updated = prods.map((p) => ({ ...p, stock_actual: p.stock_actual - (cantidades.get(p.id) || 0) }));
+    try { localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated)); }
+    catch { console.warn('[registrarVentaPOS] Cobro persistido; no se pudo actualizar la caché de inventario.'); }
+    if (rpcData) {
+      try { quitarVentaDeCola(id); } catch { /* The same ID can safely be retried. */ }
+    }
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('gym-products-updated'));
+    return {
+      success: true, ...rpcData,
+      numero_ticket: rpcData?.numero_ticket || venta.numero_ticket,
+      subtotal: rpcData?.subtotal ?? subtotal, descuento: rpcData?.descuento ?? montoDescuento,
+      total: Number(rpcData?.total ?? total), metodo_pago: metodoPago,
+      cliente_nombre: venta.cliente_nombre, cliente_dni: venta.cliente_dni, fecha,
+      pendiente_sync: !rpcData,
+      productos_actualizados: updated,
+    };
+  } finally { isRegisteringSale = false; }
 }
 
 let isSyncingOfflineSales = false;
 
-/**
- * 6.1 VACIAR Y SINCRONIZAR COLA DE VENTAS OFFLINE AL VOLVER LA CONEXIÓN
- * Sincroniza ventas realizadas sin internet hacia Supabase garantizando trazabilidad contable.
- * Aplica el patrón de idsEnTransito para evitar pérdida de ventas encoladas durante la petición de red.
- */
+/** Retry durable operations without changing their date, quote or identity. */
 export async function procesarColaVentasOffline(): Promise<number> {
-  if (!isSupabaseConfigured() || !navigator.onLine || isSyncingOfflineSales) return 0;
-
+  if (!isSupabaseConfigured() || !navigator.onLine || isSyncingOfflineSales || isRegisteringSale) return 0;
+  isSyncingOfflineSales = true;
+  let count = 0;
   try {
-    const raw = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
-    if (!raw) return 0;
-    const queue: VentaOfflineQueued[] = JSON.parse(raw);
-    if (queue.length === 0) return 0;
-
-    isSyncingOfflineSales = true;
-
-    const queueWithIds = queue.map((q, idx) => ({
-      ...q,
-      id: q.id || `sale-${Date.now()}-${idx}`,
-    }));
-
-    const sincronizadasExitosas = new Set<string>();
-
-    for (const venta of queueWithIds) {
+    const queue = leerColaVentas();
+    for (const venta of queue) {
+      // Older clients patched stock before queuing: retain for reconciliation.
+      if (venta.request_version !== 2) continue;
       try {
-        const { error: rpcErr } = await supabase.rpc('registrar_venta_pos', {
-          p_items: venta.items,
-          p_metodo_pago: venta.metodo_pago,
-          p_cliente_nombre: venta.cliente_nombre || 'Cliente Mostrador (Sync Offline)',
-          p_cliente_dni: venta.cliente_dni || null,
-        });
-
-        if (!rpcErr) {
-          sincronizadasExitosas.add(String(venta.id));
-        } else {
-          // Si la RPC registrar_venta_pos no está disponible o falla por RLS,
-          // registrar al menos el asiento contable en la tabla ingresos para asegurar el flujo de caja
-          const { error: ingErr } = await supabase.from('ingresos').insert({
-            monto: venta.total,
-            metodo_pago: venta.metodo_pago,
-            tipo: 'Venta POS Productos',
-            observacion: `Venta offline ticket ${venta.numero_ticket} (${venta.cliente_nombre}) - Sync automática`,
-          });
-          if (!ingErr) {
-            sincronizadasExitosas.add(String(venta.id));
-          } else {
-            console.warn('[procesarColaVentasOffline] Error registrando ingreso:', ingErr.message);
-          }
-        }
-      } catch (itemErr: any) {
-        console.warn('[procesarColaVentasOffline] Error procesando ticket:', venta.numero_ticket, itemErr?.message);
+        await enviarVentaPOS(venta);
+        quitarVentaDeCola(venta.id);
+        count++;
+      } catch (error) {
+        const actual = leerColaVentas();
+        guardarColaVentas(actual.map((item) => item.id === venta.id ? {
+          ...item, estado: esFalloDeRed(error) ? 'pendiente' : 'requiere_revision',
+          error_ambiguo: item.error_ambiguo,
+          error_sync: (error as { message?: string })?.message || 'Error al sincronizar el ticket.',
+        } : item));
       }
     }
-
-    if (sincronizadasExitosas.size > 0) {
-      try {
-        const actualRaw = localStorage.getItem(LOCAL_OFFLINE_SALES_KEY);
-        const actualQueue: VentaOfflineQueued[] = actualRaw ? JSON.parse(actualRaw) : [];
-        const restantes = actualQueue.filter((item) => !sincronizadasExitosas.has(String(item.id)));
-
-        if (restantes.length > 0) {
-          localStorage.setItem(LOCAL_OFFLINE_SALES_KEY, JSON.stringify(restantes));
-        } else {
-          localStorage.removeItem(LOCAL_OFFLINE_SALES_KEY);
-        }
-      } catch (storageErr) {
-        console.warn('[procesarColaVentasOffline] Error actualizando cola de ventas offline:', storageErr);
-      }
-      return sincronizadasExitosas.size;
-    }
-  } catch (err: any) {
-    console.warn('[procesarColaVentasOffline] Excepción procesando cola offline:', err?.message || err);
-  } finally {
-    isSyncingOfflineSales = false;
-  }
-
-  return 0;
+  } catch (error) { console.warn('[procesarColaVentasOffline] Se conservó la cola pendiente:', error); }
+  finally { isSyncingOfflineSales = false; }
+  return count;
 }
 
 // ==============================================================================
@@ -1148,318 +1126,9 @@ export async function obtenerSocioPorUserId(userId: string): Promise<GymMember |
  * en estado "Sin Membresía Activa" con opción para suscribirse online o en recepción.
  */
 export async function vincularDniCliente(
-  userId: string,
-  userEmail: string,
-  dniIngresado: string,
-  nombreIngresado?: string
+  _userId: string, _userEmail: string, _dniIngresado: string, _nombreIngresado?: string
 ): Promise<{ success: boolean; message: string; member?: GymMember }> {
-  const cleanDni = dniIngresado.trim().replace(/\D/g, '');
-  if (cleanDni.length < 8) {
-    return { success: false, message: 'El DNI debe tener 8 dígitos numéricos válidos.' };
-  }
-
-  const cleanName =
-    nombreIngresado?.trim() ||
-    userEmail
-      .split('@')[0]
-      .replace(/[._]/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
-
-  // 1. Si Supabase está configurado, intentar vincular vía RPC seguro (evita bloqueo RLS)
-  if (isSupabaseConfigured()) {
-    try {
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('vincular_socio_por_dni', {
-        p_dni: cleanDni,
-        p_nombre: cleanName,
-        p_email: userEmail,
-      });
-
-      if (!rpcErr && rpcRes && rpcRes.success && rpcRes.socio) {
-        const s = rpcRes.socio;
-        const isExpired = s.fecha_fin ? s.fecha_fin < new Date().toISOString().split('T')[0] : false;
-        const mapped: GymMember = {
-          id: s.id,
-          name: s.nombre,
-          dni: s.dni,
-          email: userEmail,
-          phone: s.celular || '',
-          plan: s.plan,
-          planPrice: Number(s.precio_plan) || 80,
-          paymentType: s.tipo_pago || 'full',
-          advancePaid: Number(s.adelanto_pagado) || 0,
-          balanceDue: Number(s.saldo_pendiente) || 0,
-          paymentDueDate: s.fecha_limite_pago || undefined,
-          paymentMethod: s.metodo_pago || 'efectivo',
-          receiptNumber: s.numero_boleta || 'B001-000000',
-          membershipStatus: isExpired ? 'inactive' : 'active',
-          expiresAt: s.fecha_fin ? `${s.fecha_fin}` : '30 Nov 2026',
-          coachName: s.coach_asignado || 'Coach Marcos Rivas',
-          registeredAt: s.created_at ? new Date(s.created_at).toLocaleDateString('es-PE') : 'Oct 2026',
-          observations: s.observaciones || undefined,
-          age: s.edad || undefined,
-          gender: s.sexo || undefined,
-          shift: (s.turno as 'manana' | 'tarde' | 'noche') || 'manana',
-        };
-
-        const current = getStoredMembers();
-        const updated = current.some((m) => m.dni === cleanDni || m.id === mapped.id)
-          ? current.map((m) => (m.dni === cleanDni || m.id === mapped.id ? mapped : m))
-          : [mapped, ...current];
-        saveStoredMembers(updated);
-
-        return {
-          success: true,
-          message: rpcRes.message || `¡Membresía vinculada con éxito a nombre de ${s.nombre}!`,
-          member: mapped,
-        };
-      }
-      if (rpcErr) {
-        console.warn('[vincularDniCliente] RPC vincular_socio_por_dni falló:', rpcErr.message);
-      }
-    } catch (rpcEx: any) {
-      console.warn('[vincularDniCliente] Excepción en llamada a RPC vincular_socio_por_dni:', rpcEx?.message || rpcEx);
-    }
-
-    // Respaldo directo a tablas en caso el RPC no esté instalado aún
-    try {
-      const { data: socio, error } = await supabase
-        .from('socios')
-        .select('*')
-        .eq('dni', cleanDni)
-        .maybeSingle();
-
-      if (socio && !error) {
-        // Socio existente en el padrón: Vincular con su cuenta de Google/correo
-        const isExpired = socio.fecha_fin
-          ? socio.fecha_fin < new Date().toISOString().split('T')[0]
-          : false;
-
-        await supabase
-          .from('profiles')
-          .update({
-            dni: cleanDni,
-            full_name: socio.nombre,
-            membership_status: isExpired ? 'vencido' : 'activo',
-            plan: socio.plan,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', userId);
-
-        await supabase
-          .from('socios')
-          .update({
-            user_id: userId,
-            email: userEmail,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', socio.id);
-
-        const mapped: GymMember = {
-          id: socio.id,
-          name: socio.nombre,
-          dni: socio.dni,
-          email: userEmail,
-          phone: socio.celular || '',
-          plan: socio.plan,
-          planPrice: Number(socio.precio_plan) || 80,
-          paymentType: socio.tipo_pago || 'full',
-          advancePaid: Number(socio.adelanto_pagado) || 0,
-          balanceDue: Number(socio.saldo_pendiente) || 0,
-          paymentDueDate: socio.fecha_limite_pago || undefined,
-          paymentMethod: socio.metodo_pago || 'efectivo',
-          receiptNumber: socio.numero_boleta || 'B001-000000',
-          membershipStatus: isExpired ? 'inactive' : 'active',
-          expiresAt: socio.fecha_fin ? `${socio.fecha_fin}` : '30 Nov 2026',
-          coachName: socio.coach_asignado || 'Coach Marcos Rivas',
-          registeredAt: socio.created_at
-            ? new Date(socio.created_at).toLocaleDateString('es-PE')
-            : 'Oct 2026',
-          observations: socio.observaciones || undefined,
-          age: socio.edad || undefined,
-          gender: socio.sexo || undefined,
-          shift: (socio.turno as 'manana' | 'tarde' | 'noche') || 'manana',
-        };
-
-        const current = getStoredMembers();
-        const updated = current.map((m) => (m.dni === cleanDni ? mapped : m));
-        saveStoredMembers(updated);
-
-        return {
-          success: true,
-          message: `¡Membresía vinculada con éxito a nombre de ${socio.nombre}!`,
-          member: mapped,
-        };
-      }
-
-      // Si no existe directamente en el select de Supabase (ej: bloqueo RLS o sincronización pendiente),
-      // comprobar si existe en el padrón local (inscrito en recepción con plan y nombre oficial)
-      const localMatch = getStoredMembers().find((m) => m.dni === cleanDni);
-      const todayISO = new Date().toISOString().split('T')[0];
-
-      if (localMatch && localMatch.plan && localMatch.plan !== 'Sin Membresía Activa') {
-        const realName = localMatch.name || cleanName;
-        const realPlan = localMatch.plan;
-        const isExp =
-          localMatch.membershipStatus === 'inactive' ||
-          (localMatch.expiresAt && localMatch.expiresAt < todayISO);
-
-        await supabase
-          .from('profiles')
-          .update({
-            dni: cleanDni,
-            full_name: realName,
-            membership_status: isExp ? 'vencido' : 'activo',
-            plan: realPlan,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', userId);
-
-        const mappedMember: GymMember = {
-          ...localMatch,
-          name: realName,
-          email: userEmail,
-        };
-
-        await supabase.from('socios').upsert(
-          {
-            id: localMatch.id,
-            nombre: realName,
-            dni: cleanDni,
-            email: userEmail,
-            user_id: userId,
-            plan: realPlan,
-            precio_plan: localMatch.planPrice || 80,
-            tipo_pago: localMatch.paymentType || 'full',
-            adelanto_pagado: localMatch.advancePaid || 0,
-            saldo_pendiente: localMatch.balanceDue || 0,
-            fecha_inicio: normalizeDateToISO(localMatch.registeredAt),
-            fecha_fin: normalizeDateToISO(localMatch.expiresAt),
-            metodo_pago: localMatch.paymentMethod || 'efectivo',
-            numero_boleta: localMatch.receiptNumber || `REG-${cleanDni.slice(-4)}`,
-            turno: localMatch.shift || 'manana',
-            coach_asignado: localMatch.coachName || 'Coach Marcos Rivas',
-            observaciones: localMatch.observations || null,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'id' }
-        );
-
-        const current = getStoredMembers();
-        const updated = current.map((m) =>
-          m.dni === cleanDni || m.id === localMatch.id ? mappedMember : m
-        );
-        saveStoredMembers(updated);
-
-        return {
-          success: true,
-          message: `¡Membresía vinculada con éxito a nombre de ${realName}!`,
-          member: mappedMember,
-        };
-      }
-
-      // Si no existe en el padrón de socios oficiales: Registrar perfil digital de usuario sin crear socio fantasma
-      const tempId = 'TEMP-' + cleanDni;
-      const formattedName = cleanName
-        .split(' ')
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-        .join(' ');
-
-      try {
-        const { error: profileUpdateErr } = await supabase
-          .from('profiles')
-          .update({
-            dni: cleanDni,
-            full_name: formattedName,
-            membership_status: 'sin_membresia',
-            plan: 'Sin Membresía Activa',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', userId);
-
-        if (profileUpdateErr) {
-          console.warn('[vincularDniCliente] Error actualizando perfil en Supabase:', profileUpdateErr.message);
-        }
-      } catch (profEx: any) {
-        console.warn('[vincularDniCliente] Excepción actualizando perfil:', profEx?.message || profEx);
-      }
-
-      // Retornar objeto en memoria para la sesión del usuario (NO se inserta en public.socios para no alterar el padrón oficial)
-      const virtualMember: GymMember = {
-        id: tempId,
-        name: formattedName,
-        dni: cleanDni,
-        email: userEmail,
-        phone: '',
-        plan: 'Sin Membresía Activa',
-        planPrice: 0,
-        paymentType: 'full',
-        advancePaid: 0,
-        balanceDue: 0,
-        paymentDueDate: null,
-        paymentMethod: 'efectivo',
-        receiptNumber: `REG-${cleanDni.slice(-4)}`,
-        membershipStatus: 'inactive',
-        expiresAt: 'Por Activar',
-        coachName: 'Coach Marcos Rivas',
-        registeredAt: todayISO,
-        observations: 'Cuenta digital creada. Pendiente de suscripción a un plan en caja o recepción.',
-        shift: 'manana',
-      };
-
-      return {
-        success: true,
-        message: `¡Cuenta digital conectada! Aún no registras un plan activo. Acércate a recepción de Trankilandia Gym para formalizar tu inscripción.`,
-        member: virtualMember,
-      };
-    } catch (err: any) {
-      console.warn('Supabase link error:', err);
-    }
-  }
-
-  // 2. Modo Offline / Fallback Local
-  const localMembers = getStoredMembers();
-  const match = localMembers.find((m) => m.dni === cleanDni);
-  if (match) {
-    const updatedMember: GymMember = {
-      ...match,
-      email: userEmail,
-    };
-    return {
-      success: true,
-      message: `¡Membresía vinculada con éxito a nombre de ${match.name}!`,
-      member: updatedMember,
-    };
-  }
-
-  // Si no está registrado en el padrón local, devolver estado temporal sin persistir socio fantasma
-  const todayISO = new Date().toISOString().split('T')[0];
-  const virtualMember: GymMember = {
-    id: 'TEMP-' + cleanDni,
-    name: cleanName,
-    dni: cleanDni,
-    email: userEmail,
-    phone: '',
-    plan: 'Sin Membresía Activa',
-    planPrice: 0,
-    paymentType: 'full',
-    advancePaid: 0,
-    balanceDue: 0,
-    paymentDueDate: null,
-    paymentMethod: 'efectivo',
-    receiptNumber: `REG-${cleanDni.slice(-4)}`,
-    membershipStatus: 'inactive',
-    expiresAt: 'Por Activar',
-    coachName: 'Coach Marcos Rivas',
-    registeredAt: todayISO,
-    observations: 'Cuenta digital creada. Pendiente de suscripción a un plan.',
-    shift: 'manana',
-  };
-
-  return {
-    success: true,
-    message: `¡Cuenta creada con éxito! Tu tarjeta de socio está lista.`,
-    member: virtualMember,
-  };
+  return { success: false, message: 'Recepción debe verificar tu identidad y vincular tu cuenta de forma segura. Conocer un DNI no permite activar una membresía.' };
 }
 
 /**
@@ -1467,98 +1136,9 @@ export async function vincularDniCliente(
  * Unifica ambos accesos (DNI + contraseña y Google) en una sola cuenta y mismo perfil.
  */
 export async function vincularCorreoASocio(
-  dni: string,
-  nuevoCorreo: string
+  _dni: string, _email: string
 ): Promise<{ success: boolean; message: string; member?: GymMember }> {
-  const cleanDni = extraerDniPeru(dni) || dni.trim().replace(/\D/g, '').slice(0, 8);
-  const cleanEmail = nuevoCorreo.trim().toLowerCase();
-
-  if (!cleanDni || cleanDni.length !== 8) {
-    return { success: false, message: 'El DNI debe contener exactamente 8 dígitos.' };
-  }
-  if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-    return { success: false, message: 'Por favor ingresa una dirección de correo electrónico válida.' };
-  }
-
-  // 1. Actualizar en almacenamiento local
-  const currentMembers = getStoredMembers();
-  let updatedMember: GymMember | undefined;
-  const nextMembers = currentMembers.map((m) => {
-    if (m.dni && m.dni.trim() === cleanDni) {
-      updatedMember = { ...m, email: cleanEmail };
-      return updatedMember;
-    }
-    return m;
-  });
-
-  if (!updatedMember) {
-    return { success: false, message: `No se encontró un socio registrado con el DNI ${cleanDni}.` };
-  }
-
-  saveStoredMembers(nextMembers);
-
-  // 2. Si Supabase está conectado, actualizar tablas public.socios y public.profiles
-  if (isSupabaseConfigured()) {
-    try {
-      const { data: rpcRes, error: rpcErr } = await supabase.rpc('vincular_correo_a_dni', {
-        p_dni: cleanDni,
-        p_email: cleanEmail,
-      });
-      if (!rpcErr && rpcRes && rpcRes.success) {
-        return {
-          success: true,
-          message: rpcRes.message || `¡Cuenta unificada con éxito! Ahora tu DNI (${cleanDni}) y tu cuenta Google (${cleanEmail}) acceden al mismo perfil.`,
-          member: updatedMember,
-        };
-      }
-      if (rpcErr) {
-        console.warn('[vincularCorreoASocio] RPC vincular_correo_a_dni falló:', rpcErr.message);
-      }
-    } catch (rpcEx: any) {
-      console.warn('[vincularCorreoASocio] Excepción en llamada RPC:', rpcEx?.message || rpcEx);
-    }
-
-    try {
-      // Actualizar socios directamente
-      await supabase
-        .from('socios')
-        .update({ email: cleanEmail, updated_at: new Date().toISOString() })
-        .eq('dni', cleanDni);
-
-      // Si existe un perfil de Google/Email registrado con este correo, unificar IDs
-      const { data: profileWithEmail } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', cleanEmail)
-        .maybeSingle();
-
-      if (profileWithEmail?.id) {
-        await supabase
-          .from('socios')
-          .update({ user_id: profileWithEmail.id })
-          .eq('dni', cleanDni);
-
-        await supabase
-          .from('profiles')
-          .update({ dni: cleanDni, updated_at: new Date().toISOString() })
-          .eq('id', profileWithEmail.id);
-      } else {
-        // Actualizar el perfil existente por DNI
-        await supabase
-          .from('profiles')
-          .update({ email: cleanEmail, updated_at: new Date().toISOString() })
-          .eq('dni', cleanDni);
-      }
-    } catch (err) {
-      console.warn('Error sincronizando correo vinculado en Supabase:', err);
-    }
-  }
-
-  return {
-    success: true,
-    message: `¡Cuenta unificada con éxito! Ahora tu DNI (${cleanDni}) y tu cuenta Google (${cleanEmail}) acceden al mismo perfil.`,
-    member: updatedMember,
-  };
+  return { success: false, message: 'Recepción debe verificar la titularidad del correo antes de vincular la cuenta. No se modificaron tus datos.' };
 }
 
 /**
@@ -1567,352 +1147,151 @@ export async function vincularCorreoASocio(
  * Vincula directamente el DNI con el correo registrado y unifica la cuenta.
  */
 export async function asignarDniYActivarCuenta(
-  memberId: string,
-  nuevoDni: string,
-  emailRegistrado?: string,
-  celularRegistrado?: string
+  memberId: string, nuevoDni: string, emailRegistrado?: string, celularRegistrado?: string
 ): Promise<{ success: boolean; message: string; socioActualizado?: SocioRecepcion; member?: GymMember }> {
-  const cleanDni = extraerDniPeru(nuevoDni) || nuevoDni.trim().replace(/\D/g, '').slice(0, 8);
-  if (!cleanDni || cleanDni.length !== 8) {
-    return { success: false, message: 'El DNI debe contener exactamente 8 dígitos numéricos.' };
-  }
-
-  // 1. Validar que otro socio no tenga ya este DNI en memoria local
-  const localMembers = getStoredMembers();
-  const existingLocal = localMembers.find((m) => m.id !== memberId && m.dni && m.dni.trim() === cleanDni);
-  if (existingLocal) {
-    return {
-      success: false,
-      message: `El DNI ${cleanDni} ya está registrado para el socio ${existingLocal.name}.`,
-    };
-  }
-
-  const targetMember = localMembers.find((m) => m.id === memberId);
-  const rawEmail = (emailRegistrado || targetMember?.email || '').trim().toLowerCase();
-  const hasRealEmail = rawEmail.includes('@') && !rawEmail.endsWith('@socio.trankilandia.pe') && !rawEmail.endsWith('@cliente.trankilandia.pe');
-  const userRealEmail = hasRealEmail ? rawEmail : null;
-  const canonicalEmail = `${cleanDni}@socio.trankilandia.pe`;
-  const cleanCelular = celularRegistrado
-    ? celularRegistrado.trim().replace(/\D/g, '').slice(0, 9)
-    : undefined;
-
-  // 2. Si Supabase está conectado, verificar unicidad y actualizar en BD
-  if (isSupabaseConfigured()) {
-    try {
-      // Verificar unicidad en public.socios
-      const { data: duplicate } = await supabase
-        .from('socios')
-        .select('id, nombre')
-        .eq('dni', cleanDni)
-        .neq('id', memberId)
-        .maybeSingle();
-
-      if (duplicate) {
-        return {
-          success: false,
-          message: `El DNI ${cleanDni} ya está registrado para el socio ${duplicate.nombre} en la base de datos.`,
-        };
-      }
-
-      // Si el correo real ya tiene un perfil existente (ej: inició sesión antes con Google)
-      let matchedAuthUserId: string | null = null;
-      if (userRealEmail) {
-        const { data: existingProfile } = await supabase
-          .from('profiles')
-          .select('id')
-          .ilike('email', userRealEmail)
-          .maybeSingle();
-        if (existingProfile?.id) {
-          matchedAuthUserId = existingProfile.id;
-        }
-      }
-
-      // Actualizar public.socios con DNI, correo real y celular
-      const updateData: Record<string, any> = {
-        dni: cleanDni,
-        updated_at: new Date().toISOString(),
-      };
-      if (userRealEmail) updateData.email = userRealEmail;
-      if (cleanCelular) updateData.celular = cleanCelular;
-      if (matchedAuthUserId) updateData.user_id = matchedAuthUserId;
-
-      const { error: updateErr } = await supabase
-        .from('socios')
-        .update(updateData)
-        .eq('id', memberId);
-
-      if (updateErr) {
-        console.warn('Error actualizando DNI en public.socios:', updateErr);
-      }
-
-      // Aprovisionar cuenta en Supabase Auth con credenciales canónicas para ingreso por DNI
-      let createdAuthUserId: string | null = null;
-      try {
-        const signUpRes = await supabase.auth.signUp({
-          email: canonicalEmail,
-          password: cleanDni,
-          options: {
-            data: {
-              dni: cleanDni,
-              role: 'cliente',
-              ...(userRealEmail ? { personal_email: userRealEmail } : {}),
-            },
-          },
-        });
-        if (signUpRes.data?.user?.id) {
-          createdAuthUserId = signUpRes.data.user.id;
-        }
-      } catch (authErr) {
-        console.warn('Auto-signup DNI notice:', authErr);
-      }
-
-      const effectiveUserId = matchedAuthUserId || createdAuthUserId;
-
-      // Asegurar perfil en public.profiles y vincular con socios.user_id
-      if (effectiveUserId) {
-        try {
-          const { error: profUpsertErr } = await supabase.from('profiles').upsert({
-            id: effectiveUserId,
-            email: userRealEmail || canonicalEmail,
-            dni: cleanDni,
-            role: 'cliente',
-            membership_status: 'activo',
-            updated_at: new Date().toISOString(),
-          });
-          if (profUpsertErr) {
-            console.warn('[asignarDniYActivarCuenta] Error en upsert de profile:', profUpsertErr.message);
-          }
-          const { error: socioLinkErr } = await supabase.from('socios').update({ user_id: effectiveUserId }).eq('id', memberId);
-          if (socioLinkErr) {
-            console.warn('[asignarDniYActivarCuenta] Error vinculando user_id en socios:', socioLinkErr.message);
-          }
-        } catch (profileErr: any) {
-          console.warn('[asignarDniYActivarCuenta] Excepción vinculando perfil de usuario:', profileErr?.message || profileErr);
-        }
-      }
-    } catch (err: any) {
-      console.warn('Error en proceso Supabase asignarDniYActivarCuenta:', err);
-    }
-  }
-
-  // 3. Actualizar en almacenamiento local
-  let updatedMember: GymMember | undefined;
-  const updatedMembers = localMembers.map((m) => {
-    if (m.id === memberId) {
-      updatedMember = {
-        ...m,
-        dni: cleanDni,
-        ...(userRealEmail ? { email: userRealEmail } : {}),
-        ...(cleanCelular ? { phone: cleanCelular } : {}),
-      };
-      return updatedMember;
-    }
-    return m;
-  });
-  saveStoredMembers(updatedMembers);
-
-  // 4. Preparar SocioRecepcion para actualización reactiva en CajaDashboard
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  let diasRestantes = 0;
-  if (updatedMember?.expiresAt) {
-    const expDate = new Date(updatedMember.expiresAt);
-    if (!isNaN(expDate.getTime())) {
-      expDate.setHours(0, 0, 0, 0);
-      diasRestantes = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    }
-  }
-
-  const socioRecepcion: SocioRecepcion = {
-    id: memberId,
-    dni: cleanDni,
-    nombre: updatedMember?.name || 'Socio Actualizado',
-    plan: updatedMember?.plan || 'Musculación Libre',
-    precio_plan: updatedMember?.planPrice || 80,
-    tipo_pago: updatedMember?.paymentType || 'full',
-    adelanto_pagado: updatedMember?.advancePaid || 0,
-    saldo_pendiente: updatedMember?.balanceDue || 0,
-    fecha_limite_pago: updatedMember?.paymentDueDate || null,
-    fecha_fin: updatedMember?.expiresAt || '',
-    turno: updatedMember?.shift || 'manana',
-    coach_asignado: updatedMember?.coachName || 'Coach Marcos Rivas',
-    dias_restantes: diasRestantes,
-    estado_calculado:
-      updatedMember?.membershipStatus === 'inactive' || diasRestantes < 0
-        ? 'vencido'
-        : diasRestantes <= 5
-        ? 'por_vencer'
-        : 'activo',
-    tiene_deuda_activa: (updatedMember?.balanceDue || 0) > 0,
-    numero_boleta: updatedMember?.receiptNumber || `B001-${cleanDni.slice(-6)}`,
-    email: updatedMember?.email || null,
-    celular: updatedMember?.phone || null,
-  };
-
-  return {
-    success: true,
-    message: `¡DNI ${cleanDni} asignado correctamente! La cuenta del atleta quedó activada (usuario: ${cleanDni}, contraseña: ${cleanDni}).`,
-    socioActualizado: socioRecepcion,
-    member: updatedMember,
-  };
+  const cleanDni = nuevoDni.trim();
+  if (!/^\d{8}$/.test(cleanDni)) return { success: false, message: 'El DNI debe contener exactamente 8 dígitos numéricos.' };
+  if (!isSupabaseConfigured()) return { success: false, message: 'Se requiere conexión con el servidor para asignar el DNI.' };
+  try {
+    const payload: Record<string, unknown> = { dni: cleanDni, updated_at: new Date().toISOString() };
+    if (emailRegistrado !== undefined) payload.email = emailRegistrado.trim().toLowerCase() || null;
+    if (celularRegistrado !== undefined) payload.celular = celularRegistrado.trim() || null;
+    const { data: row, error } = await supabase.from('socios').update(payload).eq('id', memberId).select('*').maybeSingle();
+    if (error || !row || row.id !== memberId) return { success: false, message: 'No se pudo asignar el DNI. Verifica permisos, conexión y que el DNI no esté registrado.' };
+    const member = mapConfirmedMemberRow(row);
+    const current = getStoredMembers();
+    saveStoredMembers([member, ...current.filter((item) => item.id !== memberId)]);
+    const days = Math.ceil((new Date(`${member.expiresAt}T23:59:59-05:00`).getTime() - Date.now()) / 86400000);
+    const socioActualizado: SocioRecepcion = { ...row, dias_restantes: Number.isFinite(days) ? days : 0, estado_calculado: member.membershipStatus === 'inactive' ? 'vencido' : member.membershipStatus === 'expiring' ? 'por_vencer' : 'activo', tiene_deuda_activa: member.balanceDue > 0 };
+    return { success: true, message: 'DNI guardado. El acceso digital requiere una cuenta verificada y vinculada por gerencia.', socioActualizado, member };
+  } catch { return { success: false, message: 'No se pudo guardar el DNI en el servidor.' }; }
 }
 
-/**
- * Guardar o registrar un nuevo socio (En Supabase + Local)
- */
-export async function registerGymMember(member: GymMember): Promise<void> {
-  const current = getStoredMembers();
-  const cleanDni = member.dni
-    ? (extraerDniPeru(member.dni) || member.dni.trim().replace(/\D/g, '').slice(0, 8))
-    : '';
+const ENROLLMENT_OPERATIONS_KEY = 'trankilandia_inscripciones_operaciones_v1';
+interface EnrollmentOperation { id: string; payload: Record<string, unknown>; confirmed?: boolean }
 
-  // 1. Verificar si ya existía por DNI para renovación o actualización del mismo socio
-  let targetId = member.id;
-  const existingByDni = cleanDni ? current.find((m) => m.dni && m.dni.trim() === cleanDni) : null;
-  if (existingByDni) {
-    targetId = existingByDni.id;
-  } else {
-    // Si el ID propuesto ya pertenece a OTRO socio con DNI distinto, generar uno nuevo para evitar colisiones
-    const existingById = current.find((m) => m.id === targetId);
-    if (existingById && existingById.dni && existingById.dni !== cleanDni) {
-      targetId = generateNextMemberId(current);
-    }
+function readEnrollmentOperations(): EnrollmentOperation[] {
+  try {
+    const operations: EnrollmentOperation[] = JSON.parse(localStorage.getItem(ENROLLMENT_OPERATIONS_KEY) || '[]');
+    if (!Array.isArray(operations) || operations.some((operation) => !operation
+        || typeof operation.id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operation.id)
+        || !operation.payload || typeof operation.payload.id !== 'string'
+        || (operation.confirmed !== undefined && typeof operation.confirmed !== 'boolean'))) throw new Error('Invalid journal');
+    return operations;
+  } catch {
+    throw new Error('No se pudo leer el registro de inscripciones pendientes. Requiere revisión antes de volver a cobrar.');
   }
+}
 
-  const normalizedMember: GymMember = {
-    ...member,
-    id: targetId,
-    dni: cleanDni || member.dni,
+/** Resolve ambiguous enrollment before deciding whether an existing DNI is a renewal. */
+export function getPendingEnrollmentMember(dni: string): GymMember | null {
+  const operation = readEnrollmentOperations().find((item) => !item.confirmed && item.payload.dni === dni.trim());
+  return operation ? mapConfirmedMemberRow(operation.payload) : null;
+}
+
+function enrollmentDate(value: string, label: string): string {
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`${label} es requerida.`);
+  const date = normalizeDateToISO(value);
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(parsed.getTime())
+      || parsed.toISOString().slice(0, 10) !== date || date < '1900-01-01' || date > '2200-12-31') {
+    throw new Error(`${label} no es válida.`);
+  }
+  return date;
+}
+
+function enrollmentText(value: unknown, label: string, limit: number, required = false): string | null {
+  if (value !== undefined && value !== null && typeof value !== 'string') throw new Error(`${label} no es válido.`);
+  const text = typeof value === 'string' ? value.trim() : '';
+  if ((required && !text) || text.length > limit) throw new Error(`${label} no es válido.`);
+  return text || null;
+}
+
+/** Register the member and its first payment in one checked server transaction. */
+export async function registerGymMember(member: GymMember): Promise<GymMember> {
+  if (!isSupabaseConfigured()) throw new Error('Se requiere conexión con el servidor para registrar un socio.');
+  const id = enrollmentText(member.id, 'ID del socio', 100, true)!;
+  const dni = enrollmentText(member.dni, 'DNI', 8);
+  if (dni && !/^\d{8}$/.test(dni)) throw new Error('El DNI debe contener exactamente 8 dígitos.');
+  const amounts = [member.planPrice, member.advancePaid, member.balanceDue];
+  if (amounts.some((amount) => typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0
+      || amount > 99999999.99 || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.000001)) {
+    throw new Error('Los importes deben ser positivos o cero y tener como máximo dos decimales.');
+  }
+  if (Math.round(member.advancePaid * 100) + Math.round(member.balanceDue * 100) !== Math.round(member.planPrice * 100)) {
+    throw new Error('El adelanto y el saldo deben sumar el precio del plan.');
+  }
+  if (!['full', 'advance'].includes(member.paymentType) || (member.paymentType === 'full' && member.balanceDue !== 0)) {
+    throw new Error('El pago completo debe cubrir el precio del plan.');
+  }
+  if (!['efectivo', 'yape', 'plin', 'tarjeta'].includes(member.paymentMethod)) throw new Error('Método de pago no válido.');
+  const start = enrollmentDate(member.registeredAt, 'La fecha de inicio');
+  const end = enrollmentDate(member.expiresAt, 'La fecha de fin');
+  const due = member.paymentDueDate ? enrollmentDate(member.paymentDueDate, 'La fecha límite de pago') : null;
+  if (end < start || (due && (due < start || due > end))) throw new Error('Las fechas del plan y del pago no son válidas.');
+  if (member.age != null && (!Number.isInteger(member.age) || member.age < 1 || member.age > 120)) throw new Error('La edad no es válida.');
+  const shift = member.shift || 'manana';
+  if (!['manana', 'tarde', 'noche'].includes(shift)) throw new Error('El turno no es válido.');
+  const payload: Record<string, unknown> = {
+    id, nombre: enrollmentText(member.name, 'Nombre', 200, true), dni,
+    email: enrollmentText(member.email, 'Correo', 254)?.toLowerCase() || null,
+    celular: enrollmentText(member.phone, 'Celular', 30), plan: enrollmentText(member.plan, 'Plan', 200, true),
+    precio_plan: member.planPrice, tipo_pago: member.paymentType, adelanto_pagado: member.advancePaid,
+    saldo_pendiente: member.balanceDue, fecha_inicio: start, fecha_fin: end, fecha_limite_pago: due,
+    metodo_pago: member.paymentMethod, numero_boleta: enrollmentText(member.receiptNumber, 'Boleta', 100, true),
+    turno: shift, coach_asignado: enrollmentText(member.coachName, 'Coach', 200, true),
+    observaciones: enrollmentText(member.observations, 'Observaciones', 2000), edad: member.age ?? null,
+    sexo: enrollmentText(member.gender, 'Sexo', 40),
   };
-
-  const updated = [
-    normalizedMember,
-    ...current.filter(
-      (m) => m.id !== targetId && (!cleanDni || !m.dni || m.dni.trim() !== cleanDni)
-    ),
-  ];
-  saveStoredMembers(updated);
-
-  if (isSupabaseConfigured()) {
-    try {
-      // 2. Verificar si en Supabase ya existía un socio con este DNI (ej: cuenta digital previa MEM-2747)
-      let finalId = targetId;
-      let matchedUserId: string | null = null;
-      if (cleanDni) {
-        const { data: dbSocio } = await supabase
-          .from('socios')
-          .select('id, user_id')
-          .eq('dni', cleanDni)
-          .maybeSingle();
-
-        if (dbSocio?.id) {
-          finalId = dbSocio.id;
-          matchedUserId = dbSocio.user_id;
-        } else {
-          // Verificar si finalId ya existe en Supabase con OTRO DNI
-          const { data: dbConflict } = await supabase
-            .from('socios')
-            .select('id, dni')
-            .eq('id', finalId)
-            .maybeSingle();
-          if (dbConflict && dbConflict.dni && dbConflict.dni !== cleanDni) {
-            finalId = generateNextMemberId(current);
-          }
-        }
-      }
-
-      const dbPayload: any = {
-        id: finalId,
-        nombre: normalizedMember.name,
-        dni: cleanDni || null,
-        email: normalizedMember.email || (cleanDni ? `${cleanDni}@cliente.trankilandia.pe` : null),
-        celular: normalizedMember.phone || null,
-        plan: normalizedMember.plan,
-        precio_plan: normalizedMember.planPrice,
-        tipo_pago: normalizedMember.paymentType,
-        adelanto_pagado: normalizedMember.advancePaid,
-        saldo_pendiente: normalizedMember.balanceDue,
-        fecha_inicio: normalizeDateToISO(normalizedMember.registeredAt),
-        fecha_fin: normalizeDateToISO(normalizedMember.expiresAt),
-        fecha_limite_pago: normalizedMember.paymentDueDate
-          ? normalizeDateToISO(normalizedMember.paymentDueDate)
-          : null,
-        metodo_pago: normalizedMember.paymentMethod,
-        numero_boleta: normalizedMember.receiptNumber,
-        turno: normalizedMember.shift || 'manana',
-        coach_asignado: normalizedMember.coachName,
-        observaciones: normalizedMember.observations,
-        edad: normalizedMember.age,
-        sexo: normalizedMember.gender,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (matchedUserId) {
-        dbPayload.user_id = matchedUserId;
-      }
-
-      const { error: upsertErr } = await supabase
-        .from('socios')
-        .upsert(dbPayload, { onConflict: 'id' });
-      if (upsertErr) {
-        console.error('Error guardando socio en Supabase:', upsertErr);
-        throw new Error(`Error guardando socio en base de datos: ${upsertErr.message}`);
-      }
-
-      // Sincronizar en public.profiles si el socio tiene DNI (aislado para evitar que RLS afecte la inscripción)
-      if (cleanDni) {
-        try {
-          await supabase
-            .from('profiles')
-            .update({
-              full_name: normalizedMember.name,
-              dni: cleanDni,
-              plan: normalizedMember.plan,
-              membership_status:
-                normalizedMember.membershipStatus === 'inactive' ? 'vencido' : 'activo',
-              updated_at: new Date().toISOString(),
-            })
-            .eq('dni', cleanDni);
-        } catch (profErr) {
-          console.warn('[registerGymMember] profiles sync notice:', profErr);
-        }
-      }
-
-      // Activar cuenta canónica para acceso por DNI
-      if (cleanDni && cleanDni.length === 8) {
-        try {
-          await asignarDniYActivarCuenta(
-            finalId,
-            cleanDni,
-            normalizedMember.email || undefined,
-            normalizedMember.phone || undefined
-          );
-        } catch (actErr) {
-          console.warn('[registerGymMember] asignarDni notice:', actErr);
-        }
-      }
-
-      // Registrar también en tabla de ingresos si hubo abono efectivo
-      if (normalizedMember.advancePaid > 0) {
-        const { error: ingErr } = await supabase.from('ingresos').insert({
-          key_socio: finalId,
-          monto: normalizedMember.advancePaid,
-          metodo_pago: normalizedMember.paymentMethod,
-          tipo:
-            normalizedMember.paymentType === 'advance'
-              ? 'Adelanto de Membresía'
-              : 'Membresía Completa',
-          observacion: `Cobro boleta ${normalizedMember.receiptNumber} (${normalizedMember.plan})`,
-        });
-        if (ingErr) {
-          console.warn('[registerGymMember] Error registrando ingreso:', ingErr.message);
-        }
-      }
-    } catch (err) {
-      console.error('Error en registerGymMember:', err);
-      throw err;
-    }
+  const operations = readEnrollmentOperations();
+  const previous = operations.find((operation) => operation.payload.id === id);
+  if (previous && JSON.stringify(previous.payload) !== JSON.stringify(payload)) {
+    throw new Error('Hay una inscripción pendiente o confirmada con este ID. Reintenta con los mismos datos o revisa el socio registrado.');
   }
+  const operation = previous || { id: crypto.randomUUID(), payload };
+  if (!previous) {
+    try { localStorage.setItem(ENROLLMENT_OPERATIONS_KEY, JSON.stringify([...operations, operation])); }
+    catch { throw new Error('No se pudo guardar la operación de inscripción para reintentar de forma segura.'); }
+  }
+  let response;
+  try {
+    response = await supabase.rpc('registrar_socio_atomico', { p_operacion_id: operation.id, p_socio: operation.payload });
+  } catch {
+    throw new Error('No se pudo confirmar la inscripción por conexión. Reintenta con los mismos datos; no vuelvas a cobrar.');
+  }
+  const { data, error } = response;
+  if (error) {
+    // A later rejection cannot prove an earlier ambiguous request did not commit.
+    if (!previous && ['P0001', '42501', '23505', '23514', '22007', '22008', '22P02', 'PGRST202', '42883'].includes(error.code || '')) {
+      try {
+        const latest: EnrollmentOperation[] = JSON.parse(localStorage.getItem(ENROLLMENT_OPERATIONS_KEY) || '[]');
+        localStorage.setItem(ENROLLMENT_OPERATIONS_KEY, JSON.stringify(latest.filter((item) => item.id !== operation.id)));
+      } catch { /* Retaining the operation is safer than losing its retry identity. */ }
+    }
+    if (error.code === 'PGRST202' || error.code === '42883') {
+      throw new Error('El servidor requiere aplicar migration_enrollment_consistency.sql para registrar socios de forma segura.');
+    }
+    throw new Error(`El servidor no confirmó la inscripción: ${error.message || 'error de servidor'}. Reintenta con los mismos datos si el resultado es incierto.`);
+  }
+  const row = data?.socio;
+  if (data?.success !== true || data.operacion_id !== operation.id || row?.id !== id
+      || typeof row.nombre !== 'string' || typeof row.plan !== 'string'
+      || typeof row.fecha_inicio !== 'string' || typeof row.fecha_fin !== 'string'
+      || [row.precio_plan, row.adelanto_pagado, row.saldo_pendiente].some((amount) => amount == null || !Number.isFinite(Number(amount)))) {
+    throw new Error(data?.error || 'El servidor no devolvió una confirmación válida de inscripción. Reintenta con los mismos datos; no vuelvas a cobrar.');
+  }
+  try {
+    const latest = readEnrollmentOperations();
+    localStorage.setItem(ENROLLMENT_OPERATIONS_KEY, JSON.stringify(latest.map((item) => item.id === operation.id ? { ...item, confirmed: true } : item)));
+  } catch {
+    throw new Error('La inscripción fue confirmada por el servidor, pero no se pudo persistir su confirmación local. Reintenta con los mismos datos; no vuelvas a cobrar.');
+  }
+  // Read again after the request so unrelated confirmed members are preserved.
+  const current = getStoredMembers();
+  const confirmed = mapConfirmedMemberRow(row);
+  saveStoredMembers([confirmed, ...current.filter((item) => item.id !== id)]);
+  // Keep the UUID durably after success as well: a repeated submit is the same operation.
+  return confirmed;
 }
 
 export interface RenovarMembresiaParams {
@@ -2408,83 +1787,50 @@ export async function validarDocumentoSocio(
 /**
  * Actualizar datos completos de un socio desde la gestión de su perfil
  */
-export async function updateMemberProfile(
-  memberId: string,
-  data: Partial<GymMember>
-): Promise<GymMember[]> {
-  const current = getStoredMembers();
-  const updated = current.map((m) => (m.id === memberId ? { ...m, ...data } : m));
-  saveStoredMembers(updated);
+function mapConfirmedMemberRow(row: any): GymMember {
+  const expiresAt = row.fecha_fin || '';
+  const days = Math.ceil((new Date(`${expiresAt}T23:59:59-05:00`).getTime() - Date.now()) / 86400000);
+  return {
+    id: row.id, name: row.nombre, dni: row.dni, email: row.email, phone: row.celular,
+    plan: row.plan, planPrice: Number(row.precio_plan), paymentType: row.tipo_pago,
+    advancePaid: Number(row.adelanto_pagado), balanceDue: Number(row.saldo_pendiente),
+    paymentDueDate: row.fecha_limite_pago, paymentMethod: row.metodo_pago,
+    receiptNumber: row.numero_boleta, membershipStatus: days < 0 ? 'inactive' : days <= 5 ? 'expiring' : 'active',
+    expiresAt, coachName: row.coach_asignado || '', registeredAt: row.fecha_inicio || '',
+    observations: row.observaciones, age: row.edad, gender: row.sexo, shift: row.turno,
+  };
+}
 
-  if (isSupabaseConfigured()) {
-    try {
-      const dbPayload: any = {};
-      if (data.name !== undefined) dbPayload.nombre = data.name;
-      if (data.dni !== undefined) dbPayload.dni = data.dni || null;
-      if (data.phone !== undefined) dbPayload.celular = data.phone || null;
-      if (data.observations !== undefined) dbPayload.observaciones = data.observations || null;
-      if (data.shift !== undefined) dbPayload.turno = data.shift;
-      if (data.coachName !== undefined) dbPayload.coach_asignado = data.coachName;
-      if (data.plan !== undefined) dbPayload.plan = data.plan;
-      if (data.planPrice !== undefined) dbPayload.precio_plan = data.planPrice;
-      if (data.advancePaid !== undefined) dbPayload.adelanto_pagado = data.advancePaid;
-      // IMPORTANTE: saldo_pendiente NO se actualiza directamente desde updateMemberProfile.
-      // Toda liquidación o abono debe realizarse mediante liquidar_saldo_socio (RPC SECURITY DEFINER).
-      // Si se necesita ajustar el tipo de pago sin modificar el saldo, se permite aquí.
-      if (data.paymentType !== undefined) {
-        dbPayload.tipo_pago = data.paymentType;
-      }
-      if (data.registeredAt !== undefined) {
-        dbPayload.fecha_inicio = normalizeDateToISO(data.registeredAt);
-      }
-      if (data.expiresAt !== undefined) {
-        dbPayload.fecha_fin = normalizeDateToISO(data.expiresAt);
-      }
-      if (data.age !== undefined) dbPayload.edad = data.age;
-      if (data.gender !== undefined) dbPayload.sexo = data.gender;
-      dbPayload.updated_at = new Date().toISOString();
-
-      const { error: updateErr } = await supabase.from('socios').update(dbPayload).eq('id', memberId);
-      if (updateErr) {
-        console.error('[updateMemberProfile] Error actualizando socio en Supabase:', updateErr.message);
-        throw new Error(`Error actualizando socio en base de datos: ${updateErr.message}`);
-      }
-
-      // Sincronizar en public.profiles si el socio tiene DNI (aislado para evitar que RLS impida actualizar el perfil)
-      const targetMember = updated.find((m) => m.id === memberId);
-      if (targetMember?.dni) {
-        let profStatus: 'activo' | 'vencido' | 'congelado' = 'activo';
-        if (targetMember.membershipStatus === 'inactive') {
-          profStatus = 'vencido';
-        }
-        if (targetMember.observations?.toLowerCase().includes('congelad')) {
-          profStatus = 'congelado';
-        }
-
-        try {
-          const { error: profErr } = await supabase
-            .from('profiles')
-            .update({
-              full_name: targetMember.name,
-              membership_status: profStatus,
-              plan: targetMember.plan,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('dni', targetMember.dni);
-
-          if (profErr) {
-            console.warn('[updateMemberProfile] Error actualizando perfil en Supabase:', profErr.message);
-          }
-        } catch (profEx) {
-          console.warn('[updateMemberProfile] Excepción profiles sync:', profEx);
-        }
-      }
-    } catch (err: any) {
-      console.error('[updateMemberProfile] Excepción actualizando socio en Supabase:', err?.message || err);
-      throw err;
-    }
+export async function updateMemberProfile(memberId: string, data: Partial<GymMember>): Promise<GymMember[]> {
+  if (!isSupabaseConfigured()) throw new Error('Se requiere conexión con el servidor para guardar el perfil.');
+  const fields = Object.entries(data).filter(([, value]) => value !== undefined);
+  if (fields.some(([key]) => key.startsWith('document'))) throw new Error('La carga de documentos aún requiere un almacenamiento privado configurado.');
+  const { data: serverRole, error: roleError } = await supabase.rpc('get_auth_role');
+  if (roleError || !['admin', 'caja', 'entrenador', 'cliente'].includes(serverRole)) throw new Error('No se pudo verificar tu cuenta y permisos.');
+  const staff = serverRole === 'admin' || serverRole === 'caja';
+  const allowedSelf = new Set(['name', 'phone', 'email', 'age', 'gender', 'observations']);
+  if (!staff && fields.some(([key]) => !allowedSelf.has(key))) throw new Error('Solo puedes editar tus datos de contacto y perfil.');
+  const payload: Record<string, unknown> = {};
+  const mapping: Record<string, string> = { name: 'nombre', phone: 'celular', email: 'email', age: 'edad', gender: 'sexo', observations: 'observaciones' };
+  if (staff) Object.assign(mapping, { dni: 'dni', shift: 'turno', coachName: 'coach_asignado', plan: 'plan', planPrice: 'precio_plan', advancePaid: 'adelanto_pagado', paymentType: 'tipo_pago', registeredAt: 'fecha_inicio', expiresAt: 'fecha_fin' });
+  for (const [key, value] of fields) if (mapping[key]) payload[mapping[key]] = key === 'registeredAt' || key === 'expiresAt' ? normalizeDateToISO(String(value)) : value;
+  let row: any;
+  if (staff) {
+    const current = getStoredMembers().find((member) => member.id === memberId);
+    if (data.balanceDue !== undefined && data.balanceDue !== current?.balanceDue) throw new Error('Los saldos se actualizan mediante el cobro o la renovación de la membresía.');
+    const result = await supabase.from('socios').update({ ...payload, updated_at: new Date().toISOString() }).eq('id', memberId).select('*').maybeSingle();
+    if (result.error || !result.data) throw new Error('El servidor no confirmó la actualización del socio.');
+    row = result.data;
+  } else {
+    const result = await supabase.rpc('actualizar_mi_socio', { p_socio_id: memberId, p_cambios: payload });
+    if (result.error || !result.data?.success || !result.data.socio) throw new Error(result.data?.error || 'El servidor no confirmó la actualización del perfil.');
+    row = result.data.socio;
   }
-
+  if (row.id !== memberId) throw new Error('La respuesta del servidor no corresponde al socio solicitado.');
+  const confirmed = mapConfirmedMemberRow(row);
+  const current = getStoredMembers();
+  const updated = current.some((member) => member.id === memberId) ? current.map((member) => member.id === memberId ? confirmed : member) : [confirmed, ...current];
+  saveStoredMembers(updated);
   return updated;
 }
 
@@ -3129,7 +2475,7 @@ export async function obtenerReporteCajaMovimientos(
     try {
       const { data: ingresosDb, error: ingErr } = await supabase
         .from('ingresos')
-        .select('id, created_at, monto, metodo_pago, tipo, observacion, key_socio')
+        .select('id, created_at, monto, metodo_pago, tipo, observacion, key_socio, venta_id')
         .gte('created_at', startISO)
         .lte('created_at', endISO)
         .order('created_at', { ascending: false });
@@ -3149,10 +2495,17 @@ export async function obtenerReporteCajaMovimientos(
 
           // Evitar duplicar ventas POS sincronizadas si ya están registradas desde la tabla de ventas
           if (tipoRaw.includes('pos') || obs.includes('venta offline ticket') || obs.includes('venta pos')) {
-            const yaRegistrado = movimientos.some((m) =>
-              m.ticketOBoleta && obs.includes(m.ticketOBoleta.toLowerCase())
+            const tokens = obs.split(/[^a-z0-9-]+/);
+            const ventaAsociada = posAudit.ventas.find((v) => ing.venta_id != null && String(v.id) === String(ing.venta_id));
+            const movimiento = movimientos.find((m) =>
+              m.ticketOBoleta && (m.ticketOBoleta === ventaAsociada?.numeroTicket || tokens.includes(m.ticketOBoleta.toLowerCase()))
             );
-            if (yaRegistrado) return;
+            if (movimiento) {
+              // Legacy discounts were separate negative entries. Fold them into
+              // the existing sale, keeping one sale count and the net amount.
+              if (tipoRaw.includes('descuento') && Number(ing.monto) < 0) movimiento.monto += Number(ing.monto);
+              return;
+            }
           }
 
           const socioInfo = ing.key_socio ? sociosMap.get(ing.key_socio) : undefined;
@@ -3254,125 +2607,56 @@ export async function obtenerReporteCajaMovimientos(
 /**
  * Crear o editar un producto en el inventario (Admin)
  */
+function cacheProductoConfirmado(producto: ProductoPOS): void {
+  try {
+    const raw = localStorage.getItem(LOCAL_PRODUCTS_KEY);
+    const cached: unknown = raw ? JSON.parse(raw) : [];
+    const prods = inventarioValido(cached) ? cached : [];
+    const updated = prods.some((p) => p.id === producto.id)
+      ? prods.map((p) => p.id === producto.id ? producto : p)
+      : [producto, ...prods];
+    localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated));
+  } catch { /* Server confirmation remains authoritative when a cache is full. */ }
+}
+
 export async function crearOActualizarProducto(producto: ProductoPOS): Promise<void> {
-  const prods = await obtenerProductosInventario();
-  const index = prods.findIndex((p) => p.id === producto.id);
-  let updated: ProductoPOS[];
-  if (index >= 0) {
-    updated = prods.map((p) => (p.id === producto.id ? producto : p));
-  } else {
-    updated = [producto, ...prods];
-  }
-
-  try {
-    localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated));
-  } catch (storageErr) {
-    console.warn('[guardarProductoInventario] Error persistiendo inventario local:', storageErr);
-  }
-
-  if (isSupabaseConfigured()) {
-    try {
-      const { error } = await supabase.from('productos').upsert({
-        id: producto.id,
-        codigo_barras: producto.codigo_barras || null,
-        nombre: producto.nombre,
-        categoria: producto.categoria,
-        precio_compra: producto.precio_compra || 0,
-        precio_venta: producto.precio_venta,
-        stock_actual: producto.stock_actual,
-        stock_minimo: producto.stock_minimo,
-        activo: producto.activo,
-        updated_at: new Date().toISOString(),
-      });
-      if (error) {
-        console.warn('[guardarProductoInventario] Error guardando producto en Supabase:', error.message);
-      }
-    } catch (err: any) {
-      console.warn('[guardarProductoInventario] Excepción guardando producto en Supabase:', err?.message || err);
-    }
-  }
+  if (!isSupabaseConfigured()) throw new Error('Configura Supabase para guardar cambios en el inventario.');
+  if (!inventarioValido([producto]) || !producto.nombre.trim()) throw new Error('Revisa el nombre, precio y stock del producto.');
+  const { data, error } = await supabase.from('productos').upsert({
+    id: producto.id, codigo_barras: producto.codigo_barras || null, nombre: producto.nombre.trim(),
+    categoria: producto.categoria, precio_compra: producto.precio_compra || 0,
+    precio_venta: producto.precio_venta, stock_actual: producto.stock_actual,
+    stock_minimo: producto.stock_minimo, activo: producto.activo, updated_at: new Date().toISOString(),
+  }).select('id, codigo_barras, nombre, categoria, precio_compra, precio_venta, stock_actual, stock_minimo, activo').single();
+  if (error) throw new Error(error.message);
+  if (!data || data.id !== producto.id) throw new Error('El servidor no confirmó el producto. No se guardaron cambios locales.');
+  cacheProductoConfirmado(data as ProductoPOS);
 }
 
-/**
- * Ajustar rápidamente el stock de un producto (Admin)
- */
+/** A stock adjustment succeeds only after the server confirms the affected row. */
 export async function ajustarStockProducto(productoId: string, nuevoStock: number): Promise<void> {
-  const prods = await obtenerProductosInventario();
-  const updated = prods.map((p) => (p.id === productoId ? { ...p, stock_actual: Math.max(0, nuevoStock) } : p));
-
-  try {
-    localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated));
-  } catch (storageErr) {
-    console.warn('[ajustarStockProducto] Error guardando stock local:', storageErr);
-  }
-
-  if (isSupabaseConfigured()) {
-    try {
-      const { error } = await supabase
-        .from('productos')
-        .update({
-          stock_actual: Math.max(0, nuevoStock),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', productoId);
-
-      if (error) {
-        console.warn('[ajustarStockProducto] Error actualizando stock en Supabase:', error.message);
-      }
-    } catch (err: any) {
-      console.warn('[ajustarStockProducto] Excepción actualizando stock en Supabase:', err?.message || err);
-    }
-  }
+  if (!isSupabaseConfigured()) throw new Error('Configura Supabase para ajustar el inventario.');
+  if (!Number.isSafeInteger(nuevoStock) || nuevoStock < 0) throw new Error('El stock debe ser un número entero mayor o igual a cero.');
+  const { data, error } = await supabase.from('productos')
+    .update({ stock_actual: nuevoStock, updated_at: new Date().toISOString() }).eq('id', productoId)
+    .select('id, codigo_barras, nombre, categoria, precio_compra, precio_venta, stock_actual, stock_minimo, activo').single();
+  if (error) throw new Error(error.message);
+  if (!data || data.id !== productoId) throw new Error('El servidor no confirmó el ajuste de stock.');
+  cacheProductoConfirmado(data as ProductoPOS);
 }
 
-/**
- * Eliminar producto del inventario (Admin)
- * Aplica borrado físico si está permitido, o borrado lógico auditado (activo = false, stock = 0)
- * y limpia el almacenamiento local.
- */
+/** Archive products without deleting sales history or discarding rejected edits. */
 export async function eliminarProductoInventario(productoId: string): Promise<boolean> {
-  // 1. Limpieza inmediata del almacenamiento local y caché
+  if (!isSupabaseConfigured()) throw new Error('Configura Supabase para desactivar productos del inventario.');
+  const { data, error } = await supabase.from('productos')
+    .update({ activo: false, updated_at: new Date().toISOString() }).eq('id', productoId).select('id').single();
+  if (error) throw new Error(error.message);
+  if (!data || data.id !== productoId) throw new Error('El servidor no confirmó la desactivación del producto.');
   try {
-    const prods = await obtenerProductosInventario();
-    const updated = prods.filter((p) => p.id !== productoId);
-    localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(updated));
-  } catch (storageErr) {
-    console.warn('[eliminarProductoInventario] Error actualizando almacenamiento local:', storageErr);
-  }
-
-  // 2. Persistencia en Supabase
-  if (isSupabaseConfigured()) {
-    try {
-      // Intentar borrado físico directo
-      const { error: delError } = await supabase
-        .from('productos')
-        .delete()
-        .eq('id', productoId);
-
-      // Si DELETE físico es denegado por RLS o restringido por claves foráneas históricas,
-      // aplicar borrado lógico oficial (activo = false, stock_actual = 0)
-      if (delError) {
-        const { error: updateError } = await supabase
-          .from('productos')
-          .update({
-            activo: false,
-            stock_actual: 0,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', productoId);
-
-        if (updateError) {
-          console.warn('[eliminarProductoInventario] Error al desactivar producto en Supabase:', updateError.message);
-          return false;
-        }
-      }
-      return true;
-    } catch (err: any) {
-      console.warn('[eliminarProductoInventario] Excepción al eliminar producto en Supabase:', err?.message || err);
-      return false;
-    }
-  }
-
+    const raw = localStorage.getItem(LOCAL_PRODUCTS_KEY);
+    const cached: unknown = raw ? JSON.parse(raw) : [];
+    if (inventarioValido(cached)) localStorage.setItem(LOCAL_PRODUCTS_KEY, JSON.stringify(cached.filter((p) => p.id !== productoId)));
+  } catch { /* The product is already archived on the server. */ }
   return true;
 }
 
@@ -3396,43 +2680,12 @@ export async function eliminarProductosSinStock(): Promise<number> {
  * Remueve de almacenamiento local y purga registros asociados en Supabase Cloud.
  */
 export async function eliminarSocio(memberId: string): Promise<boolean> {
-  const current = getStoredMembers();
-  const target = current.find((m) => m.id === memberId);
-  const updated = current.filter((m) => m.id !== memberId);
-  saveStoredMembers(updated);
-
-  if (isSupabaseConfigured()) {
-    try {
-      // 1. Limpiar asistencias asociadas para evitar restricción de foreign key
-      await supabase.from('asistencias').delete().eq('socio_id', memberId);
-      if (target?.dni) {
-        await supabase.from('asistencias').delete().eq('dni', target.dni);
-      }
-
-      // 2. Eliminar socio de la tabla public.socios
-      const { error: delError } = await supabase.from('socios').delete().eq('id', memberId);
-      if (delError) {
-        console.warn('[eliminarSocio] Fallback a marcado inactivo en socios:', delError.message);
-        await supabase
-          .from('socios')
-          .update({
-            estado: 'inactivo',
-            observaciones: 'Socio eliminado del padrón por Administración',
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', memberId);
-      }
-
-      // 3. Limpiar de public.profiles si el socio tiene DNI registrado
-      if (target?.dni) {
-        await supabase.from('profiles').delete().eq('dni', target.dni);
-      }
-      return true;
-    } catch (err: any) {
-      console.warn('[eliminarSocio] Excepción al eliminar socio en Supabase:', err?.message || err);
-      return false;
-    }
-  }
+  if (!isSupabaseConfigured()) throw new Error('Configura Supabase para archivar socios del padrón.');
+  if (!memberId.trim()) throw new Error('El ID del socio es obligatorio.');
+  const { data, error } = await supabase.rpc('archivar_socio_seguro', { p_socio_id: memberId });
+  if (error) throw new Error(error.message);
+  if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó el archivo del socio.');
+  saveStoredMembers(getStoredMembers().filter((m) => m.id !== memberId));
   return true;
 }
 
@@ -3448,54 +2701,17 @@ export async function actualizarRolUsuario(
   memberId: string,
   nuevoRol: 'admin' | 'caja' | 'entrenador' | 'cliente'
 ): Promise<void> {
-  if (isSupabaseConfigured()) {
-    try {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId);
-
-      if (isUuid) {
-        // Si es UUID de Supabase Auth, actualizar por ID directo en profiles
-        const { error } = await supabase
-          .from('profiles')
-          .update({ role: nuevoRol, updated_at: new Date().toISOString() })
-          .eq('id', memberId);
-        if (error) {
-          console.warn('[actualizarRolUsuario] Error actualizando rol por UUID en Supabase:', error.message);
-        }
-        return;
-      }
-
-      // Si es un ID de socio (MEM-XXX), obtener el DNI del socio y actualizar el profile por DNI
-      const { data: socioData } = await supabase
-        .from('socios')
-        .select('dni, user_id')
-        .eq('id', memberId)
-        .maybeSingle();
-
-      if (socioData?.user_id) {
-        // Actualizar por user_id que es más preciso
-        const { error } = await supabase
-          .from('profiles')
-          .update({ role: nuevoRol, updated_at: new Date().toISOString() })
-          .eq('id', socioData.user_id);
-        if (error) {
-          console.warn('[actualizarRolUsuario] Error actualizando rol por user_id en Supabase:', error.message);
-        }
-      } else if (socioData?.dni) {
-        // Fallback: actualizar por DNI
-        const { error } = await supabase
-          .from('profiles')
-          .update({ role: nuevoRol, updated_at: new Date().toISOString() })
-          .eq('dni', socioData.dni);
-        if (error) {
-          console.warn('[actualizarRolUsuario] Error actualizando rol por DNI en Supabase:', error.message);
-        }
-      } else {
-        console.warn('[actualizarRolUsuario] No se encontró socio con ID:', memberId);
-      }
-    } catch (err: any) {
-      console.warn('[actualizarRolUsuario] Excepción actualizando rol en Supabase:', err?.message || err);
-    }
+  if (!isSupabaseConfigured()) throw new Error('Configura Supabase para administrar roles.');
+  let userId = memberId;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(memberId)) {
+    const { data, error } = await supabase.from('socios').select('user_id').eq('id', memberId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data?.user_id) throw new Error('El socio todavía no tiene una cuenta Auth vinculada.');
+    userId = data.user_id;
   }
+  const { data, error } = await supabase.rpc('cambiar_rol_usuario', { p_user_id: userId, p_role: nuevoRol });
+  if (error) throw new Error(error.message);
+  if (!data?.success) throw new Error(data?.error || 'El servidor no confirmó el cambio de rol.');
 }
 
 export type RealtimeGymCallback = (payload: any) => void;

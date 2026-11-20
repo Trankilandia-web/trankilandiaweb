@@ -180,6 +180,13 @@ export function stopAnnouncement(): void {
  * Reproduce un anuncio oficial o personalizado por el parlante Bluetooth.
  * Si ya hay otro mensaje reproduciéndose, lo detiene primero.
  */
+export function resolveAnnouncementAudioPath(path: string, pageUrl = window.location.href): string {
+  if (pageUrl.startsWith('file:') && path.startsWith('/sounds/')) {
+    return new URL(`.${path}`, pageUrl).href;
+  }
+  return path;
+}
+
 export async function playAnnouncement(id: string): Promise<void> {
   const item = GYM_ANNOUNCEMENTS.find((a) => a.id === id);
   if (!item) {
@@ -197,7 +204,7 @@ export async function playAnnouncement(id: string): Promise<void> {
 
   try {
     const customSrc = getCustomAnnouncementAudio(id);
-    const audioSrc = customSrc || item.audioPath;
+    const audioSrc = resolveAnnouncementAudioPath(customSrc || item.audioPath);
 
     const audio = new Audio(audioSrc);
     currentAudio = audio;

@@ -16,6 +16,7 @@ export interface UsePosCashierReturn {
   posMetodoPago: 'efectivo' | 'yape';
   setPosMetodoPago: React.Dispatch<React.SetStateAction<'efectivo' | 'yape'>>;
   posSuccessMsg: string | null;
+  posErrorMessage: string | null;
   setPosSuccessMsg: React.Dispatch<React.SetStateAction<string | null>>;
   subtotalCarrito: number;
   descuentoMonto: number;
@@ -38,6 +39,7 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
   const [descuentoMonto, setDescuentoMonto] = useState<number>(0);
   const [descuentoMotivo, setDescuentoMotivo] = useState<string>('');
   const [posSuccessMsg, setPosSuccessMsg] = useState<string | null>(null);
+  const [posErrorMessage, setPosErrorMessage] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
 
@@ -96,7 +98,9 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
     try {
       isProcessingRef.current = true;
       setIsProcessing(true);
-      await registrarVentaPOS(
+      setPosErrorMessage(null);
+      setPosSuccessMsg(null);
+      const venta = await registrarVentaPOS(
         carrito.map((c) => ({
           producto_id: c.id,
           nombre: c.nombre,
@@ -114,9 +118,10 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
             }
           : undefined
       );
+      if (!venta.success) throw new Error('No se pudo confirmar el cobro. Revisa el carrito e intenta nuevamente.');
       // Descontar inmediatamente el stock en el catálogo reactivo en memoria del POS
       setProductos((prevProds) =>
-        prevProds.map((p) => {
+        venta.productos_actualizados ?? prevProds.map((p) => {
           const itemVendido = carrito.find((c) => c.id === p.id);
           if (itemVendido) {
             const currentStock = p.stock_actual ?? p.stock ?? 0;
@@ -131,37 +136,15 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
         })
       );
 
-      setPosSuccessMsg(
-        montoDesc > 0
-          ? `¡Cobro de S/. ${totalCarrito.toFixed(2)} registrado (Descuento S/. ${montoDesc.toFixed(2)} aplicado)!`
-          : `¡Cobro de S/. ${totalCarrito.toFixed(2)} registrado con éxito!`
-      );
+      setPosSuccessMsg(venta.pendiente_sync
+        ? `Cobro de S/. ${venta.total.toFixed(2)} guardado en este equipo. Pendiente de sincronización.`
+        : `¡Cobro de S/. ${venta.total.toFixed(2)} registrado con éxito!`);
       setCarrito([]);
       setDescuentoMonto(0);
       setDescuentoMotivo('');
       setTimeout(() => setPosSuccessMsg(null), 4000);
-    } catch {
-      // Descontar también en caso de fallback offline
-      setProductos((prevProds) =>
-        prevProds.map((p) => {
-          const itemVendido = carrito.find((c) => c.id === p.id);
-          if (itemVendido) {
-            const currentStock = p.stock_actual ?? p.stock ?? 0;
-            const updatedStock = Math.max(0, currentStock - itemVendido.cantidad);
-            return {
-              ...p,
-              stock_actual: updatedStock,
-              stock: updatedStock,
-            };
-          }
-          return p;
-        })
-      );
-      setPosSuccessMsg(`Venta registrada localmente.`);
-      setCarrito([]);
-      setDescuentoMonto(0);
-      setDescuentoMotivo('');
-      setTimeout(() => setPosSuccessMsg(null), 3000);
+    } catch (error) {
+      setPosErrorMessage(error instanceof Error ? error.message : 'No se pudo registrar el cobro. El carrito se conserva.');
     } finally {
       isProcessingRef.current = false;
       setIsProcessing(false);
@@ -175,6 +158,7 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
     posMetodoPago,
     setPosMetodoPago,
     posSuccessMsg,
+    posErrorMessage,
     setPosSuccessMsg,
     subtotalCarrito,
     descuentoMonto,

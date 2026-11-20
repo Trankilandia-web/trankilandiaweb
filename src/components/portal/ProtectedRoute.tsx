@@ -2,7 +2,6 @@ import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { UserRole, ROLES_CONFIG } from '../../types/roles';
-import { getActiveStaffSession } from '../../lib/staffStore';
 import { ShieldAlert, ArrowLeft } from 'lucide-react';
 
 interface ProtectedRouteProps {
@@ -13,21 +12,12 @@ interface ProtectedRouteProps {
 /**
  * Route Guard para proteger rutas de administración, caja, entrenador y cliente.
  * - Si no está autenticado, redirige a la página de inicio.
- * - Si hay una sesión de personal activa con PIN (Caja o Admin), concede acceso directo según su rol asignado.
- * - Si es Super Administrador (actualRole === 'admin' o role === 'admin'), tiene acceso maestro a todos los módulos.
+ * - Requiere sesión real y rol consultado en el servidor desde AuthContext.
+ * - Los perfiles locales y la vista seleccionada nunca conceden privilegios.
  * - Si el rol del usuario no tiene permisos, muestra una pantalla de acceso denegado con opción de volver a su portal.
  */
 export default function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps) {
-  const { user, actualRole, role, isLoading, getRedirectPath } = useAuth();
-
-  // 1. Autorización directa para personal en terminal de escritorio con sesión activa de PIN
-  const activeStaff = getActiveStaffSession();
-  if (activeStaff && activeStaff.activo !== false) {
-    const staffRole: UserRole = activeStaff.rol === 'admin' ? 'admin' : 'caja';
-    if (staffRole === 'admin' || allowedRoles.includes(staffRole)) {
-      return <>{children}</>;
-    }
-  }
+  const { user, session, actualRole, role, isLoading, getRedirectPath } = useAuth();
 
   // 2. Estado de carga de sesión
   if (isLoading) {
@@ -42,17 +32,17 @@ export default function ProtectedRoute({ allowedRoles, children }: ProtectedRout
   }
 
   // 2. Si no hay usuario autenticado, redirigir a inicio
-  if (!user) {
+  if (!user || !session) {
     return <Navigate to="/" replace />;
   }
 
   // 3. El Super Administrador (actualRole === 'admin' o role === 'admin') cuenta con permiso maestro en toda la plataforma
-  if (actualRole === 'admin' || role === 'admin') {
+  if (actualRole === 'admin') {
     return <>{children}</>;
   }
 
   // 4. Verificación de rol autorizado
-  const hasAccess = allowedRoles.includes(actualRole) || allowedRoles.includes(role);
+  const hasAccess = allowedRoles.includes(actualRole);
 
   if (!hasAccess) {
     const userRoleConfig = ROLES_CONFIG[role] || ROLES_CONFIG[actualRole] || { name: 'Cliente' };

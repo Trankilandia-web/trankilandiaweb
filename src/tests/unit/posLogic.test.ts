@@ -31,6 +31,7 @@ import {
 describe('Pruebas Unitarias · Terminal POS de Bebidas, Suplementos y Snacks', () => {
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem('trankilandia_productos_inventario', JSON.stringify(CATALOGO_PRODUCTOS_BASE));
   });
 
   it('el catálogo base debe contener 10 productos esenciales con precios y stock iniciales positivos', () => {
@@ -47,10 +48,15 @@ describe('Pruebas Unitarias · Terminal POS de Bebidas, Suplementos y Snacks', (
     await expect(registrarVentaPOS([], 'yape')).rejects.toThrow('El carrito de venta no contiene ningún producto');
   });
 
-  it('obtenerProductosInventario debe retornar los productos del catálogo base por defecto', async () => {
+  it('obtenerProductosInventario devuelve el inventario guardado explícitamente', async () => {
     const prods = await obtenerProductosInventario();
     expect(prods.length).toBeGreaterThanOrEqual(10);
     expect(prods.some((p) => p.nombre.includes('San Mateo'))).toBe(true);
+  });
+
+  it('no inventa stock ni productos operativos cuando no hay inventario guardado', async () => {
+    localStorage.removeItem('trankilandia_productos_inventario');
+    expect(await obtenerProductosInventario()).toEqual([]);
   });
 
   it('registrarVentaPOS debe calcular el total correctamente y descontar inventario en modo local', async () => {
@@ -108,54 +114,17 @@ describe('Pruebas Unitarias · Terminal POS de Bebidas, Suplementos y Snacks', (
     await expect(registrarVentaPOS(items, 'efectivo')).rejects.toThrow('Stock insuficiente');
   });
 
-  it('eliminarProductoInventario debe eliminar el producto del inventario y del almacenamiento local', async () => {
-    const dummyId = 'PROD-TEST-DEL';
-    await crearOActualizarProducto({
-      id: dummyId,
-      nombre: 'Producto Temporal',
-      categoria: 'Snacks',
-      precio_compra: 2,
-      precio_venta: 5,
-      stock_actual: 0,
-      stock_minimo: 1,
-      activo: true,
-    });
-
-    const prodsAntes = await obtenerProductosInventario();
-    expect(prodsAntes.some((p) => p.id === dummyId)).toBe(true);
-
-    const ok = await eliminarProductoInventario(dummyId);
-    expect(ok).toBe(true);
-
-    const prodsDespues = await obtenerProductosInventario();
-    expect(prodsDespues.some((p) => p.id === dummyId)).toBe(false);
+  it('rechaza cambios administrativos de producto sin conexión configurada', async () => {
+    const before = localStorage.getItem('trankilandia_productos_inventario');
+    await expect(crearOActualizarProducto(CATALOGO_PRODUCTOS_BASE[0])).rejects.toThrow('Configura Supabase');
+    await expect(eliminarProductoInventario('BEB-001')).rejects.toThrow('Configura Supabase');
+    expect(localStorage.getItem('trankilandia_productos_inventario')).toBe(before);
   });
 
-  it('eliminarProductosSinStock debe depurar todos los productos con stock 0', async () => {
-    await crearOActualizarProducto({
-      id: 'PROD-AGOTADO-1',
-      nombre: 'Agotado Uno',
-      categoria: 'Bebidas',
-      precio_venta: 3,
-      stock_actual: 0,
-      stock_minimo: 2,
-      activo: true,
-    });
-    await crearOActualizarProducto({
-      id: 'PROD-AGOTADO-2',
-      nombre: 'Agotado Dos',
-      categoria: 'Snacks',
-      precio_venta: 4,
-      stock_actual: 0,
-      stock_minimo: 1,
-      activo: true,
-    });
-
-    const eliminados = await eliminarProductosSinStock();
-    expect(eliminados).toBeGreaterThanOrEqual(2);
-
-    const prods = await obtenerProductosInventario();
-    expect(prods.some((p) => p.id === 'PROD-AGOTADO-1')).toBe(false);
-    expect(prods.some((p) => p.id === 'PROD-AGOTADO-2')).toBe(false);
+  it('no depura productos agotados sin confirmación del servidor', async () => {
+    const fixture = [{ ...CATALOGO_PRODUCTOS_BASE[0], stock_actual: 0 }];
+    localStorage.setItem('trankilandia_productos_inventario', JSON.stringify(fixture));
+    await expect(eliminarProductosSinStock()).rejects.toThrow('Configura Supabase');
+    expect(await obtenerProductosInventario()).toEqual(fixture);
   });
 });

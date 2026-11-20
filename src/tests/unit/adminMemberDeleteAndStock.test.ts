@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { eliminarSocio, registrarVentaPOS, obtenerProductosInventario } from '../../lib/supabaseDb';
+import { eliminarSocio, registrarVentaPOS, obtenerProductosInventario, CATALOGO_PRODUCTOS_BASE } from '../../lib/supabaseDb';
 import { getStoredMembers, saveStoredMembers, GymMember } from '../../data/gymStore';
 
 describe('Pruebas Unitarias · Eliminación de Socios y Descuento de Stock en POS', () => {
@@ -23,17 +23,17 @@ describe('Pruebas Unitarias · Eliminación de Socios y Descuento de Stock en PO
 
   beforeEach(() => {
     localStorage.clear();
+    localStorage.setItem('trankilandia_productos_inventario', JSON.stringify(CATALOGO_PRODUCTOS_BASE));
     saveStoredMembers([MOCK_MEMBER]);
   });
 
-  it('eliminarSocio remueve al socio de la memoria local y padrón de forma definitiva', async () => {
+  it('conserva al socio si no existe un backend que confirme su archivo', async () => {
     expect(getStoredMembers().some((m) => m.id === 'MEM-TEST-DEL')).toBe(true);
 
-    const result = await eliminarSocio('MEM-TEST-DEL');
-    expect(result).toBe(true);
+    await expect(eliminarSocio('MEM-TEST-DEL')).rejects.toThrow('Configura Supabase');
 
     const remaining = getStoredMembers();
-    expect(remaining.some((m) => m.id === 'MEM-TEST-DEL')).toBe(false);
+    expect(remaining.some((m) => m.id === 'MEM-TEST-DEL')).toBe(true);
   }, 20000);
 
   it('registrarVentaPOS descuenta el stock en el inventario de productos', async () => {
@@ -55,9 +55,6 @@ describe('Pruebas Unitarias · Eliminación de Socios y Descuento de Stock en PO
       const updated = prodsActualizados.find((p) => p.id === targetProd.id);
       expect(updated?.stock_actual).toBe(initialStock - 1);
 
-      // Revertir el stock descontado en el test para no alterar los datos reales
-      const { supabase } = await import('../../lib/supabase');
-      await supabase.from('productos').update({ stock_actual: initialStock }).eq('id', targetProd.id);
     }
   }, 20000);
 });

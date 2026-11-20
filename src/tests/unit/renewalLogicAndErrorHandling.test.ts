@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { renovarMembresiaSocio, RenovarMembresiaParams } from '../../lib/supabaseDb';
 import { getStoredMembers, saveStoredMembers, GymMember } from '../../data/gymStore';
 
@@ -42,25 +42,6 @@ describe('Pruebas Unitarias · Renovación de Membresías y Manejo de Errores', 
   beforeEach(() => {
     localStorage.clear();
     saveStoredMembers([MOCK_MEMBER_676, MOCK_MEMBER_188]);
-  });
-
-  afterAll(async () => {
-    // Restore clean production state
-    await renovarMembresiaSocio({
-      socioId: 'MEM-676',
-      plan: 'Plan Libre Mensual (Adulto)',
-      precioPlan: 80,
-      tipoPago: 'full',
-      adelantoPagado: 80,
-      saldoPendiente: 0,
-      fechaInicio: '2026-11-10',
-      fechaFin: '2026-12-10',
-      metodoPago: 'efectivo',
-      numeroBoleta: 'B001-000933',
-      turno: 'manana',
-      registrarIngreso: false,
-      operador: 'Recepción',
-    });
   });
 
   it('renovarMembresiaSocio valida parámetros requeridos y rechaza socioId vacío', async () => {

@@ -1,60 +1,35 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import {
-  getStoredCustomPassword,
-  saveStoredCustomPassword,
-  actualizarPasswordSocio,
-} from '../../lib/authPasswords';
-
-describe('Pruebas Unitarias · Gestión de Contraseñas de Socios', () => {
-  const TEST_DNI = '70447554';
-
-  beforeEach(() => {
-    localStorage.clear();
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const remote = vi.hoisted(() => ({ getUser: vi.fn(), signInWithPassword: vi.fn(), updateUser: vi.fn() }));
+vi.mock('../../lib/supabase', () => ({ isSupabaseConfigured: () => true, supabase: { auth: remote } }));
+import { actualizarPasswordSocio, getStoredCustomPassword, saveStoredCustomPassword, restablecerPasswordSocio } from '../../lib/authPasswords';
+beforeEach(() => {
+  vi.resetAllMocks(); localStorage.clear(); remote.getUser.mockResolvedValue({ data: { user: null }, error: null });
+  remote.signInWithPassword.mockResolvedValue({ data: { user: { id: 'auth-one', email: '87654321@socio.trankilandia.pe' }, session: { access_token: 'test' } }, error: null });
+  remote.updateUser.mockResolvedValue({ data: {}, error: null });
+});
+describe('Contraseñas de socios', () => {
+  it('exige contraseña actual y no permite reset público por DNI', async () => {
+    expect((await restablecerPasswordSocio('87654321', 'ClaveNueva123')).success).toBe(false); expect(remote.updateUser).not.toHaveBeenCalled();
   });
-
-  it('debe retornar null si el socio nunca ha cambiado su contraseña (contraseña por defecto es su DNI)', () => {
-    expect(getStoredCustomPassword(TEST_DNI)).toBeNull();
+  it('jamás guarda ni recupera contraseñas desde localStorage', () => {
+    localStorage.setItem('trankilandia_member_passwords_v1', JSON.stringify({ '87654321': 'Legada123' }));
+    expect(getStoredCustomPassword('87654321')).toBeNull(); saveStoredCustomPassword('87654321', 'Nueva123'); expect(localStorage.getItem('trankilandia_member_passwords_v1')).toBeNull();
   });
-
-  it('debe permitir guardar y recuperar una contraseña personalizada', () => {
-    saveStoredCustomPassword(TEST_DNI, 'miClaveSecreta123');
-    expect(getStoredCustomPassword(TEST_DNI)).toBe('miClaveSecreta123');
+  it('rechaza cambio para DNI distinto al titular de la sesión', async () => {
+    remote.getUser.mockResolvedValue({ data: { user: { id: 'otra', email: '11111111@socio.trankilandia.pe' } }, error: null });
+    expect((await actualizarPasswordSocio('87654321', 'ClaveNueva123', 'Actual123')).success).toBe(false); expect(remote.updateUser).not.toHaveBeenCalled();
   });
-
-  it('debe rechazar contraseñas con menos de 6 caracteres', async () => {
-    const res = await actualizarPasswordSocio(TEST_DNI, '12345');
-    expect(res.success).toBe(false);
-    expect(res.message).toContain('6 caracteres');
+  it('no actualiza contraseña si la reautenticación falla', async () => {
+    remote.signInWithPassword.mockResolvedValue({ data: { user: null, session: null }, error: { message: 'Credenciales inválidas' } });
+    expect((await actualizarPasswordSocio('87654321', 'ClaveNueva123', 'Erronea123')).success).toBe(false); expect(remote.updateUser).not.toHaveBeenCalled();
   });
-
-  it('debe rechazar un DNI con formato inválido', async () => {
-    const res = await actualizarPasswordSocio('123', 'nuevaClaveSegura');
-    expect(res.success).toBe(false);
-    expect(res.message).toContain('8 dígitos');
+  it('propaga rechazo de updateUser y no produce éxito local', async () => {
+    remote.updateUser.mockResolvedValue({ data: {}, error: { message: 'Servicio no disponible' } });
+    expect((await actualizarPasswordSocio('87654321', 'ClaveNueva123', 'Actual123')).success).toBe(false); expect(localStorage.length).toBe(0);
   });
-
-  it('debe actualizar la contraseña exitosamente si cumple con los requisitos', async () => {
-    const res = await actualizarPasswordSocio(TEST_DNI, 'claveNueva2026', TEST_DNI);
-    expect(res.success).toBe(true);
-    expect(getStoredCustomPassword(TEST_DNI)).toBe('claveNueva2026');
-  });
-
-  it('debe fallar si la contraseña anterior ingresada es incorrecta', async () => {
-    saveStoredCustomPassword(TEST_DNI, 'claveActualValida');
-    const res = await actualizarPasswordSocio(TEST_DNI, 'nuevaClaveSegura', 'claveEquivocada');
-    expect(res.success).toBe(false);
-    expect(res.message).toContain('no es correcta');
-  });
-
-  it('DNI sirve como usuario y primera contraseña por defecto para el primer acceso', () => {
-    const defaultPassword = getStoredCustomPassword(TEST_DNI) || TEST_DNI;
-    expect(defaultPassword).toBe(TEST_DNI);
-  });
-
-  it('tras actualizar la contraseña, la clave esperada ya no es el DNI sino la personalizada', async () => {
-    await actualizarPasswordSocio(TEST_DNI, 'contrasenaPersonalizada', TEST_DNI);
-    const updatedPw = getStoredCustomPassword(TEST_DNI);
-    expect(updatedPw).toBe('contrasenaPersonalizada');
-    expect(updatedPw).not.toBe(TEST_DNI);
+  it('cambia clave únicamente tras reautenticar la misma identidad', async () => {
+    expect((await actualizarPasswordSocio('87654321', 'ClaveNueva123', 'Actual123')).success).toBe(true);
+    expect(remote.signInWithPassword).toHaveBeenCalledWith({ email: '87654321@socio.trankilandia.pe', password: 'Actual123' });
+    expect(remote.updateUser).toHaveBeenCalledWith({ password: 'ClaveNueva123' }); expect(localStorage.length).toBe(0);
   });
 });

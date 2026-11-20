@@ -56,7 +56,6 @@ import {
   getStoredMembers,
   saveStoredMembers,
   generateNextMemberId,
-  reloadFreshMembersFromExcel,
   INITIAL_MEMBERS,
   GymPlanTier,
   AddonRates,
@@ -93,6 +92,7 @@ import {
   ReporteCajaDiario,
 } from '../../lib/supabaseDb';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 interface MemberRecord {
   id: string;
@@ -167,7 +167,6 @@ export default function AdminDashboard() {
   const [newStaffTurno, setNewStaffTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
   const [newStaffPin, setNewStaffPin] = useState<string>('');
   const [newStaffAdminPin, setNewStaffAdminPin] = useState<string>('');
-  const [showPins, setShowPins] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchStaffFromSupabase().then((res) => {
@@ -353,6 +352,8 @@ export default function AdminDashboard() {
 
   // Notificaciones y Feedback Visual
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [savedAddonSuccess, setSavedAddonSuccess] = useState(false);
   const [savedQuickPlanId, setSavedQuickPlanId] = useState<string | null>(null);
@@ -579,13 +580,14 @@ export default function AdminDashboard() {
 
   // 3. CAMBIO DE ROL DE USUARIO
   const handleUpdateRole = async (id: string, dni: string, newRole: UserRole) => {
-    setMembers((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, role: newRole } : m))
-    );
-    await actualizarRolUsuario(dni, newRole);
-
-    setActionSuccess(`Rol de usuario actualizado a "${newRole.toUpperCase()}".`);
-    setTimeout(() => setActionSuccess(null), 3500);
+    setActionError(null);
+    try {
+      await actualizarRolUsuario(dni, newRole);
+      setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, role: newRole } : m)));
+      showToast(`Rol de usuario actualizado a "${newRole.toUpperCase()}".`);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'No se pudo actualizar el rol.');
+    }
   };
 
   // 4. REASIGNACIÓN DE TURNO Y COACH
@@ -613,24 +615,32 @@ export default function AdminDashboard() {
     if (!prod) return;
     const nuevoStock = Math.max(0, prod.stock_actual + delta);
 
-    setProductos((prev) =>
-      prev.map((p) => (p.id === productoId ? { ...p, stock_actual: nuevoStock } : p))
-    );
-    await ajustarStockProducto(productoId, nuevoStock);
+    setActionError(null);
+    try {
+      await ajustarStockProducto(productoId, nuevoStock);
+      setProductos((prev) => prev.map((p) => (p.id === productoId ? { ...p, stock_actual: nuevoStock } : p)));
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'No se pudo ajustar el stock.');
+    }
   };
 
   // 6. GUARDAR O EDITAR PRODUCTO EN INVENTARIO
   const handleSaveProductModal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingProduct) return;
-
-    await crearOActualizarProducto(editingProduct);
-    await cargarInventario();
-    setShowProductModal(false);
-    setEditingProduct(null);
-
-    setActionSuccess(`Producto "${editingProduct.nombre}" guardado con éxito.`);
-    setTimeout(() => setActionSuccess(null), 3500);
+    if (!editingProduct || isSavingProduct) return;
+    setIsSavingProduct(true);
+    setActionError(null);
+    try {
+      await crearOActualizarProducto(editingProduct);
+      await cargarInventario();
+      setShowProductModal(false);
+      setEditingProduct(null);
+      showToast(`Producto "${editingProduct.nombre}" guardado con éxito.`);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'No se pudo guardar el producto. Revisa tu conexión.');
+    } finally {
+      setIsSavingProduct(false);
+    }
   };
 
   // 6.b ELIMINAR PRODUCTO DEL INVENTARIO (ADMINISTRACIÓN)
@@ -707,15 +717,15 @@ export default function AdminDashboard() {
 
   // 7.1 ELIMINACIÓN DEFINITIVA DE SOCIOS DEL PADRÓN OFICIAL
   const handleEliminarSocio = async (socio: MemberRecord) => {
-    const confirmMessage = `¿Estás seguro de eliminar permanentemente al socio "${socio.name}" (${socio.dni || socio.id}) del padrón oficial?\n\nEsta acción borrará su carnet, credenciales y registros de la base de datos de Supabase.`;
+    const confirmMessage = `¿Archivar al socio "${socio.name}" (${socio.dni || socio.id})?\n\nSe retirará del padrón activo y se conservará su historial contable.`;
     if (!window.confirm(confirmMessage)) return;
 
     try {
-      setMembers((prev) => prev.filter((m) => m.id !== socio.id));
       await eliminarSocio(socio.id);
-      showToast(`Socio "${socio.name}" eliminado del padrón exitosamente.`);
+      setMembers((prev) => prev.filter((m) => m.id !== socio.id));
+      showToast(`Socio "${socio.name}" archivado.`);
     } catch {
-      showToast('Error al intentar eliminar el socio de la base de datos.');
+      setActionError('No se pudo archivar al socio. Revisa tu conexión y tus permisos.');
       await cargarSociosEnMemoria();
     }
   };
@@ -969,8 +979,13 @@ export default function AdminDashboard() {
     });
   }, [productos, categoriaInventario, searchInventario]);
 
+  const staffDialog = useModalFocus(showAddStaffModal, () => setShowAddStaffModal(false));
+  const productDialog = useModalFocus(showProductModal && Boolean(editingProduct), () => { if (!isSavingProduct) setShowProductModal(false); });
+  const paymentDialog = useModalFocus(Boolean(liquidatingMember), () => setLiquidatingMember(null));
+  const planDialog = useModalFocus(Boolean(editingPlan), () => setEditingPlan(null));
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
+    <div className="portal-shell min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
       <PortalHeader
         currentRole="admin"
         title="Panel Gerencial"
@@ -980,10 +995,11 @@ export default function AdminDashboard() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* BARRA SUPERIOR DE PESTAÑAS Y NAVEGACIÓN */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-zinc-900 border border-white/10 rounded-2xl p-3 sm:p-4">
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0 max-w-full">
+          <div aria-label="Secciones de administración" className="portal-tabs flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 max-w-full min-w-0">
             <button
               type="button"
               onClick={() => handleSelectTab('caja_dia')}
+              aria-current={activeTab === 'caja_dia' ? 'page' : undefined}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'caja_dia'
                   ? 'bg-amber-400 text-black shadow-sm font-black'
@@ -997,6 +1013,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={() => handleSelectTab('kpis')}
+              aria-current={activeTab === 'kpis' ? 'page' : undefined}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'kpis'
                   ? 'bg-amber-400 text-black shadow-sm'
@@ -1010,6 +1027,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={() => handleSelectTab('padron')}
+              aria-current={activeTab === 'padron' ? 'page' : undefined}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'padron'
                   ? 'bg-amber-400 text-black shadow-sm'
@@ -1023,6 +1041,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={() => handleSelectTab('planes')}
+              aria-current={activeTab === 'planes' ? 'page' : undefined}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'planes'
                   ? 'bg-amber-400 text-black shadow-sm'
@@ -1036,6 +1055,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={() => handleSelectTab('inventario')}
+              aria-current={activeTab === 'inventario' ? 'page' : undefined}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'inventario'
                   ? 'bg-amber-400 text-black shadow-sm'
@@ -1054,6 +1074,7 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={() => handleSelectTab('personal')}
+              aria-current={activeTab === 'personal' ? 'page' : undefined}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer whitespace-nowrap flex-shrink-0 ${
                 activeTab === 'personal'
                   ? 'bg-amber-400 text-black shadow-sm'
@@ -1086,13 +1107,20 @@ export default function AdminDashboard() {
         </div>
 
         {/* ALERTA DE ÉXITO */}
+        {actionError && (
+          <div role="alert" className="form-message form-message-error flex items-start justify-between gap-3">
+            <span>{actionError}</span>
+            <button type="button" aria-label="Cerrar aviso de error" onClick={() => setActionError(null)}><X className="w-4 h-4" /></button>
+          </div>
+        )}
         {actionSuccess && (
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 text-purple-300 text-sm flex items-center gap-3 font-mono"
+            role="status"
+            className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-200 text-sm flex items-center gap-3"
           >
-            <CheckCircle2 className="w-5 h-5 text-purple-400 flex-shrink-0" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-400 flex-shrink-0" />
             <span>{actionSuccess}</span>
           </motion.div>
         )}
@@ -1313,14 +1341,16 @@ export default function AdminDashboard() {
                   <input
                     type="text"
                     value={searchMovimiento}
+                    aria-label="Buscar movimientos por cliente, DNI o ticket"
                     onChange={(e) => setSearchMovimiento(e.target.value)}
-                    placeholder="Buscar por cliente, DNI, ticket o concepto..."
+                    placeholder="Cliente, DNI o ticket"
                     className="w-full bg-zinc-950 border border-white/10 focus:border-amber-400 rounded-xl py-2.5 pl-10 pr-9 text-xs text-white placeholder-zinc-500 focus:outline-none font-mono"
                   />
                   {searchMovimiento && (
                     <button
                       type="button"
                       onClick={() => setSearchMovimiento('')}
+                    aria-label="Limpiar búsqueda de movimientos"
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center text-xs cursor-pointer"
                     >
                       ✕
@@ -1332,13 +1362,14 @@ export default function AdminDashboard() {
                 <div className="md:col-span-3">
                   <select
                     value={filtroTipoMovimiento}
+                    aria-label="Filtrar movimientos por tipo"
                     onChange={(e) => setFiltroTipoMovimiento(e.target.value as any)}
                     className="w-full bg-zinc-950 border border-white/10 text-zinc-200 text-xs font-bold rounded-xl px-3 py-2.5 cursor-pointer hover:border-amber-400 focus:outline-none"
                   >
-                    <option value="todos">Tipo: Todos los movimientos</option>
-                    <option value="membresias">Solo Membresías y Renovaciones</option>
-                    <option value="pos">Solo Ventas de Mostrador POS</option>
-                    <option value="abono">Solo Abonos de Deuda</option>
+                    <option value="todos">Todos los movimientos</option>
+                    <option value="membresias">Membresías y renovaciones</option>
+                    <option value="pos">Ventas de productos</option>
+                    <option value="abono">Abonos de deuda</option>
                   </select>
                 </div>
 
@@ -1346,12 +1377,13 @@ export default function AdminDashboard() {
                 <div className="md:col-span-3">
                   <select
                     value={filtroMetodoPago}
+                    aria-label="Filtrar movimientos por método de pago"
                     onChange={(e) => setFiltroMetodoPago(e.target.value as any)}
                     className="w-full bg-zinc-950 border border-white/10 text-zinc-200 text-xs font-bold rounded-xl px-3 py-2.5 cursor-pointer hover:border-amber-400 focus:outline-none"
                   >
-                    <option value="todos">Método: Todos (Efectivo + Digital)</option>
-                    <option value="efectivo">Solo Efectivo (Caja Física)</option>
-                    <option value="digitales">Solo Digitales (Yape / Plin / Tarjeta)</option>
+                    <option value="todos">Todos los métodos</option>
+                    <option value="efectivo">Efectivo</option>
+                    <option value="digitales">Pagos digitales</option>
                   </select>
                 </div>
               </div>
@@ -1359,6 +1391,7 @@ export default function AdminDashboard() {
               {/* Tabla de Movimientos */}
               <div className="overflow-x-auto rounded-xl border border-white/10 shadow-inner">
                 <table className="w-full min-w-[900px] text-left text-xs font-mono border-collapse">
+                  <caption className="sr-only">Movimientos de caja del período seleccionado</caption>
                   <thead className="bg-zinc-950 text-zinc-400 uppercase border-b border-white/10">
                     <tr>
                       <th className="py-3 px-4 font-bold">Hora</th>
@@ -2310,18 +2343,17 @@ export default function AdminDashboard() {
                   <button
                     type="button"
                     onClick={async () => {
-                      if (window.confirm('¿Deseas recargar y sincronizar el padrón oficial con la data actual de Gym.xlsm?')) {
-                        reloadFreshMembersFromExcel();
+                      try {
                         await cargarSociosEnMemoria();
-                        setActionSuccess(`¡Padrón actualizado con éxito! ${INITIAL_MEMBERS.length} socios sincronizados desde Gym.xlsm.`);
-                        setTimeout(() => setActionSuccess(null), 4000);
+                      } catch {
+                        alert('No se pudo actualizar el padrón. Comprueba tu conexión y vuelve a intentarlo.');
                       }
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-mono font-bold transition-all border border-white/10 cursor-pointer"
-                    title="Recarga limpia y sincronización desde Gym.xlsm"
+                    title="Volver a consultar el padrón disponible"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
-                    <span>Sincronizar Gym.xlsm</span>
+                    <span>Actualizar padrón</span>
                   </button>
 
                   <button
@@ -2561,7 +2593,7 @@ export default function AdminDashboard() {
                               type="button"
                               onClick={() => handleEliminarSocio(m)}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs font-mono border border-red-500/20 transition-all cursor-pointer"
-                              title={`Eliminar socio ${m.name}`}
+                              title={`Archivar socio ${m.name}`}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                               <span>Eliminar</span>
@@ -3006,7 +3038,7 @@ export default function AdminDashboard() {
         {activeTab === 'personal' && (
           <div className="space-y-6">
             {/* Banner de Cabecera */}
-            <div className="bg-gradient-to-r from-purple-500/10 via-zinc-900 to-zinc-900 border border-purple-500/30 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="bg-zinc-900 border border-white/10 rounded-2xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2 text-purple-400 font-mono text-xs uppercase font-bold tracking-wider mb-1">
                   <ShieldCheck className="w-4 h-4" />
@@ -3038,7 +3070,6 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {staffList.map((staff) => {
                 const isEditingThisPin = editingPinStaffId === staff.id;
-                const isPinVisible = showPins[staff.id];
 
                 return (
                   <div
@@ -3050,7 +3081,7 @@ export default function AdminDashboard() {
                       <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex items-center gap-3">
                           <div
-                            className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${staff.avatarColor} font-black text-xl flex items-center justify-center shadow-lg text-white`}
+                            className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${staff.avatarColor} font-black text-xl flex items-center justify-center`}
                           >
                             {staff.iniciales}
                           </div>
@@ -3077,24 +3108,19 @@ export default function AdminDashboard() {
                           <button
                             type="button"
                             onClick={async () => {
-                              if (window.confirm(`¿Confirmas que deseas eliminar definitivamente a ${staff.nombre}?`)) {
-                                const targetName = staff.nombre.trim().toLowerCase();
-                                setStaffList((prev) =>
-                                  prev.filter(
-                                    (s) => s.id !== staff.id && s.nombre.trim().toLowerCase() !== targetName
-                                  )
-                                );
-                                await deleteStaffUser(staff.id);
+                              if (window.confirm(`¿Desactivar el acceso de ${staff.nombre}? Su historial se conservará.`)) {
+                                const removed = await deleteStaffUser(staff.id);
+                                if (!removed) { setActionError('No se pudo desactivar el perfil. Revisa tu conexión y tus permisos.'); return; }
                                 const res = await fetchStaffFromSupabase();
                                 if (res.configured && res.users) {
                                   setStaffList(res.users);
                                 }
-                                setActionSuccess(`Colaborador "${staff.nombre}" eliminado definitivamente.`);
+                                setActionSuccess(`Acceso de "${staff.nombre}" desactivado.`);
                                 setTimeout(() => setActionSuccess(null), 3000);
                               }
                             }}
                             className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs transition-colors cursor-pointer"
-                            title="Eliminar personal"
+                            title="Desactivar personal"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -3116,21 +3142,13 @@ export default function AdminDashboard() {
                             <KeyRound className="w-3.5 h-3.5 text-amber-400" />
                             PIN de Acceso:
                           </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowPins((prev) => ({ ...prev, [staff.id]: !prev[staff.id] }))
-                            }
-                            className="text-[11px] font-mono text-amber-400 hover:underline cursor-pointer"
-                          >
-                            {isPinVisible ? 'Ocultar' : 'Mostrar'}
-                          </button>
+                          <span className="text-xs text-zinc-400">Protegido</span>
                         </div>
 
                         {isEditingThisPin ? (
                           <div className="flex items-center gap-2 pt-1">
                             <input
-                              type="text"
+                              type="password"
                               maxLength={4}
                               value={newStaffPinInput}
                               onChange={(e) => setNewStaffPinInput(e.target.value.replace(/\D/g, ''))}
@@ -3150,7 +3168,7 @@ export default function AdminDashboard() {
                                 if (!adminPinAuth) {
                                   adminPinAuth =
                                     window.prompt(
-                                      'Ingresa el PIN de Administrador (Marisol: 1234 / Luis: 2026) para autorizar:'
+                                      'Ingresa tu PIN de administrador para autorizar:'
                                     ) || undefined;
                                 }
                                 if (!adminPinAuth || adminPinAuth.length !== 4) {
@@ -3170,7 +3188,6 @@ export default function AdminDashboard() {
                                 }
                                 setEditingPinStaffId(null);
                                 setNewStaffPinInput('');
-                                setShowPins((prev) => ({ ...prev, [staff.id]: true }));
                               }}
                               className="px-3 py-1.5 rounded-xl bg-amber-400 text-black font-bold text-xs uppercase cursor-pointer"
                             >
@@ -3188,7 +3205,7 @@ export default function AdminDashboard() {
                         ) : (
                           <div className="flex items-center justify-between pt-1">
                             <span className="font-mono text-base font-black tracking-widest text-amber-400">
-                              {isPinVisible ? (staff.pin || '••••') : '••••'}
+                              ••••
                             </span>
                             <button
                               type="button"
@@ -3223,7 +3240,7 @@ export default function AdminDashboard() {
       {/* MODAL PARA REGISTRAR NUEVO PERSONAL */}
       {showAddStaffModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="w-full max-w-md bg-zinc-900 border border-purple-500/40 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div ref={staffDialog} role="dialog" aria-modal="true" aria-label="Registrar personal" tabIndex={-1} className="portal-panel w-full max-w-md max-h-[90dvh] overflow-y-auto bg-zinc-900 border border-white/10 rounded-2xl p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <h3 className="text-base font-black text-white font-display uppercase tracking-tight">
                 Registrar Nuevo Personal
@@ -3247,7 +3264,7 @@ export default function AdminDashboard() {
                 const activeSession = getActiveStaffSession();
                 const effectiveAdminPin = newStaffAdminPin || activeSession?.pin;
                 if (!effectiveAdminPin || effectiveAdminPin.length !== 4) {
-                  alert('Ingresa el PIN de administrador (Marisol: 1234 o Luis: 2026) para autorizar el registro.');
+                  alert('Ingresa tu PIN de administrador para autorizar el registro.');
                   return;
                 }
                 const res = await saveStaffUser(
@@ -3258,7 +3275,7 @@ export default function AdminDashboard() {
                     pin: newStaffPin,
                     avatarColor:
                       newStaffRol === 'admin'
-                        ? 'from-purple-500 to-indigo-600 text-white'
+                      ? 'from-amber-400 to-amber-500 text-black'
                         : 'from-emerald-400 to-teal-600 text-black',
                     activo: true,
                   },
@@ -3344,7 +3361,7 @@ export default function AdminDashboard() {
                   required
                   value={newStaffAdminPin}
                   onChange={(e) => setNewStaffAdminPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="PIN de Marisol (1234) o Luis (2026)"
+                  placeholder="Tu PIN de administrador"
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-base font-bold text-white tracking-widest text-center focus:outline-none focus:border-amber-400"
                 />
                 <p className="text-[10px] text-zinc-500 mt-1">Autoriza el registro de este personal en Supabase</p>
@@ -3367,7 +3384,8 @@ export default function AdminDashboard() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-zinc-900 border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-4 font-mono text-xs"
+            ref={productDialog} role="dialog" aria-modal="true" aria-label="Gestionar producto" tabIndex={-1}
+            className="portal-panel w-full max-w-md max-h-[90dvh] overflow-y-auto bg-zinc-900 border border-white/10 rounded-2xl p-6 space-y-4 text-sm"
           >
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">
@@ -3386,6 +3404,7 @@ export default function AdminDashboard() {
             </div>
 
             <form onSubmit={handleSaveProductModal} className="space-y-3">
+              {actionError && <p role="alert" className="form-message form-message-error">{actionError}</p>}
               <div>
                 <label className="block text-zinc-400 uppercase font-bold mb-1">SKU / ID</label>
                 <input
@@ -3525,9 +3544,10 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-emerald-400 hover:bg-emerald-300 text-black py-3 rounded-xl font-black cursor-pointer shadow-lg shadow-emerald-400/20"
+                  disabled={isSavingProduct}
+                  className="flex-1 bg-amber-400 hover:bg-amber-300 disabled:opacity-50 text-black py-3 rounded-xl font-bold cursor-pointer"
                 >
-                  GUARDAR PRODUCTO
+                  {isSavingProduct ? 'Guardando…' : 'Guardar producto'}
                 </button>
               </div>
             </form>
@@ -3581,7 +3601,8 @@ export default function AdminDashboard() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md bg-zinc-900 border border-emerald-500/40 rounded-3xl p-6 shadow-2xl space-y-4 font-mono text-xs"
+            ref={paymentDialog} role="dialog" aria-modal="true" aria-label="Cobro o abono de membresía" tabIndex={-1}
+            className="portal-panel w-full max-w-md max-h-[90dvh] overflow-y-auto bg-zinc-900 border border-white/10 rounded-2xl p-6 space-y-4 text-sm"
           >
             <div className="flex items-center gap-3 pb-3 border-b border-white/10">
               <div className="p-2.5 rounded-xl bg-emerald-500 text-black font-black">
@@ -3630,7 +3651,7 @@ export default function AdminDashboard() {
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-black text-lg">
                   S/.
                 </span>
-                <input
+                <input step="0.01"
                   type="number"
                   min={1}
                   max={liquidatingMember.balanceDue}
@@ -3767,7 +3788,8 @@ export default function AdminDashboard() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-xl bg-zinc-900 border border-amber-400/40 rounded-3xl p-6 shadow-2xl space-y-4 font-mono text-xs max-h-[92vh] overflow-y-auto"
+            ref={planDialog} role="dialog" aria-modal="true" aria-label="Editar plan de membresía" tabIndex={-1}
+            className="portal-panel w-full max-w-xl bg-zinc-900 border border-white/10 rounded-2xl p-6 space-y-4 text-sm max-h-[90dvh] overflow-y-auto"
           >
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">
@@ -3826,7 +3848,7 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div>
                     <label className="block text-[10px] text-zinc-400 mb-1">1 Mes</label>
-                    <input
+                    <input step="0.01"
                       type="number"
                       min={0}
                       required
@@ -3839,7 +3861,7 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label className="block text-[10px] text-zinc-400 mb-1">3 Meses (Trimestral)</label>
-                    <input
+                    <input step="0.01"
                       type="number"
                       min={0}
                       value={editingPlan.quarterlyPrice}
@@ -3851,7 +3873,7 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label className="block text-[10px] text-zinc-400 mb-1">6 Meses (Semestral)</label>
-                    <input
+                    <input step="0.01"
                       type="number"
                       min={0}
                       value={editingPlan.semiannualPrice}
@@ -3863,7 +3885,7 @@ export default function AdminDashboard() {
                   </div>
                   <div>
                     <label className="block text-[10px] text-zinc-400 mb-1">1 Año (Anual)</label>
-                    <input
+                    <input step="0.01"
                       type="number"
                       min={0}
                       value={editingPlan.annualPrice}

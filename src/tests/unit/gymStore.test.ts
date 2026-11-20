@@ -38,14 +38,12 @@ describe('Pruebas Unitarias · Store Canónico de Socios y Caché Local Desacopl
   });
 
   it('INITIAL_MEMBERS en el bundle público no debe exponer masivamente los 417 socios', () => {
-    // Protección de privacidad: el bundle solo incluye el socio demo fundador
-    expect(INITIAL_MEMBERS.length).toBeLessThan(10);
-    expect(INITIAL_MEMBERS[0].id).toBe('MEM-2713');
+    expect(INITIAL_MEMBERS).toEqual([]);
   });
 
-  it('loadCanonicalMembersFromExcel debe cargar los 417 socios bajo demanda asíncrona (lazy chunk)', async () => {
+  it('no carga el padrón privado al solicitar el respaldo desde el cliente', async () => {
     const loaded = await loadCanonicalMembersFromExcel();
-    expect(loaded.length).toBe(417);
+    expect(loaded).toEqual([]);
   });
 
   it('getStoredMembers debe purgar automáticamente versiones obsoletas (v1..v5)', () => {
@@ -67,14 +65,14 @@ describe('Pruebas Unitarias · Store Canónico de Socios y Caché Local Desacopl
     expect(retrieved[0].id).toBe(subset[0].id);
   });
 
-  it('reloadFreshMembersFromExcel debe restablecer limpiamente los 417 socios de forma asíncrona', async () => {
-    localStorage.setItem('trankilandia_members_v6', JSON.stringify([{ id: 'MEM-CORRUPTO' }]));
+  it('la API legacy de respaldo conserva solo la caché existente sin inyectar el padrón privado', async () => {
+    saveStoredMembers(CANONICAL_EXCEL_MEMBERS.slice(0, 2));
 
     const fresh = await reloadFreshMembersFromExcel();
-    expect(fresh.length).toBe(417);
+    expect(fresh.length).toBe(2);
 
     const verified = getStoredMembers();
-    expect(verified.length).toBe(417);
+    expect(verified.length).toBe(2);
   });
 
   it('generateNextMemberId debe generar IDs únicos y secuenciales mayores a MEM-928 sin colisiones', () => {

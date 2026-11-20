@@ -3,7 +3,7 @@
 // ==============================================================================
 // - Desacoplado de importaciones estáticas masivas de PII (realMembers.json).
 // - El padrón oficial se consulta directamente desde Supabase en la nube.
-// - Carga diferida (lazy dynamic import) disponible para semillas o fallback offline.
+// - Los respaldos privados se procesan fuera de la aplicación pública.
 // ==============================================================================
 
 export * from './plansStore';
@@ -74,42 +74,13 @@ export interface ProgressRecord {
   notes: string;
 }
 
-// Initial Member: Luis Gerardo Llocclla Sauñe (Socio Fundador con membresía activa)
-export const LUIS_GERARDO_MEMBER: GymMember = {
-  id: 'MEM-2713',
-  name: 'Luis Gerardo Llocclla Sauñe',
-  dni: '70447087',
-  email: 'luisgerardolloccllasaune@gmail.com',
-  phone: '958183360',
-  plan: 'Plan Libre Anual (12 Meses)',
-  planPrice: 430,
-  paymentType: 'advance',
-  advancePaid: 100,
-  balanceDue: 330,
-  paymentDueDate: null,
-  paymentMethod: 'efectivo',
-  receiptNumber: 'B001-000933',
-  membershipStatus: 'active',
-  registeredAt: '2026-11-10',
-  expiresAt: '2027-11-10',
-  coachName: 'Coach Marcos Rivas',
-  shift: 'manana',
-  observations: 'Socio Fundador activo. Enfoque en hipertrofia y acondicionamiento.',
-  age: 26,
-  gender: 'Masculino',
-};
-
-// Padrón base de demostración (sin PII masivo en el bundle de producción)
-export const INITIAL_MEMBERS: GymMember[] = [LUIS_GERARDO_MEMBER];
-
-/**
- * Carga bajo demanda y asíncrona de los 417 socios canónicos desde realMembers.json.
- * Al usar import() dinámico, Vite aísla este archivo en un chunk separado
- * y NUNCA se descarga en la web pública de clientes.
- */
+// No member records are shipped with the public application.
+/** @deprecated Retrieve members through the authenticated server API. */
+export const LUIS_GERARDO_MEMBER: GymMember | null = null;
+export const INITIAL_MEMBERS: GymMember[] = [];
+/** @deprecated Compatibility only: private backups are processed by server-side scripts. */
 export async function loadCanonicalMembersFromExcel(): Promise<GymMember[]> {
-  const mod = await import('./realMembers.json');
-  return (mod.default as unknown) as GymMember[];
+  return getStoredMembers();
 }
 
 // Initial Custom Routines per Member
@@ -266,23 +237,8 @@ export const getStoredMembers = (): GymMember[] => {
   return [];
 };
 
-/**
- * Restablece y fuerza la recarga limpia de todos los 417 socios de respaldo desde el Excel
- */
-export const reloadFreshMembersFromExcel = async (): Promise<GymMember[]> => {
-  try {
-    ['trankilandia_members', 'trankilandia_members_v1', 'trankilandia_members_v2', 'trankilandia_members_v3', 'trankilandia_members_v4', 'trankilandia_members_v5', STORAGE_KEY].forEach((k) => {
-      localStorage.removeItem(k);
-    });
-    const canonical = await loadCanonicalMembersFromExcel();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(canonical));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gym-members-updated', { detail: { count: canonical.length } }));
-    }
-    return canonical;
-  } catch {}
-  return [];
-};
+/** @deprecated Refresh members using the authenticated API; never import the private roster. */
+export const reloadFreshMembersFromExcel = async (): Promise<GymMember[]> => getStoredMembers();
 
 /**
  * Genera un ID canónico y único para un nuevo socio (MEM-XXX),

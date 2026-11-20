@@ -1,191 +1,42 @@
-import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest';
-
-vi.mock('../../lib/supabase', () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          order: () => Promise.resolve({ data: [], error: null }),
-          maybeSingle: () => Promise.resolve({ data: null, error: null }),
-        }),
-        ilike: () => ({
-          eq: () => ({
-            maybeSingle: () => Promise.resolve({ data: null, error: null }),
-          }),
-        }),
-      }),
-      insert: () => Promise.resolve({ error: null }),
-      update: () => ({
-        eq: () => Promise.resolve({ error: null }),
-      }),
-      delete: () => ({
-        eq: () => Promise.resolve({ error: null }),
-        ilike: () => ({
-          eq: () => Promise.resolve({ error: null }),
-        }),
-      }),
-    }),
-    rpc: () => Promise.resolve({ data: null, error: null }),
-  },
-  isSupabaseConfigured: () => false,
-}));
-
-import {
-  StaffUser,
-  getStaffList,
-  saveStaffUser,
-  updateStaffPin,
-  deleteStaffUser,
-  verifyStaffPin,
-  getActiveStaffSession,
-  setActiveStaffSession,
-} from '../../lib/staffStore';
-
-describe('Pruebas Unitarias · Gestión de Personal y Turnos con PIN en Supabase', () => {
-  let createdTestStaffId: string | undefined;
-
-  const MOCK_STAFF: StaffUser[] = [
-    {
-      id: 'staff-marisol',
-      nombre: 'Marisol',
-      rol: 'admin',
-      turno: 'completo',
-      pin: '1234',
-      avatarColor: 'from-amber-400 to-amber-600 text-black',
-      iniciales: 'M',
-      activo: true,
-      telefono: '999787489',
-      createdAt: '2026-11-01T00:00:00Z',
-    },
-    {
-      id: 'staff-luis',
-      nombre: 'Luis Lloclla',
-      rol: 'admin',
-      turno: 'completo',
-      pin: '2026',
-      avatarColor: 'from-purple-500 to-indigo-600 text-white',
-      iniciales: 'LL',
-      activo: true,
-      telefono: '958183360',
-      createdAt: '2026-11-01T00:00:00Z',
-    },
-  ];
-
-  beforeEach(() => {
-    localStorage.clear();
-    sessionStorage.clear();
-    localStorage.setItem('trankilandia_staff_verified_v3', JSON.stringify(MOCK_STAFF));
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const remote = vi.hoisted(() => ({ configured: true, rpc: vi.fn(), getUser: vi.fn(), from: vi.fn() }));
+vi.mock('../../lib/supabase', () => ({ isSupabaseConfigured: () => remote.configured, supabase: { rpc: remote.rpc, from: remote.from, auth: { getUser: remote.getUser } } }));
+import { fetchStaffFromSupabase, getActiveStaffSession, getStaffList, setActiveStaffSession, verifyStaffPin, updateStaffPin } from '../../lib/staffStore';
+const staff = { id: 'staff-test', nombre: 'Operador Prueba', rol: 'cajero' as const, turno: 'tarde' as const, avatarColor: '', iniciales: 'OP', activo: true, createdAt: '2026-01-01' };
+beforeEach(() => {
+  localStorage.clear(); sessionStorage.clear(); vi.resetAllMocks(); remote.configured = true; setActiveStaffSession(null);
+  remote.getUser.mockResolvedValue({ data: { user: { id: 'auth-test' } }, error: null });
+  remote.rpc.mockResolvedValue({ data: null, error: { message: 'Servidor no disponible' } });
+});
+describe('Autorización de personal desde servidor', () => {
+  it('deniega PIN ante fallo RPC aunque exista un perfil local sin PIN', async () => {
+    localStorage.setItem('trankilandia_staff_profiles_v4', JSON.stringify([staff]));
+    expect((await verifyStaffPin(staff.id, '9876')).success).toBe(false); expect(getActiveStaffSession()).toBeNull();
   });
-
-  afterAll(async () => {
-    if (createdTestStaffId) {
-      await deleteStaffUser(createdTestStaffId);
-    }
+  it('deniega PIN sin sesión Auth verificada', async () => {
+    remote.getUser.mockResolvedValue({ data: { user: null }, error: null });
+    remote.rpc.mockResolvedValue({ data: { success: true, user: staff }, error: null });
+    expect((await verifyStaffPin(staff.id, '9876')).success).toBe(false);
   });
-
-  it('debe leer el personal verificado en memoria local sincronizado', () => {
-    const staff = getStaffList();
-    expect(staff.length).toBe(2);
-    const marisol = staff.find((u) => u.nombre === 'Marisol');
-    expect(marisol).toBeDefined();
-    expect(marisol?.rol).toBe('admin');
-    expect(marisol?.pin).toBe('1234');
-
-    const luis = staff.find((u) => u.nombre === 'Luis Lloclla');
-    expect(luis).toBeDefined();
-    expect(luis?.rol).toBe('admin');
-    expect(luis?.pin).toBe('2026');
+  it('acepta respuesta servidor y nunca conserva PIN en perfil o almacenamiento', async () => {
+    remote.rpc.mockResolvedValue({ data: { success: true, auth_user_id: 'auth-test', user: { ...staff, pin: '9876' } }, error: null });
+    const result = await verifyStaffPin(staff.id, '9876');
+    expect(result.success).toBe(true); expect(result.user).not.toHaveProperty('pin'); expect(getActiveStaffSession()).not.toHaveProperty('pin');
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('9876');
   });
-
-  it('debe rechazar formato inválido de PIN (distinto a 4 dígitos)', async () => {
-    const resInvalidLen = await verifyStaffPin('staff-marisol', '12');
-    expect(resInvalidLen.success).toBe(false);
-    expect(resInvalidLen.error).toContain('4 dígitos');
-
-    const resAlpha = await verifyStaffPin('staff-marisol', 'abcd');
-    expect(resAlpha.success).toBe(false);
+  it('ignora sesiones de personal falsificadas en storage', () => {
+    localStorage.setItem('trankilandia_staff_active_session_v4', JSON.stringify({ ...staff, rol: 'admin' })); expect(getActiveStaffSession()).toBeNull();
   });
-
-  it('permite a Marisol registrar un nuevo colaborador cajero con autorización admin', async () => {
-    // Intento no autorizado sin adminAuth
-    const rechazo = await saveStaffUser({
-      nombre: 'Intruso',
-      rol: 'admin',
-      turno: 'completo',
-      pin: '9999',
-      avatarColor: 'from-amber-400 to-amber-600 text-black',
-      activo: true,
-    });
-    expect(rechazo.success).toBe(false);
-    expect(rechazo.error).toContain('autorización de administrador');
-
-    // Registro autorizado por Marisol
-    const res = await saveStaffUser(
-      {
-        nombre: 'Carla Recepción',
-        rol: 'cajero',
-        turno: 'tarde',
-        pin: '5678',
-        avatarColor: 'from-pink-500 to-rose-600 text-white',
-        activo: true,
-      },
-      { adminId: 'staff-marisol', adminPin: '1234' }
-    );
-
-    expect(res.success).toBe(true);
-    expect(res.user?.id).toBeDefined();
-    expect(res.user?.iniciales).toBe('CR');
-    createdTestStaffId = res.user?.id;
-
-    const list = getStaffList();
-    expect(list.some((u) => u.nombre === 'Carla Recepción')).toBe(true);
+  it('purga credenciales de cachés viejas y no las devuelve', () => {
+    localStorage.setItem('trankilandia_staff_verified_v3', JSON.stringify([{ ...staff, pin: '9876' }]));
+    expect(getStaffList()).toEqual([]); expect(localStorage.getItem('trankilandia_staff_verified_v3')).toBeNull();
   });
-
-  it('permite actualizar el PIN de un colaborador con autorización de administrador', async () => {
-    // Asegurar que exista un colaborador para la prueba
-    const addRes = await saveStaffUser(
-      {
-        nombre: 'Colaborador Test PIN',
-        rol: 'cajero',
-        turno: 'tarde',
-        pin: '5678',
-        avatarColor: 'from-pink-500 to-rose-600 text-white',
-        activo: true,
-      },
-      { adminId: 'staff-marisol', adminPin: '1234' }
-    );
-    expect(addRes.success).toBe(true);
-    const targetId = addRes.user!.id;
-
-    // Intento no autorizado sin adminAuth
-    const rechazo = await updateStaffPin(targetId, '4321');
-    expect(rechazo.success).toBe(false);
-    expect(rechazo.error).toContain('autorización de administrador');
-
-    // Actualización autorizada por Marisol
-    const res = await updateStaffPin(targetId, '4321', {
-      adminId: 'staff-marisol',
-      adminPin: '1234',
-    });
-    expect(res.success).toBe(true);
-
-    const list = getStaffList();
-    const updated = list.find((u) => u.id === targetId);
-    expect(updated?.pin).toBe('4321');
+  it('consulta únicamente columnas públicas y no borra perfiles al leer', async () => {
+    const order = vi.fn().mockResolvedValue({ data: [{ ...staff, avatar_color: '', created_at: staff.createdAt }], error: null });
+    const select = vi.fn((_columns: string) => ({ eq: () => ({ order }) })); remote.from.mockReturnValue({ select });
+    expect((await fetchStaffFromSupabase()).users).toHaveLength(1); expect(select.mock.calls[0]?.[0]).not.toMatch(/\bpin\b|pin_hash/);
   });
-
-  it('protege a los administradores principales contra eliminación accidental', async () => {
-    const intentoBorrar = await deleteStaffUser('staff-marisol');
-    expect(intentoBorrar).toBe(false);
-    expect(getStaffList().some((u) => u.id === 'staff-marisol')).toBe(true);
-  });
-
-  it('permite guardar y limpiar la sesión activa del personal', () => {
-    const staff = getStaffList()[0];
-    setActiveStaffSession(staff);
-    expect(getActiveStaffSession()?.id).toBe(staff.id);
-
-    setActiveStaffSession(null);
-    expect(getActiveStaffSession()).toBeNull();
+  it('no anuncia actualización exitosa de PIN cuando servidor la rechaza', async () => {
+    expect((await updateStaffPin(staff.id, '9876', { adminId: 'admin-test', adminPin: '4567' })).success).toBe(false); expect(localStorage.length).toBe(0);
   });
 });

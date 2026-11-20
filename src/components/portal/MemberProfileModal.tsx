@@ -9,8 +9,6 @@ import {
   MessageCircle,
   DollarSign,
   FileCheck,
-  Upload,
-  Eye,
   Sparkles,
   Lock,
   Mail,
@@ -19,6 +17,7 @@ import {
 import { GymMember, getStoredCatalogPlans, CatalogPlanOption } from '../../data/gymStore';
 import { OFFICIAL_COACHES } from '../../pages/portal/ClientePortal';
 import { normalizeDateToISO } from '../../lib/supabaseDb';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 interface MemberProfileModalProps {
   isOpen: boolean;
@@ -39,9 +38,7 @@ export default function MemberProfileModal({
   initialTab = 'personal',
   isNew = false,
 }: MemberProfileModalProps) {
-  if (!isOpen || !member) return null;
-
-  const [formData, setFormData] = useState<GymMember>({ ...member });
+  const [formData, setFormData] = useState<GymMember>(() => member ? { ...member } : {} as GymMember);
   const [activeTab, setActiveTab] = useState<'personal' | 'membership' | 'shift' | 'documentos'>(
     initialTab || 'personal'
   );
@@ -49,6 +46,8 @@ export default function MemberProfileModal({
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [gymPlans, setGymPlans] = useState<CatalogPlanOption[]>(getStoredCatalogPlans);
   const [isDniUnlocked, setIsDniUnlocked] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const dialogRef = useModalFocus(isOpen && Boolean(member), onClose);
 
   useEffect(() => {
     const handleUpdate = () => setGymPlans(getStoredCatalogPlans());
@@ -57,13 +56,17 @@ export default function MemberProfileModal({
   }, []);
 
   useEffect(() => {
+    if (!member || !isOpen) return;
     setFormData({ ...member });
     if (initialTab) {
       setActiveTab(initialTab);
     }
     setSuccessMsg(null);
+    setErrorMsg('');
     setIsDniUnlocked(false);
-  }, [member, initialTab]);
+  }, [member, initialTab, isOpen]);
+
+  if (!isOpen || !member) return null;
 
   const handleInputChange = (field: keyof GymMember, value: any) => {
     setFormData((prev) => {
@@ -138,21 +141,23 @@ export default function MemberProfileModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.name.trim()) {
-      alert('Ingresa el nombre completo del socio.');
+      setErrorMsg('Ingresa el nombre completo del socio.');
       return;
     }
 
     const cleanDni = formData.dni ? formData.dni.replace(/\D/g, '').slice(0, 8) : '';
     if (isNew && (!cleanDni || cleanDni.length !== 8)) {
-      alert('Por favor ingresa un DNI válido de 8 dígitos para inscribir al socio.');
+      setErrorMsg('Ingresa un DNI de 8 dígitos para inscribir al socio.');
       return;
     }
 
     if (cleanDni && cleanDni.length !== 8) {
-      alert('El DNI ingresado no es válido. Debe contener exactamente 8 dígitos numéricos.');
+      setErrorMsg('El DNI debe contener exactamente 8 dígitos numéricos.');
       return;
     }
 
+    if (isSaving) return;
+    setErrorMsg('');
     setIsSaving(true);
     try {
       await onSave({
@@ -163,7 +168,7 @@ export default function MemberProfileModal({
       setSuccessMsg(isNew ? '¡Socio inscrito con éxito!' : '¡Perfil del socio actualizado correctamente!');
       setTimeout(() => setSuccessMsg(null), 3000);
     } catch {
-      alert('Error al guardar cambios.');
+      setErrorMsg('No se pudieron guardar los cambios. Revisa la conexión y vuelve a intentarlo.');
     }
     setIsSaving(false);
   };
@@ -178,8 +183,8 @@ export default function MemberProfileModal({
   const isInactive = formData.membershipStatus === 'inactive' || isSinPlan || isExpired;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-zinc-900 border border-white/10 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden font-sans">
+    <div className="modal-backdrop">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="member-profile-title" tabIndex={-1} className="portal-shell bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[calc(100dvh-2rem)] flex flex-col shadow-2xl overflow-hidden font-sans">
         {/* Modal Header */}
         <div className="p-5 sm:p-6 border-b border-white/10 bg-zinc-950/80 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -188,9 +193,9 @@ export default function MemberProfileModal({
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="text-lg sm:text-xl font-black text-white font-display uppercase tracking-tight">
+                <h2 id="member-profile-title" className="text-lg sm:text-xl font-bold text-white font-display tracking-tight break-words">
                   {formData.name || 'Nuevo Socio / Atleta'}
-                </h3>
+                </h2>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400">
                   {formData.id}
                 </span>
@@ -222,6 +227,7 @@ export default function MemberProfileModal({
           <button
             type="button"
             onClick={onClose}
+            aria-label="Cerrar perfil del socio"
             className="p-2 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-white transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -229,7 +235,7 @@ export default function MemberProfileModal({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex border-b border-white/10 bg-zinc-950/40 px-4 sm:px-6 gap-2 text-xs font-mono">
+        <div aria-label="Secciones del perfil" className="portal-tabs flex border-b border-white/10 bg-zinc-950/40 px-4 sm:px-6 gap-2 text-sm">
           <button
             type="button"
             onClick={() => setActiveTab('personal')}
@@ -291,6 +297,7 @@ export default function MemberProfileModal({
 
         {/* Tab Content Form */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
+          {errorMsg && <p role="alert" className="form-message form-message-error">{errorMsg}</p>}
           {successMsg && (
             <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-xl text-xs font-mono flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -302,10 +309,10 @@ export default function MemberProfileModal({
           {activeTab === 'personal' && (
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                <label htmlFor="member-name" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                   Nombre Completo del Socio
                 </label>
-                <input
+                <input id="member-name"
                   type="text"
                   required
                   value={formData.name}
@@ -317,7 +324,7 @@ export default function MemberProfileModal({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-mono font-bold text-zinc-400">
+                    <label htmlFor="member-dni" className="block text-xs font-mono font-bold text-zinc-400">
                       DNI / Documento Oficial
                     </label>
                     {canEditDni ? (
@@ -347,7 +354,7 @@ export default function MemberProfileModal({
                     )}
                   </div>
                   <div className="relative">
-                    <input
+                    <input id="member-dni"
                       type="text"
                       inputMode="numeric"
                       readOnly={!canEditDni}
@@ -374,7 +381,7 @@ export default function MemberProfileModal({
 
                 <div>
                   <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-mono font-bold text-zinc-400">
+                    <label htmlFor="member-email" className="block text-xs font-mono font-bold text-zinc-400">
                       Correo Electrónico (Email)
                     </label>
                     {formData.email && !formData.email.endsWith('@socio.trankilandia.pe') && !formData.email.endsWith('@cliente.trankilandia.pe') ? (
@@ -389,7 +396,7 @@ export default function MemberProfileModal({
                     )}
                   </div>
                   <div className="relative">
-                    <input
+                    <input id="member-email"
                       type="email"
                       readOnly={Boolean(formData.email && !formData.email.endsWith('@socio.trankilandia.pe') && !formData.email.endsWith('@cliente.trankilandia.pe'))}
                       value={formData.email || ''}
@@ -413,11 +420,11 @@ export default function MemberProfileModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                  <label htmlFor="member-phone" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                     Teléfono Celular
                   </label>
                   <div className="relative">
-                    <input
+                    <input id="member-phone"
                       type="text"
                       maxLength={12}
                       value={formData.phone || ''}
@@ -440,10 +447,10 @@ export default function MemberProfileModal({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                  <label htmlFor="member-age" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                     Edad
                   </label>
-                  <input
+                  <input id="member-age"
                     type="number"
                     min={10}
                     max={95}
@@ -455,10 +462,10 @@ export default function MemberProfileModal({
               </div>
 
               <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                <label htmlFor="member-gender" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                   Género / Sexo
                 </label>
-                <select
+                <select id="member-gender"
                   value={formData.gender || 'Masculino'}
                   onChange={(e) => handleInputChange('gender', e.target.value)}
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-mono"
@@ -469,10 +476,10 @@ export default function MemberProfileModal({
               </div>
 
               <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                <label htmlFor="member-observations" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                   Observaciones Médicas / Físicas / Administrativas
                 </label>
-                <textarea
+                <textarea id="member-observations"
                   rows={3}
                   value={formData.observations || ''}
                   onChange={(e) => handleInputChange('observations', e.target.value)}
@@ -517,10 +524,11 @@ export default function MemberProfileModal({
               </div>
 
               <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                <label htmlFor="member-plan" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                   Plan de Entrenamiento
                 </label>
-                <select
+                <select id="member-plan"
+                  disabled={!isNew}
                   value={formData.plan}
                   onChange={(e) => handlePlanSelect(e.target.value)}
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-sans"
@@ -538,13 +546,15 @@ export default function MemberProfileModal({
                 </select>
               </div>
 
+              {!isNew && <p className="text-sm leading-relaxed text-zinc-300">Para cambiar el plan o registrar un pago, utiliza las acciones de renovación o cobro de saldo de recepción. Aquí puedes consultar los importes actuales.</p>}
               {/* Bloque Financiero */}
               <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-3 font-mono">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-zinc-400 font-bold">COSTO TOTAL DEL PLAN:</span>
                   <div className="flex items-center gap-1.5">
                     <span className="text-white font-bold">S/.</span>
-                    <input
+                    <input step="0.01" aria-label="Costo total del plan"
+                      readOnly={!isNew}
                       type="number"
                       min={0}
                       value={formData.planPrice}
@@ -558,7 +568,8 @@ export default function MemberProfileModal({
                   <span className="text-zinc-400 font-bold">MONTO ABONADO:</span>
                   <div className="flex items-center gap-1.5">
                     <span className="text-emerald-400 font-bold">S/.</span>
-                    <input
+                    <input step="0.01" aria-label="Monto abonado"
+                      readOnly={!isNew}
                       type="number"
                       min={0}
                       value={formData.advancePaid}
@@ -608,10 +619,10 @@ export default function MemberProfileModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                  <label htmlFor="member-registeredAt" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                     Fecha de Inicio
                   </label>
-                  <input
+                  <input id="member-registeredAt"
                     type="date"
                     value={formData.registeredAt ? normalizeDateToISO(formData.registeredAt) : todayISO}
                     onChange={(e) => handleInputChange('registeredAt', e.target.value)}
@@ -620,10 +631,10 @@ export default function MemberProfileModal({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                  <label htmlFor="member-expiresAt" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                     Fecha de Vencimiento
                   </label>
-                  <input
+                  <input id="member-expiresAt"
                     type="date"
                     value={formData.expiresAt ? normalizeDateToISO(formData.expiresAt) : ''}
                     onChange={(e) => {
@@ -716,10 +727,10 @@ export default function MemberProfileModal({
               </div>
 
               <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                <label htmlFor="member-membershipStatus" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                   Estado de Membresía
                 </label>
-                <select
+                <select id="member-membershipStatus"
                   value={formData.membershipStatus}
                   onChange={(e) => {
                     const newStatus = e.target.value as 'active' | 'expiring' | 'inactive';
@@ -819,10 +830,10 @@ export default function MemberProfileModal({
               </div>
 
               <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
+                <label htmlFor="member-coachName" className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
                   Coach / Entrenador Asignado
                 </label>
-                <select
+                <select id="member-coachName"
                   value={formData.coachName || 'Coach Marcos Rivas'}
                   onChange={(e) => handleInputChange('coachName', e.target.value)}
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-sans"
@@ -848,145 +859,12 @@ export default function MemberProfileModal({
 
           {/* TAB 4: VALIDACIÓN DE DOCUMENTOS (ESCOLAR / UNIVERSITARIO) */}
           {activeTab === 'documentos' && (
-            <div className="space-y-4">
-              <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 space-y-3 font-mono text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-white uppercase flex items-center gap-2">
-                    <FileCheck className="w-4 h-4 text-amber-400" />
-                    Estado de Documento
-                  </span>
-                  <span
-                    className={`px-2.5 py-1 rounded-full font-bold uppercase ${
-                      formData.documentStatus === 'verificado'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : formData.documentStatus === 'pendiente'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                        : formData.documentStatus === 'rechazado'
-                        ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                        : 'bg-zinc-800 text-zinc-400'
-                    }`}
-                  >
-                    {formData.documentStatus === 'verificado'
-                      ? 'Verificado'
-                      : formData.documentStatus === 'pendiente'
-                      ? 'Pendiente de Aprobación'
-                      : formData.documentStatus === 'rechazado'
-                      ? 'Rechazado'
-                      : 'Sin Documento Adjunto'}
-                  </span>
-                </div>
-
-                <p className="text-zinc-400 text-[11px] leading-relaxed">
-                  Requisito para <strong>Plan Escolar</strong> (DNI acreditando edad entre 14 y 17 años) o <strong>Plan Universitario/Instituto</strong> (Carnet vigente o constancia de matrícula). Puedes validarlo en un clic.
-                </p>
-
-                {/* Acciones directas para el Admin */}
-                <div className="pt-2 flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleInputChange('documentStatus', 'verificado');
-                      handleInputChange(
-                        'documentNotes',
-                        `Documento verificado correctamente el ${new Date().toLocaleDateString('es-PE')}`
-                      );
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black text-xs transition-colors flex items-center gap-1.5 cursor-pointer shadow-md"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Aprobar y Validar Documento</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleInputChange('documentStatus', 'rechazado');
-                      handleInputChange(
-                        'documentNotes',
-                        'Documento observado / no legible. Solicitar nuevo documento.'
-                      );
-                    }}
-                    className="px-3.5 py-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-300 font-bold text-xs border border-red-500/30 transition-colors flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <X className="w-4 h-4" />
-                    <span>Rechazar Documento</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Vista previa o carga de foto */}
-              <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
-                  Fotografía de DNI o Carnet de Estudios
-                </label>
-                {formData.documentUrl ? (
-                  <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/60 p-3 space-y-2">
-                    <img
-                      src={formData.documentUrl}
-                      alt="Documento del socio"
-                      className="w-full max-h-64 object-contain rounded-xl mx-auto"
-                    />
-                    <div className="flex items-center justify-between text-xs font-mono pt-1 border-t border-white/5">
-                      <span className="text-zinc-400">
-                        Tipo: <strong className="text-white">{formData.documentType || 'DNI / Carnet'}</strong>
-                      </span>
-                      <a
-                        href={formData.documentUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-amber-400 hover:text-amber-300 underline flex items-center gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Ver imagen ampliada</span>
-                      </a>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-6 rounded-2xl border-2 border-dashed border-white/10 bg-zinc-950/60 text-center font-mono">
-                    <p className="text-xs text-zinc-400 mb-2">No hay foto de documento cargada para este socio.</p>
-                    <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold cursor-pointer transition-colors">
-                      <Upload className="w-4 h-4 text-amber-400" />
-                      <span>Cargar foto del documento</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = (event) => {
-                              const dataUrl = event.target?.result as string;
-                              handleInputChange('documentUrl', dataUrl);
-                              handleInputChange('documentStatus', 'pendiente');
-                              handleInputChange(
-                                'documentType',
-                                formData.plan.toLowerCase().includes('escolar') ? 'dni_escolar' : 'carnet_estudiante'
-                              );
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono font-bold text-zinc-400 mb-1.5">
-                  Notas de Auditoría del Documento
-                </label>
-                <input
-                  type="text"
-                  value={formData.documentNotes || ''}
-                  onChange={(e) => handleInputChange('documentNotes', e.target.value)}
-                  placeholder="Ej: DNI 70447087 verificado edad 16 años / Carnet UNSCH ciclo 2026-I..."
-                  className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400 font-sans"
-                />
-              </div>
-            </div>
-          )}
+    <section className="space-y-3 text-sm leading-relaxed">
+      <h3 className="font-semibold text-white">Validación de documentos en recepción</h3>
+      <p className="text-zinc-300">Presenta el DNI, carnet de estudiante o constancia vigente en recepción para revisar la tarifa preferencial.</p>
+      <p className="text-zinc-400">La carga y aprobación digital de documentos no está habilitada. Las modificaciones de este formulario no confirman una validación documental.</p>
+    </section>
+  )}
 
           {/* Modal Footer */}
           <div className="pt-4 border-t border-white/10 flex items-center justify-end gap-3 font-mono text-xs">

@@ -1,113 +1,72 @@
 import { test, expect } from '@playwright/test';
 
-test.describe('Pruebas de Sistema E2E · Trankilandia Gym', () => {
-  test.beforeEach(async ({ page }) => {
-    // Limpiar almacenamiento antes de cada prueba para garantizar estado limpio y aislado
-    await page.goto('/');
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-    await page.reload();
+test.beforeEach(async ({ context, page }) => {
+  // UI tests cannot contact production services or real member accounts.
+  await context.route('**/*', (route) => {
+    const url = new URL(route.request().url());
+    return url.hostname === '127.0.0.1' ? route.continue() : route.abort();
   });
+  await page.goto('/');
+});
 
-  test('Flujo 1: Un socio registrado ingresa con su DNI y accede DIRECTAMENTE a su Carnet Digital sin formularios redundantes', async ({ page }) => {
-    await page.goto('/');
+test('public navigation reaches the actual pages', async ({ page }) => {
+  for (const [name, path] of [['Planes y precios', '/planes'], ['Horarios y clases', '/clases'], ['Instalaciones', '/instalaciones']]) {
+    await page.getByRole('link', { name, exact: true }).first().click();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(page.locator('h1')).toBeVisible();
+  }
+});
 
-    // 1. Abrir modal de inicio de sesión
-    const btnIniciarSesion = page.getByRole('button', { name: /INICIAR SESIÓN/i }).first();
-    await expect(btnIniciarSesion).toBeVisible();
-    await btnIniciarSesion.click();
+test('login keeps keyboard focus and preserves inputs on connection failure', async ({ page }) => {
+  const trigger = page.getByRole('button', { name: 'Iniciar sesión', exact: true });
+  await trigger.click();
+  const dialog = page.getByRole('dialog', { name: 'Portal de socios' });
+  const identity = dialog.getByLabel('DNI o correo registrado');
+  await expect(identity).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Shift+Tab');
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await identity.fill('00000001');
+  await dialog.getByLabel('Contraseña', { exact: true }).fill('local-test-only');
+  await dialog.getByRole('button', { name: 'Ingresar al portal' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('no está configurado');
+  await expect(identity).toHaveValue('00000001');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
 
-    // 2. Ingresar credenciales del socio oficial Betty Romero Gavilan (DNI 46410051)
-    const inputDni = page.locator('#login-dni');
-    await expect(inputDni).toBeVisible();
-    await inputDni.fill('46410051');
+test('courtesy pass prepares a request without claiming a reservation', async ({ page }) => {
+  await page.getByRole('button', { name: 'Solicitar pase de cortesía', exact: true }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'Solicita tu pase de cortesía' });
+  await dialog.getByLabel('Nombre completo').fill('Visita de prueba');
+  await dialog.getByLabel('WhatsApp o teléfono').fill('000000000');
+  await dialog.getByLabel('Correo electrónico').fill('prueba@example.invalid');
+  await dialog.getByRole('button', { name: 'Revisar solicitud' }).click();
+  const summary = page.getByRole('dialog', { name: 'Tu solicitud está preparada' });
+  await expect(summary).toContainText('Aún no está registrada ni confirmada');
+  await expect(summary.getByRole('link', { name: 'Enviar por WhatsApp' })).toHaveAttribute('href', /wa\.me/);
+  await summary.getByRole('button', { name: 'Editar solicitud' }).click();
+  await expect(page.getByLabel('Nombre completo')).toHaveValue('Visita de prueba');
+});
 
-    const inputPw = page.locator('#login-password');
-    await inputPw.fill('46410051');
+test('mobile navigation and login fit a narrow screen', async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.getByRole('button', { name: 'Abrir menú', exact: true }).click();
+  await page.getByRole('button', { name: 'Iniciar sesión', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Portal de socios' });
+  await expect(dialog).toBeVisible();
+  const box = await dialog.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(360);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
 
-    // 3. Enviar formulario
-    const btnIngresar = page.getByRole('button', { name: /INGRESAR AL PORTAL/i });
-    await btnIngresar.click();
-
-    // 4. Esperar redirección al Portal del Socio
-    await page.waitForURL('**/cliente');
-
-    // 5. VALIDACIÓN CRÍTICA: NO debe aparecer el formulario redundante "Genera tu Tarjeta de Ingreso"
-    const formRedundante = page.getByText(/Genera tu Tarjeta de Ingreso/i);
-    await expect(formRedundante).not.toBeVisible({ timeout: 5000 });
-
-    // 6. El carnet oficial debe estar visible con su nombre, DNI y QR
-    await expect(page.getByText(/Betty Romero Gavilan/i).first()).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(/46410051/).first()).toBeVisible();
-  });
-
-  test('Flujo 2: Un DNI no registrado rechaza el acceso y muestra orientación para recepción con WhatsApp', async ({ page }) => {
-    await page.goto('/');
-
-    // Abrir login
-    await page.getByRole('button', { name: /INICIAR SESIÓN/i }).first().click();
-
-    // Ingresar DNI inexistente
-    await page.locator('#login-dni').fill('99999999');
-    await page.locator('#login-password').fill('99999999');
-    await page.getByRole('button', { name: /INGRESAR AL PORTAL/i }).click();
-
-    // Debe permanecer en el modal y mostrar el mensaje de rechazo de seguridad
-    await expect(page.getByText(/no pertenece a ningún socio registrado|no pertenece a ningún cliente/i)).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('button', { name: /Contactar a Recepción por WhatsApp/i })).toBeVisible();
-  });
-
-  test('Flujo 3: Módulo de Recepción (Caja) opera en vivo con buscador rápido de atletas', async ({ page }) => {
-    // Iniciar como administradora Marisol Flores
-    await page.goto('/');
-    await page.getByRole('button', { name: /INICIAR SESIÓN/i }).first().click();
-
-    // Clic en botón de acceso rápido Marisol Flores
-    const btnMarisol = page.getByRole('button', { name: /Marisol Flores/i });
-    await expect(btnMarisol).toBeVisible();
-    await btnMarisol.click();
-
-    // Navegar directamente a la terminal de Caja
-    await page.goto('/caja');
-
-    // Validar encabezado de recepción
-    await expect(page.getByText(/Recepción & Caja/i)).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(/1\. MARCAR INGRESO/i)).toBeVisible();
-
-    // Validar buscador rápido de atletas
-    const searchInput = page.getByPlaceholder(/ESCANEE? EL CARNET/i);
-    await expect(searchInput).toBeVisible();
-    await searchInput.fill('Betty Romero Gavilan');
-    await searchInput.press('Enter');
-
-    // Debe mostrar la tarjeta de estado con el nombre del atleta
-    await expect(page.getByText(/Betty Romero Gavilan/i).first()).toBeVisible({ timeout: 5000 });
-  });
-
-  test('Flujo 4: Módulo de Administración muestra el Padrón Oficial con exactamente 417 socios', async ({ page }) => {
-    await page.goto('/');
-    await page.getByRole('button', { name: /INICIAR SESIÓN/i }).first().click();
-
-    // Clic en botón de acceso rápido Luis Lloclla
-    const btnLuis = page.getByRole('button', { name: /Luis Lloclla/i });
-    await expect(btnLuis).toBeVisible();
-    await btnLuis.click();
-
-    // Navegar al Admin Dashboard
-    await page.goto('/admin');
-
-    // Validar encabezado del administrador
-    await expect(page.getByText(/Control de Recaudación, Padrón de Socios y Tarifas Oficiales/i)).toBeVisible({ timeout: 8000 });
-
-    // Validar que el padrón indica los socios oficiales
-    await expect(page.getByText(/Padrón \(\d+\)/i).first()).toBeVisible({ timeout: 8000 });
-
-    // Validar secciones de control de tarifas
-    const btnTarifas = page.getByRole('button', { name: /Planes & Tarifas/i });
-    await expect(btnTarifas).toBeVisible();
-    await btnTarifas.click();
-    await expect(page.getByText(/Planes de Membresía & Tarifas Oficiales/i)).toBeVisible();
-  });
+test('staff terminal requires a server account before PIN access', async ({ page }) => {
+  await page.goto('/hub');
+  await expect(page.getByLabel('Correo de personal')).toBeVisible();
+  await expect(page.getByLabel('Contraseña', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continuar', exact: true })).toBeVisible();
+  await expect(page.getByText('Supabase Conectado', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('PIN incorrecto')).toHaveCount(0);
 });

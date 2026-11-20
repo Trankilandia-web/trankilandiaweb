@@ -37,6 +37,16 @@ export default function GymMegaphoneControl() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const animFrameRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    window.addEventListener('blur', stopMicrophone);
+    window.addEventListener('pagehide', stopMicrophone);
+    return () => {
+      window.removeEventListener('blur', stopMicrophone);
+      window.removeEventListener('pagehide', stopMicrophone);
+      stopMicrophone();
+    };
+  }, []);
+
   // Escucha de eventos de cambio de estado del micrófono
   useEffect(() => {
     const handleMicStateChange = (e: any) => {
@@ -179,6 +189,8 @@ export default function GymMegaphoneControl() {
         <button
           type="button"
           onClick={handleToggleClick}
+          aria-pressed={isActive}
+          aria-label={isActive ? 'Apagar micrófono en vivo' : 'Activar micrófono'}
           className={`flex items-center gap-2 px-3 py-1.5 rounded-l-xl text-xs font-bold transition-all cursor-pointer shadow-sm border ${
             isActive
               ? 'bg-red-600 hover:bg-red-700 text-white border-red-500 animate-pulse shadow-[0_0_14px_rgba(239,68,68,0.6)]'
@@ -223,6 +235,8 @@ export default function GymMegaphoneControl() {
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
+          aria-label="Ajustes del micrófono"
+          aria-expanded={isOpen}
           className={`px-2 py-1.5 rounded-r-xl border-y border-r text-xs transition-colors cursor-pointer ${
             isActive
               ? 'bg-red-700 hover:bg-red-800 text-white border-red-500'
@@ -236,7 +250,7 @@ export default function GymMegaphoneControl() {
 
       {/* Popover Desplegable de Control Completo */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-80 sm:w-88 rounded-2xl bg-zinc-900/95 border border-white/10 shadow-2xl backdrop-blur-xl p-4 z-50 text-white animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] sm:w-88 rounded-2xl bg-zinc-900 border border-white/10 shadow-xl p-4 z-50 text-white">
           {/* Cabecera del Panel */}
           <div className="flex items-center justify-between pb-3 border-b border-white/10">
             <div className="flex items-center gap-2">
@@ -252,7 +266,7 @@ export default function GymMegaphoneControl() {
                   Megafono / Perifoneo
                 </h3>
                 <p className="text-[10px] text-zinc-400 font-mono">
-                  Salida: Parlante Bluetooth Local
+                  Salida de audio del sistema
                 </p>
               </div>
             </div>
@@ -356,11 +370,28 @@ export default function GymMegaphoneControl() {
             ) : (
               <button
                 type="button"
-                onMouseDown={handlePTTDown}
-                onMouseUp={handlePTTUp}
-                onMouseLeave={handlePTTUp}
-                onTouchStart={handlePTTDown}
-                onTouchEnd={handlePTTUp}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture?.(event.pointerId);
+                  void handlePTTDown();
+                }}
+                onPointerUp={handlePTTUp}
+                onPointerCancel={handlePTTUp}
+                onLostPointerCapture={handlePTTUp}
+                onKeyDown={(event) => {
+                  if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+                    event.preventDefault();
+                    void handlePTTDown();
+                  }
+                }}
+                onKeyUp={(event) => {
+                  if (event.key === ' ' || event.key === 'Enter') {
+                    event.preventDefault();
+                    handlePTTUp();
+                  }
+                }}
+                onBlur={handlePTTUp}
+                aria-pressed={isActive}
+                style={{ touchAction: 'none' }}
                 className={`w-full py-3 px-4 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer select-none shadow-md ${
                   isActive
                     ? 'bg-red-600 text-white border border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.7)]'
@@ -417,6 +448,7 @@ export default function GymMegaphoneControl() {
 
             <input
               type="range"
+              aria-label="Ganancia del micrófono"
               min="0.5"
               max="2.5"
               step="0.05"

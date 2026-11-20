@@ -50,7 +50,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
   };
 
   return (
-    <div className="flex flex-col min-h-screen w-full max-w-full overflow-x-hidden selection:bg-amber-400 selection:text-black">
+    <div className="public-page flex flex-col min-h-screen w-full max-w-full overflow-x-hidden selection:bg-amber-400 selection:text-black">
       {/* 1. Hero */}
       <Hero onOpenTourModal={onOpenTourModal} />
 
@@ -72,7 +72,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
             <motion.div
               whileHover={{ y: -2 }}
               transition={{ duration: 0.2 }}
-              className="rounded-2xl bg-zinc-900/70 border border-white/10 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 backdrop-blur-sm hover:border-amber-400/30 transition-colors"
+              className="rounded-2xl bg-zinc-900/70 border border-white/10 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6 hover:border-amber-400/30 transition-colors"
             >
               <div className="flex items-center gap-4 text-center md:text-left">
                 <div className="hidden sm:flex w-12 h-12 rounded-xl bg-amber-400/10 border border-amber-400/25 items-center justify-center text-amber-400 shrink-0">
@@ -110,10 +110,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col lg:flex-row lg:items-end justify-between mb-12 gap-6">
             <div>
-              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                MEMBRESÍAS &amp; PLANES
-              </span>
-              <h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
+<h2 className="text-3xl sm:text-5xl font-black uppercase tracking-tight text-white">
                 ELIGE TU COMPROMISO.
               </h2>
               <p className="mt-3 text-zinc-400 text-base max-w-xl font-sans">
@@ -141,6 +138,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
                       key={p.id}
                       type="button"
                       onClick={() => setSelectedPeriod(p.id)}
+                      aria-pressed={isSelected}
                       className={`relative px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-colors cursor-pointer z-10 ${
                         isSelected ? 'text-black' : 'text-zinc-400 hover:text-white'
                       }`}
@@ -170,7 +168,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
                   key={plan.id}
                   whileHover={{ y: -6 }}
                   transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-                  className={`rounded-3xl p-8 flex flex-col justify-between transition-colors relative ${
+                  className={`rounded-2xl p-6 flex flex-col justify-between transition-colors relative ${
                     plan.isPopular
                       ? 'bg-zinc-900 border-2 border-amber-400 shadow-2xl shadow-amber-400/10'
                       : 'bg-zinc-900/60 border border-white/10 hover:border-white/20'
@@ -247,7 +245,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
           </div>
 
           {/* High-Converting Courtesy Pass Interceptor */}
-          <div className="mt-12 rounded-3xl bg-gradient-to-r from-amber-400/15 via-zinc-900 to-zinc-900 border border-amber-400/35 p-6 sm:p-8 flex flex-col lg:flex-row items-center justify-between gap-6 shadow-2xl">
+          <div className="mt-12 rounded-2xl bg-gradient-to-r from-amber-400/15 via-zinc-900 to-zinc-900 border border-amber-400/35 p-6 sm:p-8 flex flex-col lg:flex-row items-center justify-between gap-6 shadow-2xl">
             <div className="flex items-center gap-5">
               <div className="w-14 h-14 rounded-2xl bg-amber-400 text-black flex items-center justify-center shrink-0 shadow-lg shadow-amber-400/20">
                 <Ticket className="w-7 h-7" />
@@ -278,7 +276,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
           </div>
 
           {/* Boxing Additional Activity Callout */}
-          <div className="mt-12 rounded-3xl bg-zinc-900/80 border border-amber-400/30 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+          <div className="mt-12 rounded-2xl bg-zinc-900/80 border border-amber-400/30 p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
                 <Zap className="w-6 h-6" />
@@ -314,10 +312,7 @@ export default function HomePage({ onOpenTourModal }: HomePageProps = {}): React
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             <div className="lg:col-span-8">
-              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-400 block mb-2">
-                NUESTRAS INSTALACIONES
-              </span>
-              <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight">
                 Espacios Diseñados para Exigirte y Cuidarte
               </h2>
               <p className="text-zinc-400 text-sm sm:text-base mt-3 max-w-2xl leading-relaxed font-sans">

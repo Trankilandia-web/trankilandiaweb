@@ -1,14 +1,3 @@
-/**
- * TRANKILANDIA GYM · SISTEMA DE PERSONAL Y AUTENTICACIÓN SEGURA EN SUPABASE
- * ==============================================================================
- * Autenticación criptográfica segura en la nube (PostgreSQL + pgcrypto bcrypt).
- * - Los PINs nunca se exponen al cliente ni se almacenan en texto plano en la BD.
- * - Validación por RPC verificar_pin_personal con bloqueo por fuerza bruta (5 intentos).
- * - Sanitización de cachés legacy con credenciales en texto plano.
- * - Arquitectura Local-First con alta disponibilidad ante latencias o fallos de red.
- * ==============================================================================
- */
-
 import { supabase, isSupabaseConfigured } from './supabase';
 
 export interface StaffUser {
@@ -16,6 +5,7 @@ export interface StaffUser {
   nombre: string;
   rol: 'admin' | 'cajero';
   turno: 'manana' | 'tarde' | 'noche' | 'completo';
+  /** @deprecated Input compatibility only. Never returned or cached. */
   pin?: string;
   avatarColor: string;
   iniciales: string;
@@ -23,528 +13,139 @@ export interface StaffUser {
   telefono?: string;
   createdAt: string;
 }
+const CACHE_KEY = 'trankilandia_staff_profiles_v4';
+let activeStaff: StaffUser | null = null;
+let verifiedStaff: { profile: StaffUser; authUserId: string } | null = null;
 
-const STORAGE_KEY_STAFF_PUBLIC_CACHE = 'trankilandia_staff_profiles_v4';
-const STORAGE_KEY_LEGACY_CACHE = 'trankilandia_staff_verified_v3';
-const STORAGE_KEY_ACTIVE_STAFF = 'trankilandia_staff_active_session_v4';
-
-/**
- * Limpia de inmediato las claves de versiones legacy que contenían PINs en texto plano.
- */
-export function clearLegacyStaffCache(): void {
-  try {
-    localStorage.removeItem('trankilandia_staff_verified_v3');
-    localStorage.removeItem('trankilandia_staff_active_session_v3');
-    localStorage.removeItem('trankilandia_staff_profiles_v3');
-  } catch {}
-}
-
-// Ejecutar limpieza preventiva al importar el módulo
-clearLegacyStaffCache();
-
-/**
- * Consulta en tiempo real las cuentas de personal autorizadas en Supabase Cloud.
- * Solo recupera columnas no confidenciales autorizadas por la política de RLS.
- */
-export async function fetchStaffFromSupabase(): Promise<{
-  configured: boolean;
-  users: StaffUser[];
-  error?: string;
-}> {
-  if (!isSupabaseConfigured()) {
-    return {
-      configured: false,
-      users: [],
-      error: 'Supabase Cloud no está configurado en las variables de entorno.',
-    };
-  }
-
-  try {
-    const { data, error } = await supabase
-      .from('personal')
-      .select('id, nombre, rol, turno, pin, avatar_color, iniciales, telefono, activo, created_at')
-      .eq('activo', true)
-      .order('created_at', { ascending: true });
-
-    if (error) {
-      return {
-        configured: false,
-        users: [],
-        error: `Error al consultar personal en Supabase (${error.message}). Es necesario ejecutar la migración SQL segura.`,
-      };
-    }
-
-    if (!data || data.length === 0) {
-      return {
-        configured: false,
-        users: [],
-        error: 'No se encontraron cuentas de personal registradas en Supabase.',
-      };
-    }
-
-    const mapped: StaffUser[] = data.map((d: any) => ({
-      id: d.id,
-      nombre: d.nombre,
-      rol: d.rol,
-      turno: d.turno,
-      pin: d.pin || undefined,
-      avatarColor: d.avatar_color || 'from-amber-400 to-amber-600 text-black',
-      iniciales: d.iniciales || d.nombre.slice(0, 2).toUpperCase(),
-      activo: d.activo !== false,
-      telefono: d.telefono,
-      createdAt: d.created_at,
-    }));
-
-    // Deduplicación preventiva por nombre para proteger la interfaz de usuario contra filas duplicadas
-    const uniqueMap = new Map<string, StaffUser>();
-    const duplicateIdsToRemove: string[] = [];
-    for (const u of mapped) {
-      const key = u.nombre.trim().toLowerCase();
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, u);
-      } else {
-        const existing = uniqueMap.get(key)!;
-        if (!existing.pin && u.pin) {
-          duplicateIdsToRemove.push(existing.id);
-          uniqueMap.set(key, u);
-        } else {
-          duplicateIdsToRemove.push(u.id);
-        }
-      }
-    }
-    const uniqueUsers = Array.from(uniqueMap.values());
-
-    // Auto-depuración en segundo plano en Supabase si se detectaron duplicados físicos
-    if (duplicateIdsToRemove.length > 0) {
-      supabase
-        .from('personal')
-        .delete()
-        .in('id', duplicateIdsToRemove)
-        .then(({ error: purgeErr }) => {
-          if (purgeErr) {
-            console.warn('[fetchStaffFromSupabase] Error depurando duplicados:', purgeErr.message);
-          } else {
-            console.log(`[fetchStaffFromSupabase] ${duplicateIdsToRemove.length} duplicados depurados de Supabase.`);
-          }
-        });
-    }
-
-    // Almacenar caché local sincronizada
-    localStorage.setItem(STORAGE_KEY_STAFF_PUBLIC_CACHE, JSON.stringify(uniqueUsers));
-    clearLegacyStaffCache();
-
-    return {
-      configured: true,
-      users: uniqueUsers,
-    };
-  } catch (err: any) {
-    return {
-      configured: false,
-      users: [],
-      error: err.message || 'Error de conexión con Supabase Cloud.',
-    };
-  }
-}
-
-/**
- * Obtiene la lista actual de perfiles de personal.
- */
-export function getStaffList(): StaffUser[] {
-  try {
-    const raw =
-      localStorage.getItem(STORAGE_KEY_STAFF_PUBLIC_CACHE) ||
-      localStorage.getItem(STORAGE_KEY_LEGACY_CACHE);
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch {}
-  return [];
-}
-
-/**
- * Valida de forma criptográfica y segura el PIN contra Supabase Cloud mediante RPC.
- * Protegido contra fuerza bruta (máximo 5 intentos antes de bloqueo por 15 minutos).
- */
-export async function verifyStaffPin(
-  staffId: string,
-  enteredPin: string
-): Promise<{
-  success: boolean;
-  user?: StaffUser;
-  error?: string;
-  locked?: boolean;
-  remainingAttempts?: number;
-}> {
-  if (!/^\d{4}$/.test(enteredPin)) {
-    return { success: false, error: 'El PIN debe contener exactamente 4 dígitos numéricos.' };
-  }
-
-  if (isSupabaseConfigured()) {
-    try {
-      const { data, error } = await supabase.rpc('verificar_pin_personal', {
-        p_id: staffId,
-        p_pin: enteredPin,
-      });
-
-      if (!error && data) {
-        if (!data.success) {
-          return {
-            success: false,
-            locked: data?.locked || false,
-            remainingAttempts: data?.intentos_restantes,
-            error: data?.error || 'PIN incorrecto o cuenta no autorizada en la base de datos.',
-          };
-        }
-
-        const raw = data.user;
-        const user: StaffUser = {
-          id: raw.id,
-          nombre: raw.nombre,
-          rol: raw.rol,
-          turno: raw.turno,
-          pin: enteredPin,
-          avatarColor: raw.avatarColor || 'from-amber-400 to-amber-600 text-black',
-          iniciales: raw.iniciales || raw.nombre.slice(0, 2).toUpperCase(),
-          activo: raw.activo !== false,
-          telefono: raw.telefono,
-          createdAt: raw.createdAt || new Date().toISOString(),
-        };
-
-        setActiveStaffSession(user);
-        return { success: true, user };
-      }
-    } catch {}
-  }
-
-  // Fallback para entornos de pruebas locales o modo offline
-  const current = getStaffList();
-  const match = current.find((u) => u.id === staffId);
-  if (match && (!match.pin || match.pin === enteredPin)) {
-    setActiveStaffSession({ ...match, pin: enteredPin });
-    return { success: true, user: { ...match, pin: enteredPin } };
-  }
-  return { success: false, error: 'PIN incorrecto.' };
-}
-
-/**
- * Valida de forma segura si un PIN de 4 dígitos corresponde a cualquier administrador activo
- * (ej. Marisol con 1234 o Luis con 2026).
- */
-export async function verifyAnyAdminPin(enteredPin: string): Promise<{
-  authorized: boolean;
-  admin?: StaffUser;
-  error?: string;
-}> {
-  if (!/^\d{4}$/.test(enteredPin)) {
-    return { authorized: false, error: 'El PIN de administrador debe contener exactamente 4 dígitos numéricos.' };
-  }
-
-  // 1. Validar si la sesión activa ya es de un administrador con ese PIN
-  const active = getActiveStaffSession();
-  if (active && active.rol === 'admin' && active.pin === enteredPin) {
-    return { authorized: true, admin: active };
-  }
-
-  // 2. Obtener lista de personal (local y de Supabase)
-  let staff = getStaffList();
-  if (staff.length === 0) {
-    const res = await fetchStaffFromSupabase();
-    if (res.configured && res.users.length > 0) {
-      staff = res.users;
-    }
-  }
-
-  const admins = staff.filter((u) => u.rol === 'admin' && u.activo);
-
-  // Probar coincidencia directa con PIN visible en administradores
-  for (const admin of admins) {
-    if (admin.pin && admin.pin === enteredPin) {
-      return { authorized: true, admin };
-    }
-  }
-
-  // Probar mediante RPC criptográfica verificar_pin_personal
-  for (const admin of admins) {
-    try {
-      const vRes = await verifyStaffPin(admin.id, enteredPin);
-      if (vRes.success && vRes.user) {
-        return { authorized: true, admin: vRes.user };
-      }
-    } catch {}
-  }
-
+function publicProfile(row: Record<string, any>): StaffUser {
   return {
-    authorized: false,
-    error: 'PIN de administrador no reconocido. Ingrese el PIN de Marisol o Luis.',
+    id: row.id, nombre: row.nombre, rol: row.rol, turno: row.turno,
+    avatarColor: row.avatarColor || row.avatar_color || 'from-amber-400 to-amber-600 text-black',
+    iniciales: row.iniciales || row.nombre?.slice(0, 2).toUpperCase() || '',
+    activo: row.activo === true, telefono: row.telefono,
+    createdAt: row.createdAt || row.created_at || '',
   };
 }
+export function clearLegacyStaffCache(): void {
+  for (const key of ['trankilandia_staff_verified_v3', 'trankilandia_staff_active_session_v3', 'trankilandia_staff_profiles_v3', 'trankilandia_staff_active_session_v4']) {
+    try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch { /* Optional storage. */ }
+  }
+}
+clearLegacyStaffCache();
+// Older v4 builds also cached cleartext PINs; discard that cache once on load.
+try { localStorage.removeItem(CACHE_KEY); } catch { /* Optional storage. */ }
 
-/**
- * Guarda un nuevo colaborador directamente en Supabase Cloud.
- * Requiere autorización de un administrador activo (Marisol o Luis).
- */
+export async function fetchStaffFromSupabase(): Promise<{ configured: boolean; users: StaffUser[]; error?: string }> {
+  if (!isSupabaseConfigured()) return { configured: false, users: [], error: 'El servicio de autenticación no está configurado.' };
+  try {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) return { configured: false, users: [], error: 'Inicia sesión con tu correo y contraseña de personal antes de seleccionar tu perfil.' };
+    const { data, error } = await supabase.from('personal')
+      .select('id, nombre, rol, turno, avatar_color, iniciales, telefono, activo, created_at')
+      .eq('activo', true).order('created_at', { ascending: true });
+    if (error) return { configured: false, users: [], error: 'No se pudo consultar el personal autorizado. Revisa la conexión y la configuración del servidor.' };
+    const users = (data || []).map(publicProfile);
+    clearLegacyStaffCache();
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify(users)); } catch { /* Display cache is optional. */ }
+    return { configured: true, users, error: users.length ? undefined : 'Tu cuenta aún no tiene un perfil de personal vinculado. Solicita la vinculación a gerencia.' };
+  } catch {
+    return { configured: false, users: [], error: 'No se pudo conectar con el servidor.' };
+  }
+}
+
+/** Display cache only; it never grants permissions. */
+export function getStaffList(): StaffUser[] {
+  clearLegacyStaffCache();
+  try {
+    const rows = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]');
+    if (!Array.isArray(rows)) return [];
+    const users = rows.filter((row) => row && typeof row.id === 'string' && typeof row.nombre === 'string').map(publicProfile);
+    localStorage.setItem(CACHE_KEY, JSON.stringify(users));
+    return users;
+  } catch { return []; }
+}
+
+export function isVerifiedStaffSession(staff: StaffUser, authUserId: string): boolean {
+  return !!verifiedStaff && verifiedStaff.authUserId === authUserId && verifiedStaff.profile.id === staff.id && verifiedStaff.profile.rol === staff.rol;
+}
+
+export async function verifyStaffPin(staffId: string, enteredPin: string): Promise<{
+  success: boolean; user?: StaffUser; error?: string; locked?: boolean; remainingAttempts?: number;
+}> {
+  if (!/^\d{4}$/.test(enteredPin)) return { success: false, error: 'El PIN debe contener exactamente 4 dígitos numéricos.' };
+  if (!isSupabaseConfigured()) return { success: false, error: 'El servicio de autenticación no está configurado.' };
+  try {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) return { success: false, error: 'Inicia sesión con tu correo y contraseña de personal.' };
+    const { data, error } = await supabase.rpc('verificar_pin_personal', { p_id: staffId, p_pin: enteredPin });
+    if (error || !data) return { success: false, error: 'No se pudo verificar el PIN en el servidor. Reintenta cuando haya conexión.' };
+    if (!data.success) return { success: false, locked: data.locked === true, remainingAttempts: data.intentos_restantes, error: data.error || 'PIN incorrecto o perfil no autorizado.' };
+    if (data.auth_user_id !== authData.user.id || data.user?.id !== staffId || data.user?.activo !== true || !['admin', 'cajero'].includes(data.user?.rol)) {
+      return { success: false, error: 'El perfil no está vinculado a esta sesión. Inicia sesión con la cuenta de la persona que está en turno.' };
+    }
+    const user = publicProfile(data.user);
+    verifiedStaff = { profile: { ...user }, authUserId: authData.user.id };
+    setActiveStaffSession(user);
+    return { success: true, user };
+  } catch { return { success: false, error: 'No se pudo verificar el PIN. Revisa tu conexión.' }; }
+}
+
+export async function verifyAnyAdminPin(enteredPin: string): Promise<{ authorized: boolean; admin?: StaffUser; error?: string }> {
+  const result = await fetchStaffFromSupabase();
+  for (const staff of result.users.filter((user) => user.rol === 'admin')) {
+    const check = await verifyStaffPin(staff.id, enteredPin);
+    if (check.success && check.user?.rol === 'admin') return { authorized: true, admin: check.user };
+  }
+  return { authorized: false, error: 'Se requiere sesión y PIN de un administrador autorizado.' };
+}
+
 export async function saveStaffUser(
   user: Omit<StaffUser, 'id' | 'createdAt' | 'iniciales'> & { pin: string },
   adminAuth?: { adminId?: string; adminPin?: string }
 ): Promise<{ success: boolean; user?: StaffUser; error?: string }> {
-  if (!/^\d{4}$/.test(user.pin)) {
-    return { success: false, error: 'El PIN de acceso debe tener exactamente 4 dígitos numéricos.' };
-  }
-
-  if (!adminAuth || !adminAuth.adminPin) {
-    return {
-      success: false,
-      error: 'Se requiere autorización de administrador para registrar colaboradores.',
-    };
-  }
-
+  if (!/^\d{4}$/.test(user.pin)) return { success: false, error: 'El PIN debe contener exactamente 4 dígitos numéricos.' };
+  if (!adminAuth?.adminPin) return { success: false, error: 'Se requiere autorización de administrador para registrar colaboradores.' };
   const check = await verifyAnyAdminPin(adminAuth.adminPin);
-  if (!check.authorized) {
-    return { success: false, error: check.error || 'Autorización de administrador rechazada.' };
-  }
-
-  const id = `staff-${Date.now().toString(36)}`;
-  const iniciales =
-    user.nombre
-      .split(' ')
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((w) => w[0].toUpperCase())
-      .join('') || user.nombre.slice(0, 2).toUpperCase();
-
-  const newUser: StaffUser = {
-    id,
-    nombre: user.nombre.trim(),
-    rol: user.rol,
-    turno: user.turno,
-    pin: user.pin,
-    avatarColor:
-      user.avatarColor ||
-      (user.rol === 'admin'
-        ? 'from-purple-500 to-indigo-600 text-white'
-        : 'from-emerald-400 to-teal-600 text-black'),
-    iniciales,
-    telefono: user.telefono,
-    activo: true,
-    createdAt: new Date().toISOString(),
-  };
-
-  if (isSupabaseConfigured()) {
-    try {
-      // 1. Evitar duplicados por nombre consultando todos los registros
-      const { data: existingRows } = await supabase
-        .from('personal')
-        .select('id, nombre, activo')
-        .ilike('nombre', user.nombre.trim());
-
-      const activeExisting = existingRows?.find(
-        (r: any) =>
-          r.activo !== false &&
-          r.nombre.trim().toLowerCase() === user.nombre.trim().toLowerCase()
-      );
-
-      if (activeExisting) {
-        return {
-          success: false,
-          error: `Ya existe un colaborador registrado con el nombre "${user.nombre.trim()}". Si deseas actualizar sus datos o PIN, puedes gestionarlo desde el Panel de Administración.`,
-        };
-      }
-
-      // 2. Limpiar registros huérfanos o duplicados previos con el mismo nombre
-      await supabase
-        .from('personal')
-        .delete()
-        .ilike('nombre', user.nombre.trim());
-
-      const { error: insertError } = await supabase.from('personal').insert({
-        id,
-        nombre: newUser.nombre,
-        rol: newUser.rol,
-        turno: newUser.turno,
-        pin: newUser.pin,
-        avatar_color: newUser.avatarColor,
-        iniciales: newUser.iniciales,
-        telefono: newUser.telefono || null,
-        activo: true,
-        created_at: newUser.createdAt,
-        updated_at: newUser.createdAt,
-      });
-
-      if (insertError) {
-        console.error('Error insertando personal en Supabase:', insertError);
-        return { success: false, error: `Error en base de datos: ${insertError.message}` };
-      }
-
-      await fetchStaffFromSupabase();
-      return { success: true, user: newUser };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Error de comunicación con Supabase.' };
-    }
-  }
-
-  const current = getStaffList();
-  const updated = [...current, newUser];
-  localStorage.setItem(STORAGE_KEY_STAFF_PUBLIC_CACHE, JSON.stringify(updated));
-  return { success: true, user: newUser };
+  if (!check.authorized || !check.admin) return { success: false, error: check.error };
+  try {
+    const { data, error } = await supabase.rpc('crear_personal_seguro', {
+      p_admin_id: check.admin.id, p_admin_pin: adminAuth.adminPin,
+      p_id: `staff-${crypto.randomUUID()}`, p_nombre: user.nombre.trim(), p_rol: user.rol,
+      p_turno: user.turno, p_pin: user.pin, p_avatar_color: user.avatarColor, p_telefono: user.telefono || null,
+    });
+    if (error || !data?.success || !data.user) return { success: false, error: data?.error || 'El servidor rechazó el registro.' };
+    await fetchStaffFromSupabase();
+    return { success: true, user: publicProfile(data.user) };
+  } catch { return { success: false, error: 'No se pudo registrar el colaborador.' }; }
 }
 
-/**
- * Actualiza el PIN de un colaborador en Supabase Cloud.
- * Requiere autorización de un administrador activo (Marisol o Luis).
- */
-export async function updateStaffPin(
-  staffId: string,
-  newPin: string,
-  adminAuth?: { adminId?: string; adminPin?: string }
-): Promise<{ success: boolean; error?: string }> {
-  if (!/^\d{4}$/.test(newPin)) {
-    return { success: false, error: 'El PIN debe contener exactamente 4 dígitos numéricos.' };
-  }
-
-  if (!adminAuth || !adminAuth.adminPin) {
-    return {
-      success: false,
-      error: 'Se requiere autorización de administrador para actualizar el PIN.',
-    };
-  }
-
+export async function updateStaffPin(staffId: string, newPin: string, adminAuth?: { adminId?: string; adminPin?: string }): Promise<{ success: boolean; error?: string }> {
+  if (!/^\d{4}$/.test(newPin)) return { success: false, error: 'El PIN debe contener exactamente 4 dígitos numéricos.' };
+  if (!adminAuth?.adminPin) return { success: false, error: 'Se requiere autorización de administrador para actualizar el PIN.' };
   const check = await verifyAnyAdminPin(adminAuth.adminPin);
-  if (!check.authorized) {
-    return { success: false, error: check.error || 'PIN de administrador incorrecto.' };
-  }
-
-  if (isSupabaseConfigured()) {
-    try {
-      const { error } = await supabase
-        .from('personal')
-        .update({
-          pin: newPin,
-          pin_hash: null, // Fuerza a verificar_pin_personal a hashearlo con bcrypt al ingresar
-          intentos_fallidos: 0,
-          bloqueado_hasta: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', staffId);
-
-      if (error) {
-        console.error('Error actualizando PIN en Supabase:', error);
-        return { success: false, error: `Error en base de datos: ${error.message}` };
-      }
-
-      await fetchStaffFromSupabase();
-      return { success: true };
-    } catch (err: any) {
-      return { success: false, error: err?.message || 'Error de conexión con Supabase.' };
-    }
-  }
-
-  const current = getStaffList();
-  const updated = current.map((u) => (u.id === staffId ? { ...u, pin: newPin } : u));
-  localStorage.setItem(STORAGE_KEY_STAFF_PUBLIC_CACHE, JSON.stringify(updated));
-  return { success: true };
+  if (!check.authorized || !check.admin) return { success: false, error: check.error };
+  try {
+    const { data, error } = await supabase.rpc('actualizar_pin_personal', { p_admin_id: check.admin.id, p_admin_pin: adminAuth.adminPin, p_target_id: staffId, p_nuevo_pin: newPin });
+    return error || !data?.success ? { success: false, error: data?.error || 'El servidor rechazó el cambio de PIN.' } : { success: true };
+  } catch { return { success: false, error: 'No se pudo actualizar el PIN.' }; }
 }
 
-/**
- * Elimina definitivamente a un colaborador en Supabase Cloud y memoria local.
- */
 export async function deleteStaffUser(staffId: string): Promise<boolean> {
-  if (staffId === 'staff-marisol' || staffId === 'staff-luis') return false;
-
-  let targetName: string | undefined;
-
-  if (isSupabaseConfigured()) {
-    try {
-      // 1. Obtener datos del colaborador para limpiar cualquier duplicado con el mismo nombre
-      const { data: target } = await supabase
-        .from('personal')
-        .select('id, nombre')
-        .eq('id', staffId)
-        .maybeSingle();
-
-      targetName = target?.nombre?.trim();
-
-      // 2. Borrado físico definitivo en Supabase por ID
-      const { error: delErr } = await supabase
-        .from('personal')
-        .delete()
-        .eq('id', staffId);
-
-      // Si hay duplicados con el mismo nombre en la base de datos, purgarlos de forma unificada
-      if (
-        targetName &&
-        targetName.toLowerCase() !== 'marisol' &&
-        targetName.toLowerCase() !== 'luis lloclla'
-      ) {
-        await supabase
-          .from('personal')
-          .delete()
-          .ilike('nombre', targetName);
-      }
-
-      // Si por alguna razón RLS deniega DELETE físico, aplicar desactivación masiva
-      if (delErr) {
-        console.warn('[deleteStaffUser] Error en delete físico, aplicando desactivación:', delErr.message);
-        await supabase
-          .from('personal')
-          .update({
-            activo: false,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', staffId);
-
-        if (
-          targetName &&
-          targetName.toLowerCase() !== 'marisol' &&
-          targetName.toLowerCase() !== 'luis lloclla'
-        ) {
-          await supabase
-            .from('personal')
-            .update({
-              activo: false,
-              updated_at: new Date().toISOString(),
-            })
-            .ilike('nombre', targetName);
-        }
-      }
-    } catch (err: any) {
-      console.warn('[deleteStaffUser] Excepción al eliminar en Supabase:', err?.message || err);
-    }
-  }
-
-  // 3. Limpiar del almacenamiento local (por ID y por coincidencia de nombre)
-  const current = getStaffList();
-  const normalizedTargetName = targetName?.toLowerCase();
-  const updated = current.filter(
-    (u) =>
-      u.id !== staffId &&
-      (!normalizedTargetName || u.nombre.trim().toLowerCase() !== normalizedTargetName)
-  );
-  localStorage.setItem(STORAGE_KEY_STAFF_PUBLIC_CACHE, JSON.stringify(updated));
-  return true;
+  if (!isSupabaseConfigured()) return false;
+  try {
+    const { data, error } = await supabase.rpc('desactivar_personal_seguro', { p_id: staffId });
+    if (error || !data?.success) return false;
+    if (activeStaff?.id === staffId) setActiveStaffSession(null);
+    await fetchStaffFromSupabase();
+    return true;
+  } catch { return false; }
 }
 
 export function getActiveStaffSession(): StaffUser | null {
-  try {
-    const raw =
-      sessionStorage.getItem(STORAGE_KEY_ACTIVE_STAFF) ||
-      localStorage.getItem(STORAGE_KEY_ACTIVE_STAFF) ||
-      sessionStorage.getItem('trankilandia_staff_active_session_v3') ||
-      localStorage.getItem('trankilandia_staff_active_session_v3');
-    if (!raw) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return activeStaff ? { ...activeStaff } : null;
 }
-
 export function setActiveStaffSession(staff: StaffUser | null): void {
-  if (!staff) {
-    sessionStorage.removeItem(STORAGE_KEY_ACTIVE_STAFF);
-    localStorage.removeItem(STORAGE_KEY_ACTIVE_STAFF);
-    sessionStorage.removeItem('trankilandia_staff_active_session_v3');
-    localStorage.removeItem('trankilandia_staff_active_session_v3');
-  } else {
-    sessionStorage.setItem(STORAGE_KEY_ACTIVE_STAFF, JSON.stringify(staff));
-    localStorage.setItem(STORAGE_KEY_ACTIVE_STAFF, JSON.stringify(staff));
-  }
+  clearLegacyStaffCache();
+  if (!staff) { activeStaff = null; verifiedStaff = null; return; }
+  if (verifiedStaff?.profile.id === staff.id && verifiedStaff.profile.rol === staff.rol) activeStaff = publicProfile(staff);
 }

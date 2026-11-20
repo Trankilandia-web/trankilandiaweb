@@ -7,6 +7,7 @@ import {
   verifyStaffPin,
   saveStaffUser,
 } from '../../lib/staffStore';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 interface StaffSwitcherModalProps {
   isOpen: boolean;
@@ -33,6 +34,12 @@ export default function StaffSwitcherModal({
   const [newTurno, setNewTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
   const [newPin, setNewPin] = useState('');
   const [newAdminPin, setNewAdminPin] = useState('');
+  const closeSwitcher = () => {
+    if (selectedStaff) { setSelectedStaff(null); setPin(''); }
+    else onClose?.();
+  };
+  const dialogRef = useModalFocus(isOpen, closeSwitcher);
+  const addDialogRef = useModalFocus(isOpen && showAddModal, () => setShowAddModal(false));
 
   useEffect(() => {
     if (isOpen) {
@@ -50,7 +57,7 @@ export default function StaffSwitcherModal({
 
   // Soporte para escribir con el teclado físico
   useEffect(() => {
-    if (!isOpen || !selectedStaff) return;
+    if (!isOpen || !selectedStaff || showAddModal) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key >= '0' && e.key <= '9') {
@@ -65,7 +72,7 @@ export default function StaffSwitcherModal({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, selectedStaff, pin]);
+  }, [isOpen, selectedStaff, pin, showAddModal]);
 
   if (!isOpen) return null;
 
@@ -108,7 +115,7 @@ export default function StaffSwitcherModal({
     }
 
     if (!newAdminPin || newAdminPin.length !== 4) {
-      alert('Ingresa el PIN de un Administrador (Marisol: 1234 o Luis: 2026) para autorizar.');
+      alert('Ingresa el PIN de un administrador para autorizar el registro.');
       return;
     }
 
@@ -147,8 +154,8 @@ export default function StaffSwitcherModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in font-sans">
-      <div className="relative w-full max-w-xl bg-zinc-950 border border-amber-400/40 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-amber-400/10 text-white">
+    <div className="modal-backdrop font-sans">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="staff-switcher-title" tabIndex={-1} className="modal-panel max-w-xl">
         {/* Cabecera */}
         <div className="flex items-center justify-between pb-6 border-b border-white/10">
           <div className="flex items-center gap-3">
@@ -156,7 +163,7 @@ export default function StaffSwitcherModal({
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-black font-display tracking-tight text-white uppercase">
+              <h2 id="staff-switcher-title" className="text-xl font-bold font-display tracking-tight text-white">
                 {selectedStaff ? `Ingreso de ${selectedStaff.nombre}` : 'Cambio Rápido de Turno'}
               </h2>
               <p className="text-xs text-zinc-400 font-mono">
@@ -170,6 +177,7 @@ export default function StaffSwitcherModal({
             <button
               type="button"
               onClick={onClose}
+              aria-label="Cerrar cambio de turno"
               className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -337,13 +345,14 @@ export default function StaffSwitcherModal({
 
         {/* MODAL SECUNDARIO: AGREGAR NUEVO CAJERO */}
         {showAddModal && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/90">
-            <div className="w-full max-w-md bg-zinc-900 border border-white/20 rounded-3xl p-6 shadow-2xl">
+          <div className="modal-backdrop">
+            <div ref={addDialogRef} role="dialog" aria-modal="true" aria-labelledby="add-staff-title" tabIndex={-1} className="modal-panel max-w-md">
               <div className="flex items-center justify-between pb-4 border-b border-white/10 mb-4">
-                <h3 className="text-lg font-black text-white font-display uppercase">Nuevo Trabajador / Cajero</h3>
+                <h3 id="add-staff-title" className="text-lg font-bold text-white font-display">Nuevo trabajador o cajero</h3>
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
+                  aria-label="Cerrar registro de trabajador"
                   className="text-zinc-400 hover:text-white"
                 >
                   <X className="w-5 h-5" />

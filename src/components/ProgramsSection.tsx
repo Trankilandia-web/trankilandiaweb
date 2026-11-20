@@ -23,19 +23,12 @@ export default function ProgramsSection() {
   return (
     <section id="programas" className="py-24 bg-zinc-950 relative overflow-hidden">
       {/* Subtle ambient lighting */}
-      <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[350px] bg-amber-400/5 blur-[120px] rounded-full pointer-events-none"
-        aria-hidden="true"
-      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-14 pb-6 border-b border-white/10">
           <div>
-            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
-              DISCIPLINAS & METODOLOGÍA
-            </span>
-            <h2 className="text-3xl sm:text-5xl font-black tracking-tighter text-white uppercase leading-none">
+<h2 className="text-3xl sm:text-5xl font-black tracking-tight text-white uppercase leading-none">
               PROGRAMAS DE ALTO IMPACTO.
             </h2>
           </div>
@@ -66,7 +59,7 @@ export default function ProgramsSection() {
                   <div className="absolute inset-0 bg-gradient-to-t from-zinc-900 via-zinc-900/40 to-transparent" />
 
                   {/* Category Tag Badge */}
-                  <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-zinc-950/85 backdrop-blur-md border border-white/10 text-amber-400 text-xs font-mono font-semibold uppercase tracking-wider">
+                  <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-zinc-950/85 border border-white/10 text-amber-400 text-xs font-mono font-semibold uppercase tracking-wider">
                     {program.tag}
                   </div>
                 </div>

@@ -1,289 +1,58 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, MapPin, User, Ticket, ArrowRight, Tag } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { ArrowRight, Menu, User, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { ROLES_CONFIG } from '../types/roles';
 import UserProfileDropdown from './UserProfileDropdown';
+import { useModalFocus } from '../hooks/useModalFocus';
 import trankilandiaLogo from '../assets/trankilandia-logo.png';
 
-export interface NavbarProps {
-  onOpenLoginModal?: () => void;
-  onOpenTourModal?: () => void;
-}
-
+export interface NavbarProps { onOpenLoginModal?: () => void; onOpenTourModal?: () => void; }
 const NAV_LINKS = [
-  { label: 'Inicio', href: '/' },
-  { label: 'Planes & Membresías', href: '/planes' },
-  { label: 'Horarios & Clases', href: '/clases' },
-  { label: 'Instalaciones', href: '/instalaciones' },
+  { label: 'Inicio', href: '/' }, { label: 'Planes y precios', href: '/planes' },
+  { label: 'Horarios y clases', href: '/clases' }, { label: 'Instalaciones', href: '/instalaciones' },
 ];
 
 export default function Navbar({ onOpenLoginModal, onOpenTourModal }: NavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
-  const { user, role, getRedirectPath } = useAuth();
+  const { user, getRedirectPath } = useAuth();
+  const closeMenu = () => setIsOpen(false);
+  const menuRef = useModalFocus(isOpen, closeMenu, { initialFocus: '#mobile-nav-close' });
 
-  // Close mobile drawer on escape key
+  useEffect(() => { setIsOpen(false); }, [location.pathname]);
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const closeOnDesktop = () => { if (window.innerWidth >= 1024) setIsOpen(false); };
+    window.addEventListener('resize', closeOnDesktop);
+    return () => window.removeEventListener('resize', closeOnDesktop);
   }, []);
 
-  // Prevent background scroll when mobile menu is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
-
-  const closeMenu = () => setIsOpen(false);
-
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 h-20 backdrop-blur-md bg-zinc-950/85 border-b border-white/5 transition-colors duration-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
-        {/* Brand Logo with responsive spring hover */}
-        <Link
-          to="/"
-          className="flex items-center gap-3 group focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 rounded-xl"
-          onClick={closeMenu}
-        >
-          <motion.div
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.95 }}
-            className="w-10 h-10 rounded-full overflow-hidden border border-amber-400/30 shadow-md shadow-amber-400/10 transition-colors group-hover:border-amber-400 shrink-0"
-          >
-            <img
-              src={trankilandiaLogo}
-              alt="Logo Trankilandia Gym"
-              className="w-full h-full object-cover"
-            />
-          </motion.div>
-          <div className="flex flex-col">
-            <span className="text-white font-black tracking-tight text-xl font-display leading-tight">
-              TRANKILANDIA
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-zinc-400 tracking-widest font-mono leading-none">
-                GYM · AYACUCHO
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-            </div>
-          </div>
+    <header className="fixed top-0 inset-x-0 z-50 h-20 bg-zinc-950/95 border-b border-white/10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between gap-5">
+        <Link to="/" className="flex items-center gap-2.5 rounded-lg shrink-0" onClick={closeMenu}>
+          <img src={trankilandiaLogo} alt="" width={40} height={40} className="h-10 w-10 rounded-full" />
+          <span><strong className="block text-lg sm:text-xl font-black tracking-tight leading-tight text-white">TRANKILANDIA</strong><span className="block text-xs text-zinc-400">Gym · Ayacucho</span></span>
         </Link>
-
-        {/* Desktop Navigation with Emil Kowalski sliding active indicator */}
-        <nav
-          aria-label="Navegación principal"
-          className="hidden md:flex items-center gap-1 p-1.5 bg-zinc-900/60 border border-white/5 rounded-2xl"
-        >
-          {NAV_LINKS.map((link) => {
-            const isActive = location.pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                to={link.href}
-                aria-current={isActive ? 'page' : undefined}
-                className={`relative px-4 py-2 text-sm font-semibold rounded-xl transition-colors duration-200 whitespace-nowrap ${
-                  isActive ? 'text-black' : 'text-zinc-300 hover:text-white'
-                }`}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="navbar-active-pill"
-                    transition={{ type: 'spring', duration: 0.35, bounce: 0.15 }}
-                    className="absolute inset-0 bg-amber-400 rounded-xl z-0"
-                  />
-                )}
-                <span className="relative z-10">{link.label}</span>
-              </Link>
-            );
-          })}
+        <nav aria-label="Navegación principal" className="hidden lg:flex items-center gap-1">
+          {NAV_LINKS.map((link) => <Link key={link.href} to={link.href} aria-current={location.pathname === link.href ? 'page' : undefined} className={`min-h-11 flex items-center px-3 rounded-lg text-sm font-semibold transition-colors ${location.pathname === link.href ? 'text-amber-400 bg-amber-400/10' : 'text-zinc-300 hover:text-white hover:bg-zinc-900'}`}>{link.label}</Link>)}
         </nav>
-
-        {/* Desktop Login / Profile Button */}
-        <div className="hidden md:flex items-center gap-2.5">
-          {user ? (
-            <>
-              {role === 'admin' && (
-                <Link
-                  to="/admin?tab=planes"
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-300 hover:text-white hover:bg-purple-500/20 text-xs font-mono font-bold transition-all shadow-sm"
-                  title="Gestionar Planes & Tarifas en Vivo"
-                >
-                  <Tag className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Tarifas</span>
-                </Link>
-              )}
-
-              <UserProfileDropdown />
-
-              <Link
-                to={getRedirectPath()}
-                className="inline-flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-3.5 py-2 rounded-xl text-xs font-mono shadow-md shadow-amber-400/20 transition-all hover:scale-[1.02] active:scale-[0.98] whitespace-nowrap cursor-pointer uppercase tracking-wider font-display"
-              >
-                <span>MI PANEL</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
-            </>
-          ) : (
-            <motion.button
-              type="button"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.97 }}
-              transition={{ duration: 0.15, ease: [0.23, 1, 0.32, 1] }}
-              onClick={() => onOpenLoginModal?.()}
-              className="flex items-center gap-2 bg-amber-400 hover:bg-amber-300 text-black font-extrabold px-5 py-2.5 rounded-xl text-sm whitespace-nowrap shadow-lg shadow-amber-400/10 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
-            >
-              <User className="w-4 h-4" />
-              <span>INICIAR SESIÓN</span>
-            </motion.button>
-          )}
+        <div className="hidden lg:flex items-center gap-3 shrink-0">
+          {user ? <><UserProfileDropdown /><Link to={getRedirectPath()} className="button-primary">Mi panel<ArrowRight size={17} /></Link></> : <button type="button" onClick={onOpenLoginModal} className="button-primary"><User size={17} />Iniciar sesión</button>}
         </div>
-
-        {/* Mobile Hamburger Button */}
-        <motion.button
-          type="button"
-          whileTap={{ scale: 0.92 }}
-          onClick={() => setIsOpen(!isOpen)}
-          aria-label={isOpen ? 'Cerrar menú' : 'Abrir menú'}
-          aria-expanded={isOpen}
-          className="md:hidden text-zinc-300 hover:text-white p-2.5 rounded-xl border border-white/10 bg-zinc-900/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 cursor-pointer"
-        >
-          {isOpen ? <X className="w-6 h-6 text-amber-400" /> : <Menu className="w-6 h-6" />}
-        </motion.button>
+        <button type="button" onClick={() => setIsOpen(!isOpen)} aria-label="Abrir menú" aria-expanded={isOpen} aria-controls="mobile-navigation" className="lg:hidden flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-white/15 text-white"><Menu size={23} /></button>
       </div>
-
-      {/* Mobile Drawer with Emil Kowalski spring transition */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-            className="md:hidden fixed inset-x-0 top-20 bg-zinc-950/95 backdrop-blur-2xl border-b border-white/10 px-6 py-8 shadow-2xl z-40 max-h-[calc(100vh-5rem)] overflow-y-auto"
-          >
-            <nav className="flex flex-col gap-2">
-              {NAV_LINKS.map((link) => {
-                const isActive = location.pathname === link.href;
-                return (
-                  <Link
-                    key={link.href}
-                    to={link.href}
-                    onClick={closeMenu}
-                    className={`flex items-center justify-between px-4 py-3.5 rounded-xl text-base font-bold transition-colors ${
-                      isActive
-                        ? 'bg-amber-400 text-black'
-                        : 'text-zinc-300 hover:bg-zinc-900 hover:text-white'
-                    }`}
-                  >
-                    <span>{link.label}</span>
-                    {isActive && <span className="w-2 h-2 rounded-full bg-black" />}
-                  </Link>
-                );
-              })}
-            </nav>
-
-            <div className="mt-6 pt-6 border-t border-white/10 flex flex-col gap-4">
-              <div className="flex items-center gap-2 text-xs text-zinc-400 font-mono">
-                <MapPin className="w-4 h-4 text-amber-400" />
-                <span>Huamanga, Ayacucho, Perú</span>
-              </div>
-              {user ? (
-                <>
-                  <motion.button
-                    type="button"
-                    whileTap={{ scale: 0.97 }}
-                    onClick={() => {
-                      closeMenu();
-                      onOpenLoginModal?.();
-                    }}
-                    className="w-full flex items-center justify-between p-3.5 rounded-xl bg-zinc-900 border border-amber-400/40 text-white font-bold text-sm cursor-pointer"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      {user.user_metadata?.avatar_url ? (
-                        <img
-                          src={user.user_metadata.avatar_url}
-                          alt="Usuario"
-                          className="w-6 h-6 rounded-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-amber-400 text-black font-extrabold flex items-center justify-center text-xs">
-                          {(user.email?.[0] || 'S').toUpperCase()}
-                        </div>
-                      )}
-                      <span className="truncate max-w-[150px]">
-                        {user.user_metadata?.full_name || user.email}
-                      </span>
-                    </div>
-                    <span
-                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded uppercase ${ROLES_CONFIG[role].themeColor.badgeBg} ${ROLES_CONFIG[role].themeColor.badgeText} border ${ROLES_CONFIG[role].themeColor.badgeBorder}`}
-                    >
-                      {ROLES_CONFIG[role].name}
-                    </span>
-                  </motion.button>
-
-                  {role === 'admin' && (
-                    <Link
-                      to="/admin?tab=planes"
-                      onClick={closeMenu}
-                      className="w-full flex items-center justify-center gap-2 bg-purple-500/15 border border-purple-500/30 text-purple-300 font-bold py-3 rounded-xl text-xs font-mono uppercase tracking-wide"
-                    >
-                      <Tag className="w-4 h-4 text-purple-400" />
-                      <span>Gestionar Planes &amp; Tarifas</span>
-                    </Link>
-                  )}
-
-                  <Link
-                    to={getRedirectPath()}
-                    onClick={closeMenu}
-                    className="w-full flex items-center justify-center gap-2 bg-amber-400 text-black font-extrabold py-3.5 rounded-xl text-sm shadow-lg shadow-amber-400/10 cursor-pointer font-display uppercase tracking-wide"
-                  >
-                    <span>IR A MI PANEL ({ROLES_CONFIG[role].name.toUpperCase()})</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                </>
-              ) : (
-                <motion.button
-                  type="button"
-                  whileTap={{ scale: 0.97 }}
-                  onClick={() => {
-                    closeMenu();
-                    onOpenLoginModal?.();
-                  }}
-                  className="w-full flex items-center justify-center gap-2 bg-amber-400 text-black font-extrabold py-3.5 rounded-xl text-sm shadow-lg shadow-amber-400/10 cursor-pointer"
-                >
-                  <User className="w-4 h-4" />
-                  <span>INICIAR SESIÓN</span>
-                </motion.button>
-              )}
-              <button
-                type="button"
-                onClick={() => {
-                  closeMenu();
-                  onOpenTourModal?.();
-                }}
-                className="w-full flex items-center justify-center gap-2 bg-white/5 hover:bg-white/10 text-zinc-300 py-3 rounded-xl text-xs font-mono transition-colors cursor-pointer border border-white/5"
-              >
-                <Ticket className="w-3.5 h-3.5 text-amber-400" />
-                <span>Solicitar Pase de Cortesía Gratis</span>
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {isOpen && (
+        <div ref={menuRef} id="mobile-navigation" role="dialog" aria-modal="true" aria-labelledby="mobile-nav-title" tabIndex={-1} className="lg:hidden fixed inset-x-0 top-20 bottom-0 overflow-y-auto bg-zinc-950 px-4 sm:px-6 py-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-5"><h2 id="mobile-nav-title" className="text-lg font-bold">Explora Trankilandia</h2><button id="mobile-nav-close" type="button" onClick={closeMenu} aria-label="Cerrar menú" className="flex h-11 w-11 items-center justify-center rounded-lg text-zinc-300 hover:bg-zinc-900"><X size={22} /></button></div>
+          <nav aria-label="Navegación móvil" className="space-y-2">
+            {NAV_LINKS.map((link) => <Link key={link.href} to={link.href} onClick={closeMenu} aria-current={location.pathname === link.href ? 'page' : undefined} className={`flex min-h-12 items-center justify-between rounded-xl px-4 text-base font-semibold ${location.pathname === link.href ? 'bg-amber-400 text-black' : 'text-zinc-300 hover:bg-zinc-900'}`}>{link.label}<ArrowRight size={17} /></Link>)}
+          </nav>
+          <div className="mt-6 border-t border-white/10 pt-6 flex flex-col gap-3">
+            {user ? <Link to={getRedirectPath()} onClick={closeMenu} className="button-primary">Ir a mi panel<ArrowRight size={17} /></Link> : <button type="button" onClick={() => { closeMenu(); onOpenLoginModal?.(); }} className="button-primary"><User size={17} />Iniciar sesión</button>}
+            {onOpenTourModal && <button type="button" onClick={() => { closeMenu(); onOpenTourModal(); }} className="button-secondary">Solicitar pase de cortesía</button>}
+          </div>
+        </div>
+      )}
     </header>
   );
 }

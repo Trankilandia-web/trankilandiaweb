@@ -38,6 +38,8 @@ let micAnalyserNode: AnalyserNode | null = null;
 
 let isMicActiveState = false;
 let currentMicError: string | null = null;
+let micStartRequestId = 0;
+let micStartPending = false;
 
 /**
  * Obtiene la ganancia / volumen del micrófono guardada (0.5 a 2.5). Por defecto: 1.25.
@@ -170,9 +172,13 @@ export async function playAnnouncementChime(): Promise<void> {
  */
 export async function startMicrophone(options?: { withChime?: boolean }): Promise<boolean> {
   if (isMicActiveState) return true;
+  if (micStartPending) return false;
+  const requestId = ++micStartRequestId;
+  micStartPending = true;
 
   const ctx = getSharedAudioContext();
   if (!ctx) {
+    micStartPending = false;
     currentMicError = 'AudioContext no soportado en este entorno.';
     notifyMicStateChange();
     return false;
@@ -182,12 +188,14 @@ export async function startMicrophone(options?: { withChime?: boolean }): Promis
     if (ctx.state === 'suspended') {
       await ctx.resume();
     }
+    if (requestId !== micStartRequestId) return false;
 
     // 1. Si está habilitado el jingle de atención, hacerlo sonar antes de abrir el micrófono
     const shouldPlayChime = options?.withChime ?? isMicChimeEnabled();
     if (shouldPlayChime) {
       await playAnnouncementChime();
     }
+    if (requestId !== micStartRequestId) return false;
 
     // 2. Solicitar acceso al micrófono con configuración de voz profesional
     const constraints: MediaStreamConstraints = {
@@ -199,7 +207,12 @@ export async function startMicrophone(options?: { withChime?: boolean }): Promis
       video: false,
     };
 
-    activeMediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (requestId !== micStartRequestId) {
+      stream.getTracks().forEach((track) => track.stop());
+      return false;
+    }
+    activeMediaStream = stream;
 
     // 3. Cadena de Procesamiento Web Audio API:
     // micSource -> micFilter (corte bajos <90Hz) -> micCompressor (evita picos) -> micGain -> micAnalyser -> destination
@@ -241,6 +254,7 @@ export async function startMicrophone(options?: { withChime?: boolean }): Promis
     notifyMicStateChange();
     return true;
   } catch (err: any) {
+    if (requestId !== micStartRequestId) return false;
     console.error('[startMicrophone] Error al acceder al micrófono:', err);
     isMicActiveState = false;
     currentMicError =
@@ -253,6 +267,8 @@ export async function startMicrophone(options?: { withChime?: boolean }): Promis
     notifyMicStateChange();
     stopMicrophone();
     return false;
+  } finally {
+    if (requestId === micStartRequestId) micStartPending = false;
   }
 }
 
@@ -260,6 +276,8 @@ export async function startMicrophone(options?: { withChime?: boolean }): Promis
  * Detiene la transmisión del micrófono de inmediato y apaga los dispositivos físicos.
  */
 export function stopMicrophone(): void {
+  ++micStartRequestId;
+  micStartPending = false;
   try {
     if (micGainNode && getSharedAudioContext()) {
       try {
@@ -322,7 +340,7 @@ export function stopMicrophone(): void {
  * Conmuta entre encendido y apagado del micrófono.
  */
 export async function toggleMicrophone(options?: { withChime?: boolean }): Promise<boolean> {
-  if (isMicActiveState) {
+  if (isMicActiveState || micStartPending) {
     stopMicrophone();
     return false;
   }

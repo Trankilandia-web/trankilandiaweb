@@ -19,11 +19,16 @@ import {
   saveStaffUser,
 } from '../../lib/staffStore';
 import { useAuth } from '../../context/AuthContext';
+import { useModalFocus } from '../../hooks/useModalFocus';
 import trankilandiaLogo from '../../assets/trankilandia-logo.png';
 
 export default function DesktopStaffLogin() {
   const navigate = useNavigate();
-  const { loginStaff } = useAuth();
+  const { loginStaff, loginUser, user, actualRole, isAdmin, isConfigured, signOut } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [accountError, setAccountError] = useState('');
+  const [isSigningIn, setIsSigningIn] = useState(false);
   const [staffList, setStaffList] = useState<StaffUser[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<StaffUser | null>(null);
   const [pin, setPin] = useState<string>('');
@@ -32,7 +37,7 @@ export default function DesktopStaffLogin() {
 
   // Estado de validación con Supabase
   const [isCheckingSupabase, setIsCheckingSupabase] = useState(true);
-  const [dbConfigured, setDbConfigured] = useState<boolean>(true);
+  const [dbConfigured, setDbConfigured] = useState<boolean>(false);
   const [dbError, setDbError] = useState<string | null>(null);
 
   // Modal para agregar colaborador
@@ -42,6 +47,10 @@ export default function DesktopStaffLogin() {
   const [newTurno, setNewTurno] = useState<'manana' | 'tarde' | 'noche' | 'completo'>('manana');
   const [newPin, setNewPin] = useState('');
   const [newAdminPin, setNewAdminPin] = useState('');
+  const [isCreatingStaff, setIsCreatingStaff] = useState(false);
+  const closeAddModal = () => { if (!isCreatingStaff) { setShowAddModal(false); setNewPin(''); setNewAdminPin(''); } };
+  const addDialogRef = useModalFocus(showAddModal, closeAddModal, { initialFocus: '#staff-create-name' });
+  const connectionLabel = !isConfigured ? 'Servicio sin configurar' : !user ? 'Cuenta requerida' : isCheckingSupabase ? 'Verificando perfil' : dbConfigured ? 'Cuenta verificada' : 'Perfil sin verificar';
 
   const loadStaffFromDatabase = async () => {
     setIsCheckingSupabase(true);
@@ -63,20 +72,25 @@ export default function DesktopStaffLogin() {
 
   useEffect(() => {
     document.title = 'Trankilandia Gym · Central Hub Operativo';
-    sessionStorage.setItem('trankilandia_desktop_mode', 'true');
-    loadStaffFromDatabase();
-  }, []);
+    sessionStorage.removeItem('trankilandia_desktop_mode');
+    if (user) void loadStaffFromDatabase();
+    else { setIsCheckingSupabase(false); setStaffList([]); setDbConfigured(false); }
+  }, [user?.id]);
 
   // Soporte para escribir con el teclado físico / NumPad
   useEffect(() => {
-    if (!selectedStaff) return;
+    if (!selectedStaff || showAddModal || isAuthenticating) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat || (e.target instanceof HTMLElement && e.target.closest('input, textarea, select, [contenteditable="true"], [role="dialog"]'))) return;
       if (e.key >= '0' && e.key <= '9') {
+        e.preventDefault();
         handleDigitClick(e.key);
       } else if (e.key === 'Backspace') {
+        e.preventDefault();
         handleBackspace();
       } else if (e.key === 'Escape') {
+        e.preventDefault();
         setSelectedStaff(null);
         setPin('');
         setErrorMsg(null);
@@ -85,7 +99,7 @@ export default function DesktopStaffLogin() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedStaff, pin]);
+  }, [selectedStaff, pin, showAddModal, isAuthenticating]);
 
   const handleSelectStaff = (staff: StaffUser) => {
     setSelectedStaff(staff);
@@ -115,7 +129,10 @@ export default function DesktopStaffLogin() {
     const result = await verifyStaffPin(staff.id, enteredPin);
 
     if (result.success && result.user) {
-      const authRes = loginStaff(result.user);
+      const authRes = await loginStaff(result.user);
+      if (!authRes.success) {
+        setIsAuthenticating(false); setErrorMsg(authRes.error || 'No se pudo verificar tu sesión.'); setPin(''); return;
+      }
       setTimeout(() => {
         setIsAuthenticating(false);
         navigate(authRes.redirectPath);
@@ -131,16 +148,18 @@ export default function DesktopStaffLogin() {
 
   const handleCreateStaff = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCreatingStaff) return;
     if (!newNombre.trim() || newPin.length !== 4) {
       alert('Debe ingresar el nombre y un PIN de exactamente 4 dígitos.');
       return;
     }
 
     if (!newAdminPin || newAdminPin.length !== 4) {
-      alert('Debe ingresar el PIN de un administrador (Marisol: 1234 o Luis: 2026) para autorizar.');
+      alert('Debe ingresar el PIN de su cuenta de administrador para autorizar.');
       return;
     }
 
+    setIsCreatingStaff(true);
     const res = await saveStaffUser(
       {
         nombre: newNombre.trim(),
@@ -149,7 +168,7 @@ export default function DesktopStaffLogin() {
         pin: newPin,
         avatarColor:
           newRol === 'admin'
-            ? 'from-purple-500 to-indigo-600 text-white'
+            ? 'from-amber-400 to-amber-500 text-black'
             : 'from-emerald-400 to-teal-600 text-black',
         activo: true,
       },
@@ -159,6 +178,7 @@ export default function DesktopStaffLogin() {
     );
 
     if (!res.success || !res.user) {
+      setIsCreatingStaff(false);
       alert(`Error al registrar colaborador: ${res.error || 'Autorización denegada.'}`);
       return;
     }
@@ -168,6 +188,7 @@ export default function DesktopStaffLogin() {
     setNewNombre('');
     setNewPin('');
     setNewAdminPin('');
+    setIsCreatingStaff(false);
     handleSelectStaff(res.user);
   };
 
@@ -199,16 +220,17 @@ export default function DesktopStaffLogin() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          {user && <button type="button" onClick={async () => { await signOut(); setSelectedStaff(null); setPin(''); }} className="min-h-11 px-3 text-xs rounded-xl bg-zinc-900 border border-white/10">Cambiar cuenta</button>}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-900 border border-white/10 text-xs font-mono text-zinc-300">
             <span
               className={`w-2 h-2 rounded-full ${
-                dbConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+                user && dbConfigured && !isCheckingSupabase ? 'bg-emerald-400' : 'bg-amber-400'
               }`}
             />
-            <span>{dbConfigured ? 'Supabase Conectado' : 'Supabase Desconectado'}</span>
+            <span role="status">{connectionLabel}</span>
           </div>
-          {dbConfigured && (
+          {user && isAdmin && dbConfigured && (
             <button
               type="button"
               onClick={() => setShowAddModal(true)}
@@ -223,7 +245,26 @@ export default function DesktopStaffLogin() {
 
       {/* Contenido Principal */}
       <main className="flex-1 flex flex-col items-center justify-center px-4 py-8 z-10 max-w-5xl mx-auto w-full">
-        {isCheckingSupabase ? (
+        {!user ? (
+          <form className="w-full max-w-md rounded-3xl border border-white/10 bg-zinc-900 p-6 sm:p-8 space-y-5" onSubmit={async (event) => {
+            event.preventDefault(); setIsSigningIn(true); setAccountError('');
+            try {
+              const result = await loginUser(email, undefined, password);
+              setPassword('');
+              if (!result.success) setAccountError(result.error || 'No se pudo iniciar sesión.');
+              else if (!['admin', 'caja'].includes(result.role)) { await signOut(); setAccountError('Tu cuenta no tiene acceso a la terminal. Solicita autorización a gerencia.'); }
+            } finally { setIsSigningIn(false); }
+          }}>
+            <div><h2 className="text-2xl font-black">Acceso del personal</h2><p className="mt-2 text-sm text-zinc-400">Ingresa con tu cuenta autorizada. Después confirmarás tu perfil con el PIN.</p></div>
+            <div><label htmlFor="staff-email" className="block text-sm mb-2">Correo de personal</label><input id="staff-email" type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full min-h-12 px-3 rounded-xl border border-white/20 bg-zinc-950" /></div>
+            <div><label htmlFor="staff-password" className="block text-sm mb-2">Contraseña</label><input id="staff-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full min-h-12 px-3 rounded-xl border border-white/20 bg-zinc-950" /></div>
+            {accountError && <p role="alert" className="text-sm text-red-300">{accountError}</p>}
+            <button type="submit" disabled={isSigningIn} className="w-full min-h-12 rounded-xl bg-amber-400 text-black font-bold disabled:opacity-50">{isSigningIn ? 'Verificando cuenta…' : 'Continuar'}</button>
+            <p className="text-xs text-zinc-400">Si aún no tienes una cuenta o no recuerdas la clave, comunícate con gerencia.</p>
+          </form>
+        ) : !['admin', 'caja'].includes(actualRole) ? (
+          <div className="max-w-md space-y-4 text-center"><p>Tu cuenta no tiene permisos para usar la terminal.</p><button type="button" onClick={() => signOut()} className="min-h-11 px-4 rounded-xl bg-zinc-800">Cambiar cuenta</button></div>
+        ) : isCheckingSupabase ? (
           /* PANTALLA DE CARGA Y VERIFICACIÓN EN LA NUBE */
           <div className="text-center space-y-3 font-mono">
             <div className="w-10 h-10 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -460,30 +501,33 @@ export default function DesktopStaffLogin() {
         <div className="flex items-center gap-4 mt-2 sm:mt-0">
           <span>Autenticación en tiempo real con Supabase Cloud</span>
           <span className="text-zinc-600">·</span>
-          <span>417 Socios Oficiales</span>
+          <span>Acceso con cuenta autorizada</span>
         </div>
       </footer>
 
       {/* Modal para Crear Personal / Cajero */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-          <div className="w-full max-w-md bg-zinc-900 border border-white/20 rounded-3xl p-6 shadow-2xl">
+          <div ref={addDialogRef} role="dialog" aria-modal="true" aria-labelledby="staff-create-title" tabIndex={-1} className="w-full max-w-md max-h-[85dvh] overflow-y-auto bg-zinc-900 border border-white/20 rounded-3xl p-6 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-white/10 mb-4">
-              <h3 className="text-base font-black text-white font-display uppercase">
+              <h3 id="staff-create-title" className="text-base font-black text-white font-display uppercase">
                 Registrar Nuevo Personal
               </h3>
               <button
                 type="button"
-                onClick={() => setShowAddModal(false)}
-                className="p-1 rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white"
+                onClick={closeAddModal}
+                disabled={isCreatingStaff}
+                aria-label="Cerrar registro de personal"
+                className="min-h-11 min-w-11 flex items-center justify-center rounded-lg hover:bg-white/10 text-zinc-400 hover:text-white"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <form onSubmit={handleCreateStaff} className="space-y-4">
               <div>
-                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Nombre Completo</label>
+                <label htmlFor="staff-create-name" className="block text-xs font-mono uppercase text-zinc-400 mb-1">Nombre Completo</label>
                 <input
+                  id="staff-create-name"
                   type="text"
                   required
                   value={newNombre}
@@ -495,8 +539,9 @@ export default function DesktopStaffLogin() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Rol</label>
+                  <label htmlFor="staff-create-role" className="block text-xs font-mono uppercase text-zinc-400 mb-1">Rol</label>
                   <select
+                    id="staff-create-role"
                     value={newRol}
                     onChange={(e) => setNewRol(e.target.value as any)}
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none font-mono"
@@ -507,8 +552,9 @@ export default function DesktopStaffLogin() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">Turno</label>
+                  <label htmlFor="staff-create-shift" className="block text-xs font-mono uppercase text-zinc-400 mb-1">Turno</label>
                   <select
+                    id="staff-create-shift"
                     value={newTurno}
                     onChange={(e) => setNewTurno(e.target.value as any)}
                     className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none font-mono"
@@ -522,9 +568,12 @@ export default function DesktopStaffLogin() {
               </div>
 
               <div>
-                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN de 4 Números (Acceso)</label>
+                <label htmlFor="staff-create-pin" className="block text-xs font-mono uppercase text-zinc-400 mb-1">PIN de 4 Números (Acceso)</label>
                 <input
-                  type="text"
+                  id="staff-create-pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
                   maxLength={4}
                   required
                   value={newPin}
@@ -535,16 +584,19 @@ export default function DesktopStaffLogin() {
               </div>
 
               <div>
-                <label className="block text-xs font-mono uppercase text-zinc-400 mb-1">
+                <label htmlFor="staff-create-admin-pin" className="block text-xs font-mono uppercase text-zinc-400 mb-1">
                   PIN de Administrador Autorizador
                 </label>
                 <input
-                  type="text"
+                  id="staff-create-admin-pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
                   maxLength={4}
                   required
                   value={newAdminPin}
                   onChange={(e) => setNewAdminPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="PIN de Marisol (1234) o Luis (2026)"
+                  placeholder="PIN de tu cuenta de administrador"
                   className="w-full bg-zinc-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400 font-mono tracking-widest text-center"
                 />
                 <p className="text-[10px] text-zinc-500 mt-1 font-mono">Autoriza el alta de la nueva cuenta en Supabase</p>
@@ -552,9 +604,10 @@ export default function DesktopStaffLogin() {
 
               <button
                 type="submit"
+                disabled={isCreatingStaff}
                 className="w-full py-3.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs uppercase font-mono transition-transform active:scale-95 cursor-pointer shadow-lg mt-2"
               >
-                Guardar en Supabase
+                {isCreatingStaff ? 'Guardando…' : 'Guardar perfil de personal'}
               </button>
             </form>
           </div>

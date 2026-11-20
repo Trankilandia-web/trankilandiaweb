@@ -1,18 +1,16 @@
 import { createClient } from '@supabase/supabase-js';
-import { extraerDniPeru } from './dniParser';
-import { getStoredCustomPassword } from './authPasswords';
 
 const supabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_URL ||
   import.meta.env.SUPABASE_URL ||
-  'https://kffaydyoivwkaalmqdro.supabase.co';
+  '';
 
 const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY ||
   import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   import.meta.env.SUPABASE_ANON_KEY ||
-  'sb_publishable_eACPeelHpJbAtBU3b53OeQ_0JKOVPWa';
+  '';
 
 export const isSupabaseConfigured = (): boolean => {
   return (
@@ -75,83 +73,13 @@ export const signInWithEmail = async (email: string, password: string) => {
   });
 };
 
-/**
- * Inicia sesión exclusivamente con DNI (8 dígitos) y contraseña.
- * Conecta con la cuenta canónica interna: [DNI]@socio.trankilandia.pe
- * Si es el primer ingreso del socio (contraseña = DNI) y su cuenta auth aún no existe,
- * intenta registrarla/aprovisionarla automáticamente.
- */
+/** DNI accounts are provisioned by the server; public identifiers never create accounts. */
 export const signInWithDni = async (dni: string, password: string) => {
-  const cleanDni = extraerDniPeru(dni) || dni.trim().replace(/\D/g, '').slice(0, 8);
-  if (!cleanDni || cleanDni.length !== 8) {
-    return {
-      data: null,
-      error: new Error('El DNI debe tener exactamente 8 dígitos numéricos.'),
-    };
-  }
-
-  const customPw = getStoredCustomPassword(cleanDni);
-  // Si tiene contraseña personalizada y no coincide
-  if (customPw && password !== customPw) {
-    return {
-      data: null,
-      error: new Error('Contraseña incorrecta para el DNI ingresado. Si la olvidaste, puedes cambiarla abajo.'),
-    };
-  }
-
-  const canonicalEmail = `${cleanDni}@socio.trankilandia.pe`;
-
-  if (!isSupabaseConfigured()) {
-    return {
-      data: {
-        user: {
-          id: `mock-${cleanDni}`,
-          email: canonicalEmail,
-          user_metadata: { dni: cleanDni, role: 'cliente' },
-        } as any,
-        session: {} as any,
-      },
-      error: null,
-    };
-  }
-
-  // 1. Intentar inicio de sesión tradicional
-  let res = await supabase.auth.signInWithPassword({
-    email: canonicalEmail,
-    password,
-  });
-
-  // 2. Si falló y es su primer ingreso con contraseña = DNI
-  if (res.error && (password === cleanDni || (customPw && password === customPw))) {
-    try {
-      const signUpRes = await supabase.auth.signUp({
-        email: canonicalEmail,
-        password: password,
-        options: {
-          data: {
-            dni: cleanDni,
-            role: 'cliente',
-          },
-        },
-      });
-
-      if (!signUpRes.error && signUpRes.data.session) {
-        return signUpRes;
-      }
-
-      // Reintentar login si el signUp lo provisionó
-      if (!signUpRes.error && signUpRes.data.user) {
-        res = await supabase.auth.signInWithPassword({
-          email: canonicalEmail,
-          password: password,
-        });
-      }
-    } catch {}
-  }
-
-  return res;
+  const cleanDni = dni.trim();
+  if (!/^\d{8}$/.test(cleanDni)) return { data: null, error: new Error('El DNI debe tener exactamente 8 dígitos numéricos.') };
+  if (!password) return { data: null, error: new Error('Ingresa tu contraseña.') };
+  return signInWithEmail(`${cleanDni}@socio.trankilandia.pe`, password);
 };
-
 /**
  * Closes current active session
  */

@@ -135,16 +135,8 @@ export default function SchedulePage({
   };
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
+    <div className="public-page min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
       {/* Ambient background glow */}
-      <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[90vw] max-w-[800px] h-[450px] bg-amber-400/10 blur-[150px] rounded-full pointer-events-none overflow-hidden"
-        aria-hidden="true"
-      />
-      <div
-        className="absolute top-[700px] right-0 w-[50vw] max-w-[500px] h-[500px] bg-amber-400/5 blur-[160px] rounded-full pointer-events-none overflow-hidden"
-        aria-hidden="true"
-      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
@@ -153,10 +145,7 @@ export default function SchedulePage({
         <header className="pb-8 mb-10 border-b border-white/10">
           <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
             <div>
-              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                HORARIOS &amp; CLASES
-              </span>
-              <h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tighter text-white leading-none">
+<h1 className="text-4xl sm:text-6xl font-black uppercase tracking-tight text-white leading-none">
                 HORARIOS DE CLASES.
               </h1>
               <p className="mt-3 text-zinc-400 text-sm sm:text-base leading-relaxed max-w-xl font-sans">
@@ -230,7 +219,7 @@ export default function SchedulePage({
         {/* 3. FILTRO POR CATEGORÍA CON SLIDING INDICATOR */}
         {/* ========================================================= */}
         <section aria-label="Filtro por categoría" className="mb-10 text-center">
-          <div className="inline-flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 p-1.5 rounded-2xl bg-zinc-900/70 border border-white/10 backdrop-blur-sm max-w-full">
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 sm:gap-2.5 p-1.5 rounded-2xl bg-zinc-900/70 border border-white/10 max-w-full">
             {CATEGORIES.map((cat) => {
               const isSelected = selectedCategory === cat;
               const countInDay = SCHEDULE_CLASSES.filter((c) => {
@@ -260,7 +249,7 @@ export default function SchedulePage({
                     className={`relative z-10 text-[10px] font-mono px-1.5 py-0.2 rounded ${
                       isSelected
                         ? 'bg-black/25 text-black font-extrabold'
-                        : 'bg-zinc-800 text-zinc-500'
+                        : 'bg-zinc-800 text-zinc-400'
                     }`}
                   >
                     {countInDay}
@@ -284,7 +273,7 @@ export default function SchedulePage({
                   : `Sesiones de ${selectedCategory} — ${selectedDay}`}
               </h2>
             </div>
-            <span className="text-xs font-mono text-zinc-400">
+            <span aria-live="polite" className="text-sm text-zinc-400">
               {filteredClasses.length}{' '}
               {filteredClasses.length === 1 ? 'clase disponible' : 'clases disponibles'}
             </span>
@@ -307,7 +296,7 @@ export default function SchedulePage({
                       exit={{ opacity: 0, scale: 0.96 }}
                       transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
                       whileHover={{ y: -4 }}
-                      className="group rounded-2xl bg-zinc-900/80 border border-white/10 p-6 flex flex-col justify-between backdrop-blur-sm hover:border-amber-400/40 hover:bg-zinc-900 transition-colors shadow-xl"
+                      className="group rounded-2xl bg-zinc-900/80 border border-white/10 p-6 flex flex-col justify-between hover:border-amber-400/40 hover:bg-zinc-900 transition-colors shadow-xl"
                     >
                       <div>
                         {/* Top Bar: Time and Badges */}
@@ -347,7 +336,7 @@ export default function SchedulePage({
                             <User className="w-4 h-4" />
                           </div>
                           <div className="overflow-hidden">
-                            <span className="text-[10px] text-zinc-500 uppercase font-mono tracking-wider block">
+                            <span className="text-[10px] text-zinc-400 uppercase font-mono tracking-wider block">
                               Head Coach
                             </span>
                             <span className="font-semibold text-sm text-zinc-200 truncate block">
@@ -360,7 +349,7 @@ export default function SchedulePage({
                       <div>
                         {/* Spots remaining with Smart Fit / Barry's urgency */}
                         <div className="flex items-center justify-between text-xs font-mono pt-1 mb-4">
-                          <span className="text-zinc-500">Cupos restantes:</span>
+                          <span className="text-zinc-400">Cupos restantes:</span>
                           <span
                             className={`font-semibold flex items-center gap-1.5 ${
                               cls.spotsLeft <= 2
@@ -387,7 +376,7 @@ export default function SchedulePage({
                           onClick={() => handleBook(cls.id)}
                           className="w-full py-3 px-4 rounded-xl font-extrabold uppercase tracking-wider text-xs bg-zinc-800 hover:bg-amber-400 text-white hover:text-black border border-white/10 hover:border-amber-400/50 flex items-center justify-center gap-2 group/btn cursor-pointer shadow-md hover:shadow-amber-400/20 transition-colors"
                         >
-                          <span>RESERVAR CLASE DE PRUEBA</span>
+                          <span>SOLICITAR CLASE DE PRUEBA</span>
                           <ArrowRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform duration-200" />
                         </motion.button>
                       </div>
@@ -426,13 +415,10 @@ export default function SchedulePage({
         {/* 5. BANNER INFERIOR DE CONVERSIÓN */}
         {/* ========================================================= */}
         <section aria-label="Pase de cortesía" className="mt-20">
-          <div className="relative rounded-3xl bg-zinc-900 border border-white/10 p-8 sm:p-12 overflow-hidden shadow-2xl">
+          <div className="relative rounded-2xl bg-zinc-900 border border-white/10 p-8 sm:p-12 overflow-hidden shadow-2xl">
             <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
               <div className="max-w-2xl text-center lg:text-left">
-                <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-2">
-                  ACCESO INVITADO EXCLUSIVO
-                </span>
-                <h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
+<h3 className="text-2xl sm:text-3xl font-black uppercase text-white tracking-tight">
                   Prueba una Clase Dirigida sin Costo
                 </h3>
                 <p className="text-zinc-400 text-sm mt-2 font-sans">

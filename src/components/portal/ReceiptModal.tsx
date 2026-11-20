@@ -1,4 +1,3 @@
-import { motion, AnimatePresence } from 'motion/react';
 import {
   Printer,
   MessageCircle,
@@ -6,6 +5,7 @@ import {
   Dumbbell,
 } from 'lucide-react';
 import { GymMember } from '../../data/gymStore';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 export interface ReceiptModalProps {
   isOpen: boolean;
@@ -24,6 +24,7 @@ export default function ReceiptModal({
   paymentTypeTitle,
   paymentMethod,
 }: ReceiptModalProps) {
+  const dialogRef = useModalFocus(isOpen && Boolean(member), onClose);
   if (!isOpen || !member) return null;
 
   const receiptDate = new Date().toLocaleDateString('es-PE', {
@@ -41,7 +42,8 @@ export default function ReceiptModal({
   };
 
   const cleanPhone = (member.phone || '').replace(/\D/g, '');
-  const targetPhone = cleanPhone.length >= 9 ? cleanPhone : '51999999999';
+  const targetPhone = cleanPhone.length >= 9 ? (cleanPhone.length === 9 ? `51${cleanPhone}` : cleanPhone) : '';
+  const money = (amount: number) => Number(amount || 0).toFixed(2);
 
   const whatsappMessage = encodeURIComponent(
     `*TRANKILANDIA GYM · CONSTANCIA DE PAGO*\n\n` +
@@ -50,29 +52,32 @@ export default function ReceiptModal({
       `*N° Comprobante:* ${member.receiptNumber}\n` +
       `*Fecha:* ${receiptDate} ${receiptTime}\n` +
       `*Plan:* ${member.plan}\n` +
-      `*Monto Abonado:* S/. ${paymentAmount}.00 (${paymentMethod.toUpperCase()})\n` +
+      `*Monto Abonado:* S/. ${money(paymentAmount)} (${paymentMethod.toUpperCase()})\n` +
       (member.balanceDue > 0
-        ? `*Saldo Pendiente:* S/. ${member.balanceDue}.00 (Fecha límite: ${member.paymentDueDate})\n`
+        ? `*Saldo Pendiente:* S/. ${money(member.balanceDue)} (Fecha límite: ${member.paymentDueDate})\n`
         : `*Estado:* Membresía cancelada al 100%\n`) +
       `*Sede:* Jr. José Olaya N° 640, Huamanga, Ayacucho\n\n` +
       `Agradecemos su preferencia.`
   );
 
-  const whatsappUrl = `https://wa.me/51${targetPhone.replace(/^51/, '')}?text=${whatsappMessage}`;
+  const whatsappUrl = `https://wa.me/${targetPhone}?text=${whatsappMessage}`;
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="w-full max-w-lg bg-zinc-900 border border-white/20 rounded-3xl p-6 sm:p-8 shadow-2xl relative text-white"
+      <div className="modal-backdrop">
+        <div
+          ref={dialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="receipt-modal-title"
+          tabIndex={-1}
+          className="modal-panel max-w-lg"
         >
+          <h2 id="receipt-modal-title" className="sr-only">Constancia de pago</h2>
           {/* Close button */}
           <button
             type="button"
             onClick={onClose}
+            aria-label="Cerrar constancia de pago"
             className="absolute top-5 right-5 p-2 rounded-xl text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -134,17 +139,17 @@ export default function ReceiptModal({
             <div className="pt-3 border-t border-dashed border-white/20 space-y-1.5">
               <div className="flex justify-between">
                 <span>Costo Total del Plan:</span>
-                <span className="font-bold">S/. {member.planPrice}.00</span>
+                <span className="font-bold">S/. {money(member.planPrice)}</span>
               </div>
               <div className="flex justify-between text-emerald-400 font-bold">
                 <span>Monto Abonado Hoy ({paymentTypeTitle}):</span>
-                <span>S/. {paymentAmount}.00</span>
+                <span>S/. {money(paymentAmount)}</span>
               </div>
 
               {member.balanceDue > 0 ? (
                 <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 flex justify-between text-amber-300 font-bold">
                   <span>SALDO PENDIENTE:</span>
-                  <span>S/. {member.balanceDue}.00 (Límite: {member.paymentDueDate})</span>
+                  <span>S/. {money(member.balanceDue)} (Límite: {member.paymentDueDate})</span>
                 </div>
               ) : (
                 <div className="p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-center font-bold">
@@ -171,7 +176,7 @@ export default function ReceiptModal({
               <span>IMPRIMIR / PDF</span>
             </button>
 
-            <a
+            {targetPhone ? <a
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
@@ -179,10 +184,9 @@ export default function ReceiptModal({
             >
               <MessageCircle className="w-4 h-4" />
               <span>ENVIAR POR WHATSAPP</span>
-            </a>
+            </a> : <p className="flex-1 text-sm text-zinc-400">Agrega un teléfono válido al perfil para compartir por WhatsApp.</p>}
           </div>
-        </motion.div>
+        </div>
       </div>
-    </AnimatePresence>
   );
 }

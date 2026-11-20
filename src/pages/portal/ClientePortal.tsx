@@ -17,7 +17,6 @@ import {
   CreditCard,
   Lock,
   X,
-  Upload,
   ShieldCheck,
   QrCode,
   Barcode,
@@ -41,7 +40,6 @@ import {
   saveStoredMembers,
   getStoredRoutines,
   getStoredProgress,
-  INITIAL_ROUTINES,
   getStoredMembershipPlans,
 } from '../../data/gymStore';
 import {
@@ -54,9 +52,10 @@ import {
   subscribeToGymRealtime,
 } from '../../lib/supabaseDb';
 import { GYM_CONTACT } from '../../data/gymData';
+import { supabase } from '../../lib/supabase';
+import { useModalFocus } from '../../hooks/useModalFocus';
 import {
   actualizarPasswordSocio,
-  getStoredCustomPassword,
 } from '../../lib/authPasswords';
 import {
   exportCarnetDigitalPNG,
@@ -64,6 +63,13 @@ import {
 import Barcode128 from '../../components/Barcode128';
 import QRCode2D from '../../components/QRCode2D';
 import trankilandiaLogo from '../../assets/trankilandia-logo.png';
+
+const PENDING_ROUTINE: MemberRoutine = {
+  memberId: '', routineTitle: 'Rutina pendiente de asignación',
+  objective: 'Coordina tu plan de entrenamiento con el equipo de sala.',
+  coachName: 'Equipo de entrenamiento', updatedAt: '',
+  coachNotes: 'Tu entrenador podrá indicarte una rutina adaptada a tus objetivos.', days: [],
+};
 
 // Entrenadores oficiales del gimnasio (2 mujeres y 2 varones distribuidos en los 3 turnos)
 export const OFFICIAL_COACHES = [
@@ -210,6 +216,8 @@ export interface FirstLoginPasswordModalProps {
   memberName: string;
   showGoogleEmailInput: boolean;
   firstLoginPassword: string;
+  firstLoginCurrentPassword?: string;
+  setFirstLoginCurrentPassword?: (val: string) => void;
   setFirstLoginPassword: (val: string) => void;
   firstLoginConfirm: string;
   setFirstLoginConfirm: (val: string) => void;
@@ -227,6 +235,8 @@ export function FirstLoginPasswordModal({
   memberName,
   showGoogleEmailInput,
   firstLoginPassword,
+  firstLoginCurrentPassword = '',
+  setFirstLoginCurrentPassword,
   setFirstLoginPassword,
   firstLoginConfirm,
   setFirstLoginConfirm,
@@ -238,11 +248,13 @@ export function FirstLoginPasswordModal({
   isSubmittingFirstLogin,
   onSubmit,
 }: FirstLoginPasswordModalProps) {
+  const dialogRef = useModalFocus(isOpen, () => {});
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <motion.div
+        ref={dialogRef} role="dialog" aria-modal="true" aria-label="Actualizar contraseña de la cuenta" tabIndex={-1}
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
@@ -279,6 +291,12 @@ export function FirstLoginPasswordModal({
 
         {/* Formulario de actualización */}
         <form onSubmit={onSubmit} className="mt-5 space-y-4 font-mono text-xs">
+          <div>
+            <label htmlFor="first-current-password" className="block text-sm text-zinc-300 mb-1.5">Contraseña actual</label>
+            <input id="first-current-password" type="password" autoComplete="current-password" required
+              value={firstLoginCurrentPassword} onChange={(event) => setFirstLoginCurrentPassword?.(event.target.value)}
+              className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-3 text-sm text-white" />
+          </div>
           {/* Input: Nueva Contraseña */}
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-300 mb-1.5 font-sans">
@@ -692,6 +710,7 @@ export default function ClientePortal() {
   // Estados para Modal Automático de Primer Ingreso con DNI
   const [showFirstLoginModal, setShowFirstLoginModal] = useState(false);
   const [firstLoginPassword, setFirstLoginPassword] = useState('');
+  const [firstLoginCurrentPassword, setFirstLoginCurrentPassword] = useState('');
   const [firstLoginConfirm, setFirstLoginConfirm] = useState('');
   const [firstLoginEmail, setFirstLoginEmail] = useState('');
   const [showFirstLoginPw, setShowFirstLoginPw] = useState(false);
@@ -701,7 +720,7 @@ export default function ClientePortal() {
 
   // Auto-activar modal de primer ingreso si el usuario inició con DNI de 8 dígitos y aún usa la clave por defecto
   useEffect(() => {
-    if (effectiveDni && /^\d{8}$/.test(effectiveDni) && !getStoredCustomPassword(effectiveDni)) {
+    if (effectiveDni && user?.user_metadata?.requires_password_change === true) {
       setShowFirstLoginModal(true);
     }
   }, [effectiveDni, user]);
@@ -745,7 +764,7 @@ export default function ClientePortal() {
 
     try {
       // 2. Invocar actualizarPasswordSocio(effectiveDni, nuevaClave)
-      const resPw = await actualizarPasswordSocio(effectiveDni, firstLoginPassword);
+      const resPw = await actualizarPasswordSocio(effectiveDni, firstLoginPassword, firstLoginCurrentPassword);
       if (!resPw.success) {
         setFirstLoginError(resPw.message);
         setIsSubmittingFirstLogin(false);
@@ -762,7 +781,12 @@ export default function ClientePortal() {
         }
       }
 
-      // 4. Cerrar el modal, emitir toast de éxito y permitir navegar libremente en el portal
+      const { error: metadataError } = await supabase.auth.updateUser({ data: { requires_password_change: false } });
+      if (metadataError) {
+        setFirstLoginError('La contraseña se cambió. No se pudo actualizar el aviso de seguridad; vuelve a iniciar sesión.');
+        return;
+      }
+      setFirstLoginCurrentPassword('');
       setShowFirstLoginModal(false);
       setFirstLoginToast('¡Contraseña actualizada con éxito! Tu cuenta ahora está protegida.');
     } catch (err: any) {
@@ -864,16 +888,10 @@ export default function ClientePortal() {
     setIsLinkingEmail(true);
     setEmailVincularStatus(null);
 
-    const res = await vincularCorreoASocio(dniToUse, emailVincularInput);
+    const message = `Hola Trankilandia Gym, solicito verificar la vinculación de mi cuenta de socio (DNI ${dniToUse}) con el correo ${emailVincularInput.trim()}. Quedo pendiente de la verificación de mi identidad en recepción.`;
+    const opened = window.open(`https://wa.me/${GYM_CONTACT.phone.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
     setIsLinkingEmail(false);
-
-    if (res.success && res.member) {
-      setEmailVincularStatus({ type: 'success', message: res.message });
-      setEmailVincularInput('');
-      setMembers((prev) => prev.map((m) => (m.id === res.member!.id ? res.member! : m)));
-    } else {
-      setEmailVincularStatus({ type: 'error', message: res.message });
-    }
+    setEmailVincularStatus({ type: opened ? 'success' : 'error', message: 'Envía la solicitud por WhatsApp. La cuenta se vinculará cuando recepción verifique tu identidad; todavía no se ha cambiado tu acceso.' });
   };
 
   // CARGAR RUTINA CON CACHÉ DE CLIENTE (TTL: 10 MINUTOS EN SESSIONSTORAGE)
@@ -910,15 +928,7 @@ export default function ClientePortal() {
         const fallback =
           freshRoutine ||
           getStoredRoutines()[currentMember.id] ||
-          INITIAL_ROUTINES['MEM-001'] || {
-            memberId: currentMember.id,
-            routineTitle: 'Rutina Base de Fuerza & Musculación',
-            objective: 'Acondicionamiento físico general',
-            coachName: currentMember.coachName || 'Coach Marcos Rivas',
-            updatedAt: 'Hoy',
-            coachNotes: 'Mantener buena forma y calentar 10 minutos antes de entrenar.',
-            days: [],
-          };
+          { ...PENDING_ROUTINE, memberId: currentMember.id };
 
         setMemberRoutine(fallback);
 
@@ -933,7 +943,7 @@ export default function ClientePortal() {
         );
       } catch {
         // En caso de falla, fallback local
-        const local = getStoredRoutines()[currentMember.id] || INITIAL_ROUTINES['MEM-001'];
+        const local = getStoredRoutines()[currentMember.id] || { ...PENDING_ROUTINE, memberId: currentMember.id };
         setMemberRoutine(local);
       }
       setIsLoadingRoutine(false);
@@ -971,7 +981,7 @@ export default function ClientePortal() {
     : [];
   const latestProgress = progressList[0];
 
-  const activeRoutine = memberRoutine || INITIAL_ROUTINES['MEM-001'];
+  const activeRoutine = memberRoutine || PENDING_ROUTINE;
   const activeDay = activeRoutine?.days?.[selectedDayIndex] || activeRoutine?.days?.[0];
 
   const toggleExercise = (exerciseId: string) => {
@@ -981,8 +991,10 @@ export default function ClientePortal() {
     }));
   };
 
+  const plansDialog = useModalFocus(showPlansModal && Boolean(currentMember), () => setShowPlansModal(false));
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
+    <div className="portal-shell min-h-screen bg-zinc-950 text-white font-sans pb-16 selection:bg-amber-400 selection:text-black">
       <PortalHeader
         currentRole="cliente"
         title="Portal del Socio"
@@ -1139,7 +1151,7 @@ export default function ClientePortal() {
                       Saldo pendiente por liquidar en Caja
                     </h4>
                     <p className="text-xs text-zinc-300 mt-0.5">
-                      Tienes un saldo de <span className="font-bold text-amber-400">S/. {currentMember.balanceDue}.00</span> por cancelar.
+                      Tienes un saldo de <span className="font-bold text-amber-400">S/. {Number(currentMember.balanceDue).toFixed(2)}</span> por cancelar.
                     </p>
                   </div>
                 </div>
@@ -1147,7 +1159,7 @@ export default function ClientePortal() {
                 <a
                   href={`https://wa.me/51999787489?text=Hola%20Trankilandia%20Gym,%20soy%20${encodeURIComponent(
                     currentMember.name
-                  )}%20(DNI%20${currentMember.dni}),%20deseo%20completar%20mi%20saldo%20pendiente%20de%20S/.%20${currentMember.balanceDue}.00`}
+                  )}%20(DNI%20${currentMember.dni}),%20deseo%20completar%20mi%20saldo%20pendiente%20de%20S/.%20${Number(currentMember.balanceDue).toFixed(2)}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs uppercase tracking-wider transition-colors shrink-0"
@@ -1159,10 +1171,11 @@ export default function ClientePortal() {
             ) : null}
 
             {/* BARRA DE NAVEGACIÓN DE PESTAÑAS DEL CLIENTE */}
-            <div className="flex items-center gap-1.5 sm:gap-2 bg-zinc-900/90 p-1.5 rounded-2xl border border-white/10 overflow-x-auto">
+            <div aria-label="Secciones del portal del socio" className="portal-tabs flex items-center gap-1.5 sm:gap-2 bg-zinc-900 p-1.5 rounded-2xl border border-white/10 overflow-x-auto">
               <button
                 type="button"
                 onClick={() => setActiveTab('carnet')}
+                aria-current={activeTab === 'carnet' ? 'page' : undefined}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'carnet'
                     ? 'bg-amber-400 text-black shadow-md'
@@ -1176,6 +1189,7 @@ export default function ClientePortal() {
               <button
                 type="button"
                 onClick={() => setActiveTab('rutina')}
+                aria-current={activeTab === 'rutina' ? 'page' : undefined}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'rutina'
                     ? 'bg-amber-400 text-black shadow-md'
@@ -1189,6 +1203,7 @@ export default function ClientePortal() {
               <button
                 type="button"
                 onClick={() => setActiveTab('membresia')}
+                aria-current={activeTab === 'membresia' ? 'page' : undefined}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'membresia'
                     ? 'bg-amber-400 text-black shadow-md'
@@ -1202,6 +1217,7 @@ export default function ClientePortal() {
               <button
                 type="button"
                 onClick={() => setActiveTab('perfil')}
+                aria-current={activeTab === 'perfil' ? 'page' : undefined}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'perfil'
                     ? 'bg-amber-400 text-black shadow-md'
@@ -1215,6 +1231,7 @@ export default function ClientePortal() {
               <button
                 type="button"
                 onClick={() => setActiveTab('seguridad')}
+                aria-current={activeTab === 'seguridad' ? 'page' : undefined}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'seguridad'
                     ? 'bg-amber-400 text-black shadow-md'
@@ -1455,6 +1472,7 @@ export default function ClientePortal() {
                       </div>
                     </div>
 
+                    {!activeRoutine.days.length && <p className="text-sm leading-relaxed text-zinc-300">Aún no hay una rutina asignada a tu cuenta. Acércate a tu entrenador para coordinarla.</p>}
                     {/* Selector de Días */}
                     {activeRoutine?.days && activeRoutine.days.length > 0 && (
                       <div className="flex items-center gap-2 overflow-x-auto pb-1">
@@ -1866,12 +1884,12 @@ export default function ClientePortal() {
                           </div>
                         </div>
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                          {getStoredCustomPassword(effectiveDni || currentMember?.dni || '') ? 'Clave Personalizada' : 'Clave Inicial DNI'}
+                          Cuenta autenticada
                         </span>
                       </div>
 
                       <p className="text-xs text-zinc-400 leading-relaxed">
-                        Tu contraseña inicial de acceso es tu mismo número de DNI. Puedes actualizarla por una contraseña privada cuando desees.
+                        Actualiza tu contraseña registrada. Necesitarás la contraseña actual para confirmar el cambio.
                       </p>
 
                       {passwordStatus && (
@@ -1889,13 +1907,15 @@ export default function ClientePortal() {
                       <form onSubmit={handleChangePassword} className="space-y-3 font-mono text-xs">
                         <div>
                           <label className="block text-[11px] uppercase tracking-wider text-zinc-300 mb-1 font-semibold">
-                            Contraseña Actual (o tu DNI si es primer cambio)
+                            Contraseña actual
                           </label>
                           <input
                             type="password"
+                            required
+                            autoComplete="current-password"
                             value={passwordActualInput}
                             onChange={(e) => setPasswordActualInput(e.target.value)}
-                            placeholder="Tu DNI o clave actual"
+                            placeholder="Tu contraseña actual"
                             className="w-full bg-zinc-900 border border-white/10 rounded-xl px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400"
                           />
                         </div>
@@ -1948,7 +1968,7 @@ export default function ClientePortal() {
                             <Mail className="w-4 h-4" />
                           </div>
                           <div>
-                            <h4 className="font-bold text-white text-sm uppercase">Cuenta de Google</h4>
+                            <h4 className="font-bold text-white text-sm uppercase">Correo y acceso</h4>
                             <p className="text-[11px] font-mono text-zinc-400 truncate max-w-[180px]">
                               {currentMember?.email && !currentMember.email.endsWith('@socio.trankilandia.pe') && !currentMember.email.endsWith('@cliente.trankilandia.pe')
                                 ? currentMember.email
@@ -1961,7 +1981,7 @@ export default function ClientePortal() {
 
                         {currentMember?.email && !currentMember.email.endsWith('@socio.trankilandia.pe') && !currentMember.email.endsWith('@cliente.trankilandia.pe') ? (
                           <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                            Vinculado
+                            Contacto registrado
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase bg-amber-500/10 text-amber-400 border border-amber-500/30">
@@ -1971,7 +1991,7 @@ export default function ClientePortal() {
                       </div>
 
                       <p className="text-xs text-zinc-400 leading-relaxed">
-                        Vincula tu correo personal para iniciar sesión con un solo clic usando el botón <strong className="text-white">Continuar con Google</strong> en tu celular o computadora.
+                        El correo de contacto y la cuenta de acceso se verifican por separado. Para cambiar la cuenta vinculada, solicita a recepción la verificación de tu identidad.
                       </p>
 
                       {emailVincularStatus && (
@@ -2006,7 +2026,7 @@ export default function ClientePortal() {
                           disabled={isLinkingEmail}
                           className="w-full bg-white hover:bg-zinc-100 disabled:opacity-50 text-zinc-900 font-extrabold uppercase py-2.5 px-4 rounded-xl text-xs transition-colors cursor-pointer shadow-md flex items-center justify-center gap-2"
                         >
-                          {isLinkingEmail ? 'Vinculando...' : 'Vincular Correo a Mi Cuenta'}
+                          {isLinkingEmail ? 'Preparando…' : 'Solicitar vinculación a recepción'}
                         </button>
                       </form>
 
@@ -2038,10 +2058,11 @@ export default function ClientePortal() {
       {/* MODAL DE PLANES Y SUSCRIPCIÓN PARA SOCIOS NUEVOS O SIN MEMBRESÍA */}
       {showPlansModal && currentMember && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
-          <div className="bg-zinc-900 border border-amber-400/40 rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto shadow-2xl relative p-6 sm:p-8">
+          <div ref={plansDialog} role="dialog" aria-modal="true" aria-label="Planes de membresía" tabIndex={-1} className="portal-panel bg-zinc-900 border border-white/10 rounded-2xl max-w-3xl w-full max-h-[90dvh] overflow-y-auto relative p-6 sm:p-8">
             <button
               type="button"
               onClick={() => setShowPlansModal(false)}
+              aria-label="Cerrar planes de membresía"
               className="absolute top-5 right-5 p-2 rounded-xl bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
             >
               <X className="w-5 h-5" />
@@ -2066,7 +2087,7 @@ export default function ClientePortal() {
               {plansCatalogList.map((plan) => {
                 const isSelected = selectedPlanForSub === plan.name;
                 return (
-                  <div
+                  <button type="button" aria-pressed={isSelected}
                     key={plan.id}
                     onClick={() => setSelectedPlanForSub(plan.name)}
                     className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
@@ -2091,7 +2112,7 @@ export default function ClientePortal() {
                         {plan.name}
                       </div>
                       <div className="text-2xl font-black text-amber-400 font-display mt-2">
-                        S/. {plan.price}.00
+                        S/. {Number(plan.price).toFixed(2)}
                       </div>
                       <div className="text-[10px] font-mono text-zinc-400 mt-0.5">
                         Duración: {plan.duration}
@@ -2121,139 +2142,23 @@ export default function ClientePortal() {
                         {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                       </div>
                     </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
 
-            {/* SECCIÓN DE CARGA Y VALIDACIÓN DE DOCUMENTO PARA PLANES CON DESCUENTO */}
+            {/* La documentación se valida en recepción; no simular una carga local como validación. */}
             {(selectedPlanForSub.toLowerCase().includes('escolar') || selectedPlanForSub.toLowerCase().includes('universit')) && (
-              <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-amber-400/10 border-2 border-amber-400/40 space-y-3 font-mono">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-amber-400 shrink-0" />
-                    <h4 className="text-sm font-black text-amber-300 uppercase">
-                      {selectedPlanForSub.toLowerCase().includes('escolar')
-                        ? 'Validación Obligatoria: DNI Escolar (14 a 17 años)'
-                        : 'Validación Obligatoria: Carnet de Universidad / Instituto'}
-                    </h4>
-                  </div>
-                  <span
-                    className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase ${
-                      currentMember.documentStatus === 'verificado'
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                        : currentMember.documentStatus === 'pendiente'
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                        : 'bg-zinc-800 text-zinc-300'
-                    }`}
-                  >
-                    {currentMember.documentStatus === 'verificado'
-                      ? 'Documento Aprobado'
-                      : currentMember.documentStatus === 'pendiente'
-                      ? 'Foto en Revisión'
-                      : 'Foto Pendiente'}
-                  </span>
-                </div>
-
-                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+              <div className="mb-6 p-5 rounded-2xl bg-zinc-950 border border-white/10 space-y-2">
+                <h4 className="font-semibold text-amber-300">Validación de tarifa preferencial</h4>
+                <p className="text-sm text-zinc-300 leading-relaxed">
                   {selectedPlanForSub.toLowerCase().includes('escolar')
-                    ? 'Para acceder a la tarifa escolar de S/. 50.00/mes, debes acreditar tu edad (14 a 17 años). Sube una foto de tu DNI o preséntalo físicamente en el mostrador.'
-                    : 'Para la tarifa universitaria de S/. 60.00/mes o 3 meses x S/. 150.00, sube una foto nítida de tu carnet universitario/instituto vigente o constancia de matrícula.'}
+                    ? 'Presenta tu DNI en recepción para acreditar la edad de 14 a 17 años.'
+                    : 'Presenta tu carnet de estudiante vigente o constancia de matrícula en recepción.'}
                 </p>
-
-                {/* Foto cargada o botón para subir */}
-                {currentMember.documentUrl ? (
-                  <div className="flex items-center justify-between gap-4 p-3 rounded-xl bg-zinc-950 border border-white/10">
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={currentMember.documentUrl}
-                        alt="Documento cargado"
-                        className="w-14 h-14 object-cover rounded-lg border border-white/10"
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-white">Foto de documento adjuntada</div>
-                        <div className="text-[11px] text-zinc-400">
-                          Estado:{' '}
-                          <span className="text-amber-400 font-bold">
-                            {currentMember.documentStatus === 'verificado'
-                              ? 'Verificado'
-                              : 'Pendiente de validación'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <label className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold cursor-pointer transition-colors border border-white/10">
-                      <span>Cambiar foto</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = async (event) => {
-                              const dataUrl = event.target?.result as string;
-                              const docType = selectedPlanForSub.toLowerCase().includes('escolar')
-                                ? 'dni_escolar'
-                                : 'carnet_estudiante';
-                              const updated = await updateMemberProfile(currentMember.id, {
-                                documentUrl: dataUrl,
-                                documentStatus: 'pendiente',
-                                documentType: docType,
-                                documentNotes: 'Documento subido por el alumno vía portal web',
-                              });
-                              saveStoredMembers(updated);
-                              setMembers(updated);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                ) : (
-                  <div className="p-4 rounded-xl border border-dashed border-amber-400/40 bg-zinc-950/80 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
-                    <div>
-                      <div className="text-xs font-bold text-white">Sube la foto de tu documento ahora</div>
-                      <div className="text-[11px] text-zinc-400">Formatos permitidos: JPG, PNG o foto con la cámara</div>
-                    </div>
-                    <label className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs transition-colors flex items-center gap-2 cursor-pointer shadow-md shrink-0">
-                      <Upload className="w-4 h-4" />
-                      <span>Subir Foto de DNI / Carnet</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = async (event) => {
-                              const dataUrl = event.target?.result as string;
-                              const docType = selectedPlanForSub.toLowerCase().includes('escolar')
-                                ? 'dni_escolar'
-                                : 'carnet_estudiante';
-                              const updated = await updateMemberProfile(currentMember.id, {
-                                documentUrl: dataUrl,
-                                documentStatus: 'pendiente',
-                                documentType: docType,
-                                documentNotes: 'Documento subido por el alumno vía portal web',
-                              });
-                              saveStoredMembers(updated);
-                              setMembers(updated);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                )}
+                <p className="text-sm text-zinc-400">Recepción revisará el documento y confirmará la tarifa antes de activar el plan.</p>
               </div>
             )}
-
             {/* Opciones de Pago */}
             <div className="p-5 rounded-2xl bg-zinc-950 border border-white/10 space-y-4 font-mono">
               <div className="text-xs font-bold uppercase text-white flex items-center gap-2">
@@ -2267,7 +2172,7 @@ export default function ClientePortal() {
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-amber-300">OPCIÓN 1: Yape / Plin</span>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold">
-                      Inmediato
+                      Por confirmar
                     </span>
                   </div>
                   <p className="text-zinc-400 text-[11px]">
@@ -2287,7 +2192,7 @@ export default function ClientePortal() {
                       selectedPlanForSub
                     )}"%20vía%20Yape/Plin.${
                       selectedPlanForSub.toLowerCase().includes('escolar') || selectedPlanForSub.toLowerCase().includes('universit')
-                        ? '%20He%20adjuntado%20la%20foto%20de%20mi%20documento%20para%20la%20tarifa%20preferencial.'
+                        ? '%20Quisiera%20validar%20mi%20documento%20para%20la%20tarifa%20preferencial.'
                         : ''
                     }`}
                     target="_blank"
@@ -2313,7 +2218,7 @@ export default function ClientePortal() {
                   <ul className="text-[11px] text-zinc-400 space-y-1 list-disc list-inside">
                     <li>Muestra tu carnet digital con código de barras desde el celular.</li>
                     <li>Paga en efectivo, tarjeta POS, Yape o Plin en el mostrador.</li>
-                    <li>Recepción activa tu ingreso en 1 segundo con la pistola láser.</li>
+                    <li>Recepción confirma el pago y la activación de tu membresía.</li>
                   </ul>
                   <div className="pt-2">
                     <button
@@ -2346,12 +2251,10 @@ export default function ClientePortal() {
                 ? currentMember.name.split(' ')[0]
                 : user?.user_metadata?.full_name?.split(' ')[0] || 'Socio'
             }
-            showGoogleEmailInput={
-              !currentMember?.email ||
-              currentMember.email?.toLowerCase().endsWith('@socio.trankilandia.pe') ||
-              currentMember.email?.toLowerCase().endsWith('@cliente.trankilandia.pe')
-            }
+            showGoogleEmailInput={false}
             firstLoginPassword={firstLoginPassword}
+            firstLoginCurrentPassword={firstLoginCurrentPassword}
+            setFirstLoginCurrentPassword={setFirstLoginCurrentPassword}
             setFirstLoginPassword={setFirstLoginPassword}
             firstLoginConfirm={firstLoginConfirm}
             setFirstLoginConfirm={setFirstLoginConfirm}

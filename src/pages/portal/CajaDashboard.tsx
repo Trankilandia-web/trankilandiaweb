@@ -76,6 +76,7 @@ import {
   obtenerProductosInventario,
   registrarVentaPOS,
   registerGymMember,
+  getPendingEnrollmentMember,
   payMemberBalance,
   updateMemberProfile,
   asignarDniYActivarCuenta,
@@ -86,6 +87,7 @@ import {
 } from '../../lib/supabaseDb';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
+import { calculateDaysRemaining, getLocalPeruDateString } from '../../lib/dateUtils';
 
 const DEFAULT_PLANS_CATALOG = getStoredCatalogPlans();
 
@@ -1037,7 +1039,8 @@ export default function CajaDashboard() {
       : undefined;
 
     const cleanDni = extraerDniPeru(clientDni) || clientDni.trim().replace(/\D/g, '').slice(0, 8);
-    const existingMember =
+    const pendingEnrollment = getPendingEnrollmentMember(cleanDni);
+    const existingMember = pendingEnrollment ? undefined :
       members.find((m) => m.dni && m.dni.trim() === cleanDni) ||
       getStoredMembers().find((m) => m.dni && m.dni.trim() === cleanDni);
 
@@ -1059,7 +1062,12 @@ export default function CajaDashboard() {
     const nextNumber = members.length + 510;
     let memberToSave: GymMember;
 
-    if (existingMember) {
+    if (pendingEnrollment) {
+      memberToSave = await registerGymMember(pendingEnrollment);
+      const updated = [memberToSave, ...members.filter((member) => member.id !== memberToSave.id)];
+      setMembers(updated);
+      saveStoredMembers(updated);
+    } else if (existingMember) {
       // MODO RENOVACIÓN DE SOCIO EXISTENTE (EVITA DUPLICAR DNI)
       memberToSave = {
         ...existingMember,
@@ -1132,14 +1140,17 @@ export default function CajaDashboard() {
         documentNotes: docVerifiedInPerson ? 'Verificado físicamente en mostrador de recepción' : undefined,
       };
 
+      memberToSave = await registerGymMember(memberToSave);
       const updated = [memberToSave, ...members];
       setMembers(updated);
       saveStoredMembers(updated);
-
-      await registerGymMember(memberToSave);
     }
 
-    // Actualizar índice en memoria de recepción
+    const confirmedShift = memberToSave.shift || 'manana';
+    const confirmedDays = calculateDaysRemaining(memberToSave.expiresAt);
+    const confirmedStatus = confirmedDays < 0 || memberToSave.membershipStatus === 'inactive'
+      ? 'vencido' : memberToSave.balanceDue > 0 ? 'con_deuda' : 'al_dia';
+    // Actualizar índice con los datos confirmados, también después de un reintento.
     const nuevoSocioRecepcion: SocioRecepcion = {
       id: memberToSave.id,
       dni: memberToSave.dni || cleanDni,
@@ -1150,12 +1161,12 @@ export default function CajaDashboard() {
       adelanto_pagado: memberToSave.advancePaid,
       saldo_pendiente: memberToSave.balanceDue,
       fecha_limite_pago: memberToSave.paymentDueDate || null,
-      fecha_fin: expDateISO,
-      turno: clientShift,
-      coach_asignado: memberToSave.coachName || COACHES_BY_SHIFT[clientShift],
-      dias_restantes: durationDays,
-      estado_calculado: 'activo',
-      tiene_deuda_activa: balance > 0,
+      fecha_fin: memberToSave.expiresAt,
+      turno: confirmedShift,
+      coach_asignado: memberToSave.coachName || COACHES_BY_SHIFT[confirmedShift],
+      dias_restantes: confirmedDays,
+      estado_calculado: confirmedDays < 0 ? 'vencido' : 'activo',
+      tiene_deuda_activa: memberToSave.balanceDue > 0,
       numero_boleta: memberToSave.receiptNumber,
     };
 
@@ -1172,10 +1183,10 @@ export default function CajaDashboard() {
 
     // Inmediatamente reflejar al socio como inscrito y al día (evita mensaje falso de "no inscrito")
     setLastScanResult({
-      status: 'al_dia',
+      status: confirmedStatus,
       socio: nuevoSocioRecepcion,
       dni: nuevoSocioRecepcion.dni,
-      message: `¡INSCRIPCIÓN EXITOSA! ACCESO AUTORIZADO · PLAN ${nuevoSocioRecepcion.plan.toUpperCase()}`,
+      message: `Registro confirmado · Plan ${nuevoSocioRecepcion.plan}`,
       timestamp: Date.now(),
     });
     setShowOmniToast(true);
@@ -1184,15 +1195,15 @@ export default function CajaDashboard() {
     broadcastLiveScan({
       id: nuevoSocioRecepcion.id,
       timestamp: Date.now(),
-      status: 'al_dia',
+      status: confirmedStatus,
       athleteName: nuevoSocioRecepcion.nombre,
       dni: nuevoSocioRecepcion.dni,
       plan: nuevoSocioRecepcion.plan,
-      daysRemaining: durationDays,
-      balanceDue: balance,
-      shift: clientShift,
+      daysRemaining: confirmedDays,
+      balanceDue: memberToSave.balanceDue,
+      shift: confirmedShift,
       spokenText: `¡Bienvenido a Trankilandia Gym, ${nuevoSocioRecepcion.nombre}! Inscripción registrada con éxito.`,
-      alertTitle: 'Inscripción Exitosa · Acceso Autorizado',
+      alertTitle: 'Registro confirmado',
     });
 
     if (voiceEnabled) {
@@ -1207,18 +1218,18 @@ export default function CajaDashboard() {
 
     const alreadyCheckedInToday = asistenciasActivas.some(
       (a) =>
-        (a.dni === cleanDni || a.socio_id === memberToSave.id) &&
+        (a.dni === memberToSave.dni || a.socio_id === memberToSave.id) &&
         new Date(a.fecha_ingreso).toDateString() === todayStr
     );
 
     let asistenciaMarcada = false;
-    if (!alreadyCheckedInToday && (balance === 0 || paid > 0)) {
+    if (!alreadyCheckedInToday && memberToSave.registeredAt <= getLocalPeruDateString() && confirmedDays >= 0 && (memberToSave.balanceDue === 0 || memberToSave.advancePaid > 0)) {
       const nuevaAsistencia: AsistenciaActiva = {
         id: `local-${nowTimestamp}`,
         socio_id: memberToSave.id,
-        dni: cleanDni,
+        dni: memberToSave.dni || cleanDni,
         nombre: memberToSave.name,
-        turno: clientShift,
+        turno: confirmedShift,
         fecha_ingreso: new Date().toISOString(),
       };
 
@@ -1226,9 +1237,9 @@ export default function CajaDashboard() {
 
       registrarAsistencia({
         socio_id: memberToSave.id,
-        dni: cleanDni,
+        dni: memberToSave.dni || cleanDni,
         nombre: memberToSave.name,
-        turno: clientShift,
+        turno: confirmedShift,
       }).then((res) => {
         if (res?.offlineQueued) {
           setOfflinePendingCount((c) => c + 1);
@@ -1242,24 +1253,22 @@ export default function CajaDashboard() {
     // Abrir modal de credenciales de acceso y bienvenida
     setCredencialesModal({
       nombre: memberToSave.name,
-      dni: cleanDni,
+      dni: memberToSave.dni || cleanDni,
       email: memberToSave.email,
       phone: memberToSave.phone,
       plan: memberToSave.plan,
       asistenciaMarcada,
       hora: horaActual,
       member: memberToSave,
-      amount: paid,
-      paymentType: isAdvancePayment ? 'Adelanto de Membresía' : 'Membresía Completa',
-      paymentMethod,
+      amount: memberToSave.advancePaid,
+      paymentType: memberToSave.paymentType === 'advance' ? 'Adelanto de Membresía' : 'Membresía Completa',
+      paymentMethod: memberToSave.paymentMethod,
     });
 
     setSuccessMessage(
       existingMember
-        ? `¡Membresía de ${memberToSave.name} renovada con éxito! Vence el ${expDateISO}.`
-        : isAdvancePayment
-        ? `Inscripción registrada con éxito. Cobrado adelanto de S/. ${paid}.00 a ${memberToSave.name}. Saldo pendiente: S/. ${balance}.00.`
-        : `Membresía cancelada al 100% (S/. ${price}.00) para ${memberToSave.name}. Turno: ${clientShift.toUpperCase()}.`
+        ? `Membresía de ${memberToSave.name} renovada. Vence el ${memberToSave.expiresAt}.`
+        : `Inscripción confirmada para ${memberToSave.name}. Abonado: S/. ${memberToSave.advancePaid.toFixed(2)}. Saldo: S/. ${memberToSave.balanceDue.toFixed(2)}.`
     );
 
     // Resetear formulario para evitar cruce de información

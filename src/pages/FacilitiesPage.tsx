@@ -91,12 +91,8 @@ export default function FacilitiesPage({
   };
 
   return (
-    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
+    <div className="public-page min-h-screen w-full max-w-full overflow-x-hidden bg-zinc-950 text-white font-display pt-28 pb-24 relative selection:bg-amber-400 selection:text-black">
       {/* Luces ambientales */}
-      <div
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-[90vw] max-w-[900px] h-[500px] bg-amber-400/10 blur-[160px] rounded-full pointer-events-none overflow-hidden"
-        aria-hidden="true"
-      />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* ========================================================= */}
@@ -105,10 +101,7 @@ export default function FacilitiesPage({
         <header className="pb-12 mb-16 border-b border-white/10">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-end">
             <div className="lg:col-span-8">
-              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-3">
-                ESPACIOS &amp; ZONAS DE ENTRENAMIENTO
-              </span>
-              <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tighter text-white leading-[0.95]">
+<h1 className="text-4xl sm:text-6xl lg:text-7xl font-black uppercase tracking-tight text-white leading-[0.95]">
                 ESPACIOS PARA TU MEJOR VERSIÓN.
               </h1>
               <p className="mt-4 text-zinc-400 text-base sm:text-lg leading-relaxed max-w-2xl font-sans">
@@ -120,7 +113,7 @@ export default function FacilitiesPage({
             <div className="lg:col-span-4 bg-zinc-900/80 border border-white/10 p-5 rounded-2xl">
               <div className="text-[11px] font-mono uppercase tracking-wider text-amber-400 mb-3 font-bold flex items-center justify-between">
                 <span>SEDE HUAMANGA, AYACUCHO</span>
-                <span className="text-zinc-500 font-mono">TRANKILANDIA</span>
+                <span className="text-zinc-400 font-mono">TRANKILANDIA</span>
               </div>
               <ul className="space-y-2.5 text-xs text-zinc-300 font-sans">
                 <li className="flex flex-col border-b border-white/5 pb-2">
@@ -146,10 +139,7 @@ export default function FacilitiesPage({
         <section className="mb-28" aria-label="Zonas deportivas del club">
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-12 border-b border-white/10 pb-6">
             <div>
-              <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
-                DISTRIBUCIÓN ZONIFICADA
-              </span>
-              <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
+<h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white">
                 ZONAS DE ENTRENAMIENTO
               </h2>
             </div>
@@ -169,7 +159,7 @@ export default function FacilitiesPage({
                   id={zone.id}
                   whileHover={{ y: -4 }}
                   transition={{ duration: 0.3, ease: [0.23, 1, 0.32, 1] }}
-                  className="relative bg-zinc-900/40 border border-white/10 rounded-3xl p-6 sm:p-8 lg:p-10 backdrop-blur-sm hover:border-amber-400/30 transition-colors overflow-hidden group"
+                  className="relative bg-zinc-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 lg:p-10 hover:border-amber-400/30 transition-colors overflow-hidden group"
                 >
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
                     {/* Fotografía de la zona */}
@@ -187,11 +177,11 @@ export default function FacilitiesPage({
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/25 to-transparent" />
 
-                        <div className="absolute top-4 left-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950/85 backdrop-blur-md border border-white/15 text-amber-400 text-xs font-mono font-bold tracking-wider">
+                        <div className="absolute top-4 left-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-950/85 border border-white/15 text-amber-400 text-xs font-mono font-bold tracking-wider">
                           <span>{zone.badge}</span>
                         </div>
 
-                        <div className="absolute bottom-4 right-4 px-3 py-1 rounded-lg bg-zinc-950/85 backdrop-blur-md border border-white/10 text-xs font-mono text-zinc-300">
+                        <div className="absolute bottom-4 right-4 px-3 py-1 rounded-lg bg-zinc-950/85 border border-white/10 text-xs font-mono text-zinc-300">
                           ZONA {zoneNumber} / 04
                         </div>
                       </div>
@@ -280,7 +270,7 @@ export default function FacilitiesPage({
                           <span>Visitar esta zona en persona</span>
                           <ArrowRight className="w-3.5 h-3.5 group-hover/btn:translate-x-1 transition-transform" />
                         </motion.button>
-                        <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest hidden sm:inline">
+                        <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest hidden sm:inline">
                           Ingreso libre
                         </span>
                       </div>
@@ -297,10 +287,7 @@ export default function FacilitiesPage({
         {/* ========================================================= */}
         <section className="mb-28" aria-label="Comodidades del club">
           <div className="max-w-3xl mb-14">
-            <span className="text-xs font-mono uppercase tracking-[0.25em] text-zinc-500 block mb-2">
-              SERVICIOS INCLUIDOS
-            </span>
-            <h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white mb-4">
+<h2 className="text-2xl sm:text-4xl font-black uppercase tracking-tight text-white mb-4">
               COMODIDADES DE NUESTRO GIMNASIO
             </h2>
             <p className="text-zinc-400 text-sm sm:text-base leading-relaxed font-sans">
@@ -316,7 +303,7 @@ export default function FacilitiesPage({
                   key={idx}
                   whileHover={{ y: -4 }}
                   transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-                  className="bg-zinc-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 backdrop-blur-sm hover:border-amber-400/40 transition-colors group flex flex-col justify-between"
+                  className="bg-zinc-900/40 border border-white/10 rounded-2xl p-6 sm:p-8 hover:border-amber-400/40 transition-colors group flex flex-col justify-between"
                 >
                   <div>
                     <div className="flex items-start justify-between gap-4 mb-5">
@@ -361,14 +348,11 @@ export default function FacilitiesPage({
         {/* 4. BANNER DE CONVERSIÓN INFERIOR */}
         {/* ========================================================= */}
         <section
-          className="relative bg-zinc-900 border border-white/10 rounded-3xl p-8 sm:p-12 lg:p-16 text-center shadow-2xl"
+          className="relative bg-zinc-900 border border-white/10 rounded-2xl p-8 sm:p-12 lg:p-16 text-center shadow-2xl"
           aria-label="Agendar tour VIP"
         >
           <div className="relative z-10 max-w-3xl mx-auto">
-            <span className="text-xs font-mono uppercase tracking-[0.25em] text-amber-400 block mb-3">
-              VEN A CONOCERNOS
-            </span>
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight mb-4">
+<h2 className="text-3xl sm:text-4xl lg:text-5xl font-black uppercase text-white tracking-tight mb-4">
               Comprueba el Ambiente de Trankilandia Gym
             </h2>
             <p className="text-zinc-400 text-sm sm:text-base leading-relaxed mb-8 max-w-2xl mx-auto font-sans">
