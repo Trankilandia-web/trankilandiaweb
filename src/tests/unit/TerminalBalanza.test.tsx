@@ -126,4 +126,30 @@ describe('Terminal Móvil de Pesaje (TerminalBalanza)', () => {
 
     expect(await screen.findByText(/Maximo Cardenas Huaman/i)).toBeDefined();
   });
+
+  it('debe permitir seleccionar un socio y alternar entre pestañas Bluetooth y Captura de Display', async () => {
+    sessionStorage.setItem('trankilandia_active_staff_id', 'staff-luis');
+    sessionStorage.setItem('trankilandia_active_staff_name', 'Luis Lloclla');
+
+    render(
+      <MemoryRouter>
+        <TerminalBalanza />
+      </MemoryRouter>
+    );
+
+    const inputSearch = screen.getByPlaceholderText(/Buscar por DNI o Nombre/i);
+    fireEvent.change(inputSearch, { target: { value: '70447087' } });
+
+    const memberButton = await screen.findByText(/Luis Gerardo Llocclla/i);
+    fireEvent.click(memberButton);
+
+    // Debe mostrar los tabs de modo
+    expect(await screen.findByText(/Bluetooth Inalámbrico/i)).toBeDefined();
+    expect(await screen.findByText(/Captura de Display/i)).toBeDefined();
+
+    // Cambiar a Captura de Display
+    fireEvent.click(screen.getByText(/Captura de Display/i));
+    expect(screen.getByPlaceholderText(/Ej: 74.50/i)).toBeDefined();
+    expect(screen.getByText(/CALCULAR Y REVISAR RESULTADOS →/i)).toBeDefined();
+  });
 });

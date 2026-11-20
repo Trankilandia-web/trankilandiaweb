@@ -12,6 +12,9 @@ import {
   Sparkles,
   ChevronRight,
   Zap,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import {
   getStoredMembers,
@@ -78,6 +81,27 @@ export default function TerminalBalanza() {
   const [manualPeso, setManualPeso] = useState<string>('');
   const [manualGrasa, setManualGrasa] = useState<string>('');
   const [manualMusculo, setManualMusculo] = useState<string>('');
+  const [copiedLink, setCopiedLink] = useState(false);
+  const isIos = typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  const handleCopyLink = async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(window.location.href);
+      } else {
+        const el = document.createElement('textarea');
+        el.value = window.location.href;
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+      }
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch (e) {
+      console.warn('Error copiando al portapapeles:', e);
+    }
+  };
 
   // 6. Resultado y Guardado
   const [computedEval, setComputedEval] = useState<EvaluacionCorporal | null>(null);
@@ -281,7 +305,7 @@ export default function TerminalBalanza() {
   const handleStartBluetoothWeighing = async () => {
     try {
       setScaleStatus('buscando');
-      setStatusMessage('Buscando balanza EUROMAR G78-BT...');
+      setStatusMessage('Buscando balanza EUROMAR® G78-BT... Enciende la balanza pisándola suavemente');
 
       const handle = await conectarBalanzaG78({
         onStatusChange: (estado, msg) => {
@@ -292,7 +316,7 @@ export default function TerminalBalanza() {
           setLiveWeight(peso);
           setIsWeightLocked(estable);
           if (estable && selectedMember) {
-            // Calcular evaluación
+            // Calcular evaluación automáticamente con peso estabilizado
             const ev = calcularMetricasCompletas({
               socio_id: selectedMember.id,
               socio_dni: selectedMember.dni || '',
@@ -310,8 +334,42 @@ export default function TerminalBalanza() {
             setDiagnostico(determinarDiagnostico(d, ev));
           }
         },
+        onImpedanceData: (imp) => {
+          if (selectedMember) {
+            setComputedEval((prev) => {
+              const currentWeight = liveWeight > 0 ? liveWeight : (prev?.peso_kg || 0);
+              if (currentWeight <= 0) return prev;
+              const ev = calcularMetricasCompletas({
+                socio_id: selectedMember.id,
+                socio_dni: selectedMember.dni || '',
+                peso_kg: currentWeight,
+                grasa_corporal_pct: imp.grasaCorporalPct,
+                masa_muscular_kg: imp.masaMuscularKg,
+                estatura_cm: estaturaCm,
+                edad,
+                sexo,
+                evaluador_id: operatorId || 'staff-luis',
+                evaluador_nombre: operatorName,
+                origen: 'bluetooth_g78',
+              });
+              const d = calcularDeltasMensuales(ev, previousEval);
+              setDeltas(d);
+              setDiagnostico(determinarDiagnostico(d, ev));
+              return ev;
+            });
+          }
+        },
         onError: (err) => {
-          setStatusMessage(`Error: ${err.message}`);
+          if (
+            err.name === 'NotFoundError' ||
+            err.message?.includes('cancelled') ||
+            err.message?.includes('User cancelled')
+          ) {
+            setStatusMessage('Búsqueda cancelada.');
+            setScaleStatus('desconectado');
+          } else {
+            setStatusMessage(`Error Bluetooth: ${err.message}`);
+          }
         },
       });
 
@@ -739,68 +797,182 @@ export default function TerminalBalanza() {
 
             {/* Alternar Modo: BLE o Manual */}
             <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl text-center space-y-5">
-              {!manualMode && bleSupported ? (
-                /* Modo Bluetooth Activo */
+              {/* Selector de Modo Superior: Tabs elegantes */}
+              <div className="flex p-1 bg-zinc-950 rounded-2xl border border-white/10 max-w-md mx-auto">
+                <button
+                  type="button"
+                  onClick={() => setManualMode(false)}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    !manualMode
+                      ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <Bluetooth className="w-3.5 h-3.5" />
+                  <span>Bluetooth Inalámbrico</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualMode(true)}
+                  className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                    manualMode
+                      ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+                      : 'text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Captura de Display</span>
+                </button>
+              </div>
+
+              {!manualMode ? (
+                /* Modo Bluetooth */
                 <div className="space-y-4">
-                  <div className="w-16 h-16 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-400 flex items-center justify-center mx-auto animate-pulse">
-                    <Bluetooth className="w-8 h-8" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black uppercase text-white font-display">
-                      Pesaje Automático por Bluetooth
-                    </h3>
-                    <p className="text-xs text-zinc-400 font-sans mt-1 max-w-sm mx-auto">
-                      Pide al socio subir a la balanza y sujetar firmemente los electrodos de las manos.
-                    </p>
-                    <div className="pt-1">
-                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-white/5">
-                        Estado BLE: {scaleStatus}
-                      </span>
-                    </div>
-                  </div>
+                  {!bleSupported ? (
+                    /* Tarjeta Especial de Asistencia para iPhone (Safari) */
+                    <div className="bg-gradient-to-b from-sky-950/40 to-zinc-950 border border-sky-500/30 rounded-2xl p-4 text-left space-y-3.5">
+                      <div className="flex items-start gap-3">
+                        <div className="p-2.5 bg-sky-500/20 text-sky-400 rounded-xl mt-0.5">
+                          <Smartphone className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <h4 className="text-xs font-black uppercase text-sky-300 font-mono flex items-center gap-1.5">
+                            <span>📱 {isIos ? 'iPhone / Safari Detectado' : 'Navegador sin Web Bluetooth Detectado'}</span>
+                          </h4>
+                          <p className="text-xs text-zinc-300 leading-relaxed font-sans">
+                            Apple bloquea el Bluetooth web en el navegador Safari. Para que la balanza envíe los datos automáticamente, tienes 2 opciones sencillas:
+                          </p>
+                        </div>
+                      </div>
 
-                  {liveWeight > 0 && (
-                    <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/40 inline-block px-8">
-                      <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest block flex items-center justify-center gap-1.5">
-                        <span>Peso Detectado</span>
-                        {isWeightLocked && (
-                          <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">
-                            ESTABILIZADO
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div className="p-3 bg-zinc-900 border border-emerald-500/30 rounded-xl space-y-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-[10px] font-bold font-mono">1</span>
+                            <span className="text-xs font-bold text-emerald-400 font-mono uppercase">Opción Automática (Bluefy)</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-300 font-sans leading-tight">
+                            Descarga la app gratuita <strong>Bluefy (Web BLE Browser)</strong> en el App Store y abre este enlace. ¡Conectará por Bluetooth al instante!
+                          </p>
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={handleCopyLink}
+                              className="flex-1 py-1.5 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-mono flex items-center justify-center gap-1 cursor-pointer transition-colors"
+                            >
+                              {copiedLink ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedLink ? '¡Enlace Copiado!' : 'Copiar Enlace'}</span>
+                            </button>
+                            <a
+                              href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-1.5 px-2 rounded-lg bg-white/10 hover:bg-white/15 text-zinc-200 border border-white/15 text-[11px] font-mono flex items-center justify-center gap-1 transition-colors"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              <span>App Store</span>
+                            </a>
+                          </div>
+                        </div>
+
+                        <div className="p-3 bg-zinc-900 border border-amber-500/30 rounded-xl space-y-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold font-mono">2</span>
+                            <span className="text-xs font-bold text-amber-400 font-mono uppercase">O usando Android (Chrome)</span>
+                          </div>
+                          <p className="text-[11px] text-zinc-300 font-sans leading-tight">
+                            Si tienes un celular Android a la mano con Google Chrome, abre este enlace y el Bluetooth funcionará directamente sin instalar nada.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pt-1 text-center">
+                        <button
+                          type="button"
+                          onClick={() => setManualMode(true)}
+                          className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-3 rounded-xl text-xs font-mono transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-amber-400/10"
+                        >
+                          <Zap className="w-4 h-4" />
+                          <span>Continuar en Safari con Captura de Pantalla (10 seg)</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Bluetooth Soportado (Android Chrome, Bluefy iOS, PC) */
+                    <div className="space-y-4">
+                      <div className="w-16 h-16 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-400 flex items-center justify-center mx-auto animate-pulse">
+                        <Bluetooth className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-black uppercase text-white font-display">
+                          Pesaje Automático EUROMAR® G78
+                        </h3>
+                        <p className="text-xs text-zinc-400 font-sans mt-1 max-w-sm mx-auto">
+                          Sube a la balanza descalzo(a) y sujeta con firmeza los electrodos del manillar con ambas manos.
+                        </p>
+                        <div className="pt-2">
+                          <span
+                            className={`text-[10px] font-mono uppercase px-2.5 py-1 rounded-full border ${
+                              scaleStatus === 'completado' || scaleStatus === 'bloqueado'
+                                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                                : scaleStatus === 'buscando' || scaleStatus === 'pesando'
+                                ? 'bg-amber-400/20 text-amber-300 border-amber-400/40 animate-pulse'
+                                : 'bg-zinc-800 text-zinc-400 border-white/5'
+                            }`}
+                          >
+                            Estado BLE: {scaleStatus.toUpperCase()}
                           </span>
-                        )}
-                      </span>
-                      <span className="text-4xl font-black font-mono text-amber-400 tracking-tight">
-                        {liveWeight.toFixed(2)} <span className="text-base text-white">kg</span>
-                      </span>
+                        </div>
+                      </div>
+
+                      {liveWeight > 0 && (
+                        <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/40 inline-block px-8">
+                          <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest block flex items-center justify-center gap-1.5">
+                            <span>Peso Detectado</span>
+                            {isWeightLocked && (
+                              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">
+                                ESTABILIZADO
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-4xl font-black font-mono text-amber-400 tracking-tight">
+                            {liveWeight.toFixed(2)} <span className="text-base text-white">kg</span>
+                          </span>
+                        </div>
+                      )}
+
+                      {statusMessage && (
+                        <p className="text-xs font-mono text-amber-300/90 font-bold animate-pulse">
+                          {statusMessage}
+                        </p>
+                      )}
+
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={handleStartBluetoothWeighing}
+                          className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono"
+                        >
+                          <Zap className="w-4 h-4" />
+                          <span>{liveWeight > 0 ? 'RECONECTAR BALANZA' : 'CONECTAR BALANZA Y PESAR'}</span>
+                        </button>
+                      </div>
+
+                      {/* Guía rápida de conexión */}
+                      <div className="text-left bg-zinc-950 border border-white/5 rounded-2xl p-4 text-[11px] text-zinc-400 font-sans space-y-1.5">
+                        <div className="font-bold text-white font-mono uppercase text-xs flex items-center gap-1.5 mb-1">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Pasos para enlazar:</span>
+                        </div>
+                        <p>1. <strong>Enciende la balanza</strong> pisándola con un pie (pantalla LCD activa).</p>
+                        <p>2. Sube descalzo(a) y sujeta el manillar con ambas manos (8 electrodos).</p>
+                        <p>3. Toca el botón amarillo y selecciona tu balanza en la lista.</p>
+                        <p className="text-amber-400/90 pt-1 font-mono text-[10px]">
+                          ⚠️ Si tienes la app Fitdays abierta en tu teléfono, ciérrala para no ocupar la conexión BLE.
+                        </p>
+                      </div>
                     </div>
                   )}
-
-                  {statusMessage && (
-                    <p className="text-xs font-mono text-amber-300/90 font-bold animate-pulse">
-                      {statusMessage}
-                    </p>
-                  )}
-
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={handleStartBluetoothWeighing}
-                      className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98"
-                    >
-                      <Zap className="w-4 h-4" />
-                      <span>{liveWeight > 0 ? 'RECONECTAR BALANZA' : 'CONECTAR BALANZA Y PESAR'}</span>
-                    </button>
-                  </div>
-
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setManualMode(true)}
-                      className="text-xs text-zinc-400 hover:text-zinc-200 underline font-mono cursor-pointer"
-                    >
-                      ¿Problemas con el Bluetooth? Usar Captura Rápida de Display
-                    </button>
-                  </div>
                 </div>
               ) : (
                 /* Modo Manual (iPhone Safari o contingencia) */
@@ -811,13 +983,13 @@ export default function TerminalBalanza() {
                       <span>Captura Rápida de Display</span>
                     </div>
                     <p className="text-xs text-zinc-400 font-sans">
-                      Ingresa los números que muestra la pantalla LCD de la báscula EUROMAR® G78.
+                      Ingresa los números que muestra la pantalla a color de tu balanza EUROMAR® G78.
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1">
-                      Peso Total (kg) *
+                      Peso Total (kg) * <span className="text-amber-400 font-normal">(Obligatorio)</span>
                     </label>
                     <input
                       type="number"
@@ -835,7 +1007,7 @@ export default function TerminalBalanza() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1">
-                        % Grasa Corporal (opcional)
+                        % Grasa Corporal <span className="text-zinc-500 font-normal">(Opcional)</span>
                       </label>
                       <input
                         type="number"
@@ -850,7 +1022,7 @@ export default function TerminalBalanza() {
                     </div>
                     <div>
                       <label className="block text-xs font-mono uppercase text-zinc-300 font-bold mb-1">
-                        Músculo (kg) (opcional)
+                        Músculo (kg) <span className="text-zinc-500 font-normal">(Opcional)</span>
                       </label>
                       <input
                         type="number"
@@ -865,24 +1037,16 @@ export default function TerminalBalanza() {
                     </div>
                   </div>
 
+                  <p className="text-[11px] text-zinc-500 font-mono">
+                    💡 Si dejas Grasa o Músculo vacíos, el sistema los calculará automáticamente con las fórmulas biomecánicas del gimnasio.
+                  </p>
+
                   <button
                     type="submit"
                     className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase py-3.5 rounded-xl text-xs font-mono transition-all cursor-pointer mt-2"
                   >
                     CALCULAR Y REVISAR RESULTADOS →
                   </button>
-
-                  {bleSupported && (
-                    <div className="text-center pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setManualMode(false)}
-                        className="text-xs text-amber-400 hover:underline font-mono cursor-pointer"
-                      >
-                        ← Volver a Conexión Bluetooth
-                      </button>
-                    </div>
-                  )}
                 </form>
               )}
             </div>

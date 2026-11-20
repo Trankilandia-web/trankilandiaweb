@@ -56,4 +56,18 @@ describe('Conector Web Bluetooth y Decodificador BLE Balanza EUROMAR G78-BT', ()
     expect(res.impedanciaManos).toBe(550);
     expect(res.impedanciaTorso).toBe(400);
   });
+
+  it('decodificarTramaImpedancia debe extraer grasa % y músculo kg si vienen en los bytes 8-11', () => {
+    // 0x00B4 = 180 decimal -> 18.0% grasa
+    // 0x015E = 350 decimal -> 35.0 kg musculo
+    const buffer = new Uint8Array([
+      0xCF, 0x00, 0x01, 0xF4, 0x02, 0x26, 0x01, 0x90,
+      0x00, 0xB4, 0x01, 0x5E, 0x00, 0x00, 0x00, 0x00
+    ]).buffer;
+    const dataView = new DataView(buffer);
+
+    const res = decodificarTramaImpedancia(dataView);
+    expect(res.grasaCorporalPct).toBe(18.0);
+    expect(res.masaMuscularKg).toBe(35.0);
+  });
 });

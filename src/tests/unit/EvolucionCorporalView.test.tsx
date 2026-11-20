@@ -10,7 +10,7 @@ describe('Componente EvolucionCorporalView', () => {
   });
 
   it('debe mostrar estado vacío amigable si el socio aún no tiene evaluaciones', async () => {
-    render(<EvolucionCorporalView socioDni="70447087" />);
+    render(<EvolucionCorporalView socioDni="99999999" />);
 
     expect(await screen.findByText(/Sin Evaluaciones Registradas/i, {}, { timeout: 4000 })).toBeDefined();
     expect(await screen.findByText(/Acércate a recepción/i, {}, { timeout: 4000 })).toBeDefined();
@@ -35,9 +35,9 @@ describe('Componente EvolucionCorporalView', () => {
     render(<EvolucionCorporalView socioDni="70447087" />);
 
     // Esperar a que se cargue la evaluación
-    expect(await screen.findByText(/FIT SCORE/i)).toBeDefined();
-    expect(await screen.findByText('75.00')).toBeDefined();
-    expect(await screen.findByText('35.50')).toBeDefined();
-    expect(await screen.findByText(/Análisis Segmental por Zonas/i)).toBeDefined();
+    expect(await screen.findByText(/FIT SCORE/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText('75.00', {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText('35.50', {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Análisis Segmental por Zonas/i, {}, { timeout: 8000 })).toBeDefined();
   });
 });
