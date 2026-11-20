@@ -57,37 +57,141 @@ export function isWebBluetoothAvailable(): boolean {
 
 /**
  * Decodifica la trama de peso en vivo emitida por la característica FFB2
+ * Soporta de forma nativa:
+ * 1. Protocolo Fitdays / Lefu 8 electrodos (Trama Envelope A2: gramos en 24 bits BE)
+ * 2. Protocolo Sroemer / Crenot / Fitdays (Bytes 0 y 3 son 0xA2, 18 bits en bytes 6-8)
+ * 3. Protocolo Clásico Lefu / Senssun (Headers 0xCF, 0xCA, 0xCE, 0xCB)
+ * 4. Filtro estricto de tara y ruido (<15 kg es ignorado para evitar falsos positivos)
  */
 export function decodificarTramaPeso(dataView: DataView): BleWeightResult {
-  if (dataView.byteLength < 3) {
+  const len = dataView.byteLength;
+  if (len < 3) {
     return { pesoKg: 0, esEstable: false };
   }
 
-  const header = dataView.getUint8(0);
-  const esEstable = header === 0xCA || header === 0xCF;
+  const b0 = dataView.getUint8(0);
 
-  // Los bytes 1 y 2 contienen el peso en formato Big-Endian (dividido por 100)
-  const pesoRaw = dataView.getUint16(1, false);
-  const pesoKg = Number((pesoRaw / 100.0).toFixed(2));
+  let rawPesoGramos: number | null = null;
+  let esEstable = false;
 
-  return {
-    pesoKg,
-    esEstable,
-  };
+  // --------------------------------------------------------------------------
+  // PATRÓN 1: Protocolo Fitdays / Lefu G78 Oficial con sobre de trama (Envelope)
+  // Formato: [SEQ] [LEN_HI=00] [LEN_LO=07] [PART=00] [TYPE=A2] [STATUS] [00] [W_HI] [W_MID] [W_LO] ...
+  // Total 12 bytes o más. Type 0xA2 indica flujo de peso en vivo.
+  // --------------------------------------------------------------------------
+  if (len >= 10 && dataView.getUint8(4) === 0xA2) {
+    const status = dataView.getUint8(5);
+    // 0x01: pesando/inestable | 0x02 o 0x03: peso estabilizado/bloqueado | 0x00: socio se bajó
+    esEstable = status === 0x02 || status === 0x03;
+
+    if (status === 0x00) {
+      return { pesoKg: 0, esEstable: false };
+    }
+
+    const wHi = dataView.getUint8(7);
+    const wMid = dataView.getUint8(8);
+    const wLo = dataView.getUint8(9);
+    rawPesoGramos = (wHi << 16) | (wMid << 8) | wLo;
+  }
+  // Variante Sroemer / Crenot / Fitdays (Bytes 0 y 3 son 0xA2):
+  // [A2] [07] [00] [A2] [STATUS=02] [00] [B6] [B7] [B8] ...
+  else if (len >= 9 && b0 === 0xA2 && dataView.getUint8(3) === 0xA2) {
+    const status = dataView.getUint8(4);
+    esEstable = status === 0x02 || status === 0x03;
+    const b6 = dataView.getUint8(6);
+    const b7 = dataView.getUint8(7);
+    const b8 = dataView.getUint8(8);
+    rawPesoGramos = ((b6 & 0x03) << 16) | (b7 << 8) | b8;
+  }
+  // --------------------------------------------------------------------------
+  // PATRÓN 2: Protocolo Clásico Lefu / Senssun / Chipsea (8 a 16 bytes)
+  // Byte 0: 0xCF / 0xCA (estable) o 0xCE / 0xCB (inestable)
+  // Bytes 1 y 2: Peso en Big-Endian (dividido por 100 o por 10)
+  // --------------------------------------------------------------------------
+  else if (b0 === 0xCA || b0 === 0xCF || b0 === 0xCE || b0 === 0xCB) {
+    esEstable = b0 === 0xCA || b0 === 0xCF;
+    const pesoRaw = dataView.getUint16(1, false);
+    if (pesoRaw >= 2000 && pesoRaw <= 30000) {
+      const pesoKg = Number((pesoRaw / 100.0).toFixed(2));
+      return { pesoKg: pesoKg >= 15.0 ? pesoKg : 0, esEstable: pesoKg >= 15.0 ? esEstable : false };
+    } else if (pesoRaw >= 200 && pesoRaw <= 3000) {
+      const pesoKg = Number((pesoRaw / 10.0).toFixed(2));
+      return { pesoKg: pesoKg >= 15.0 ? pesoKg : 0, esEstable: pesoKg >= 15.0 ? esEstable : false };
+    }
+  }
+
+  // Si obtuvimos gramos a través de trama BE u24 (Patrón 1)
+  if (rawPesoGramos !== null) {
+    const pesoKg = Number((rawPesoGramos / 1000.0).toFixed(2));
+    // Filtro estricto de tara y ruido (menos de 15 kg nunca es un socio del gym)
+    if (pesoKg < 15.0 || pesoKg > 250.0) {
+      return { pesoKg: 0, esEstable: false };
+    }
+    return { pesoKg, esEstable };
+  }
+
+  // --------------------------------------------------------------------------
+  // PATRÓN 3: Fallback de escaneo heurístico en la trama (u24 gramos o u16 centésimas)
+  // --------------------------------------------------------------------------
+  for (let offset = 0; offset <= len - 3; offset++) {
+    const candidateGrams =
+      (dataView.getUint8(offset) << 16) |
+      (dataView.getUint8(offset + 1) << 8) |
+      dataView.getUint8(offset + 2);
+    const candidateKg = candidateGrams / 1000.0;
+    if (candidateKg >= 25.0 && candidateKg <= 220.0) {
+      return {
+        pesoKg: Number(candidateKg.toFixed(2)),
+        esEstable,
+      };
+    }
+  }
+
+  for (let offset = 0; offset <= len - 2; offset++) {
+    const candidateCents = dataView.getUint16(offset, false);
+    const candidateKg = candidateCents / 100.0;
+    if (candidateKg >= 25.0 && candidateKg <= 220.0) {
+      return {
+        pesoKg: Number(candidateKg.toFixed(2)),
+        esEstable,
+      };
+    }
+  }
+
+  return { pesoKg: 0, esEstable: false };
 }
 
 /**
- * Decodifica la trama segmental de impedancia de 8 electrodos (FFB3)
+ * Decodifica la trama segmental de impedancia de 8 electrodos (FFB3 o FFB2)
+ * Soporta tramas A7 (40 bytes con 10 canales en doble frecuencia) y tramas clásicas.
  */
 export function decodificarTramaImpedancia(dataView: DataView): BleImpedanceResult {
-  if (dataView.byteLength < 8) {
+  const len = dataView.byteLength;
+  if (len < 8) {
     return { impedanciaPies: 500, impedanciaManos: 520, impedanciaTorso: 420 };
   }
 
-  // En el protocolo Lefu / Fitdays, los canales de ohmios van organizados por pares:
-  // Bytes 2-3: Resistencia de electrodos de pies (Ohms)
-  // Bytes 4-5: Resistencia de electrodos de manos (Ohms)
-  // Bytes 6-7: Resistencia de torso/cuerpo cruzado (Ohms)
+  // Trama A7 de 40 bytes de Fitdays / Lefu (8 electrodos, doble frecuencia)
+  // Bytes 15 a 34 contienen 10 canales de impedancia (ohms x 10)
+  if (len >= 35 && dataView.getUint8(4) === 0xA7) {
+    const torsoOhms1 = dataView.getUint16(15, false) / 10.0;
+    const brazoIzqOhms1 = dataView.getUint16(17, false) / 10.0;
+    const brazoDerOhms1 = dataView.getUint16(19, false) / 10.0;
+    const piernaIzqOhms1 = dataView.getUint16(21, false) / 10.0;
+    const piernaDerOhms1 = dataView.getUint16(23, false) / 10.0;
+
+    const impedanciaPies = (piernaIzqOhms1 + piernaDerOhms1) / 2 || 500;
+    const impedanciaManos = (brazoIzqOhms1 + brazoDerOhms1) / 2 || 520;
+    const impedanciaTorso = torsoOhms1 || 420;
+
+    return {
+      impedanciaPies: impedanciaPies > 20 && impedanciaPies < 1500 ? impedanciaPies : 500,
+      impedanciaManos: impedanciaManos > 20 && impedanciaManos < 1500 ? impedanciaManos : 520,
+      impedanciaTorso: impedanciaTorso > 10 && impedanciaTorso < 800 ? impedanciaTorso : 420,
+    };
+  }
+
+  // En el protocolo Lefu / Fitdays clásico:
   const impedanciaPies = dataView.getUint16(2, false);
   const impedanciaManos = dataView.getUint16(4, false);
   const impedanciaTorso = dataView.getUint16(6, false);
@@ -113,9 +217,9 @@ export function decodificarTramaImpedancia(dataView: DataView): BleImpedanceResu
   }
 
   return {
-    impedanciaPies: impedanciaPies > 0 ? impedanciaPies : 500,
-    impedanciaManos: impedanciaManos > 0 ? impedanciaManos : 520,
-    impedanciaTorso: impedanciaTorso > 0 ? impedanciaTorso : 420,
+    impedanciaPies: impedanciaPies > 100 && impedanciaPies < 1500 ? impedanciaPies : 500,
+    impedanciaManos: impedanciaManos > 100 && impedanciaManos < 1500 ? impedanciaManos : 520,
+    impedanciaTorso: impedanciaTorso > 100 && impedanciaTorso < 1500 ? impedanciaTorso : 420,
     grasaCorporalPct,
     masaMuscularKg,
   };
@@ -207,16 +311,24 @@ export async function conectarBalanzaG78(
       throw new Error('No se encontró el servicio BLE de la balanza. Verifica que sea el modelo EUROMAR G78.');
     }
 
-    // 1. Handshake / Inicialización opcional (FFB1)
+    // 1. Handshake / Inicialización (FFB1)
+    // Se envían los comandos de sincronización Fitdays (B0 30, B0 31) y Lefu (AC 02)
     try {
       const cmdChar = await service.getCharacteristic(FITDAYS_SERVICES.CHAR_COMMAND);
       if (cmdChar && (cmdChar.properties.write || cmdChar.properties.writeWithoutResponse)) {
-        const initPayload = new Uint8Array([0xAC, 0x02, 0x00, 0x00, 0xAE]);
-        if (cmdChar.properties.writeWithoutResponse) {
-          await cmdChar.writeValueWithoutResponse(initPayload);
-        } else {
-          await cmdChar.writeValue(initPayload);
-        }
+        const sendPacket = async (payload: Uint8Array) => {
+          if (cmdChar.properties.writeWithoutResponse) {
+            await cmdChar.writeValueWithoutResponse(payload);
+          } else {
+            await cmdChar.writeValue(payload);
+          }
+        };
+
+        // Handshake Fitdays G78
+        await sendPacket(new Uint8Array([0x01, 0x00, 0x01, 0x00, 0xB0, 0x30, 0x20]));
+        await sendPacket(new Uint8Array([0x02, 0x00, 0x01, 0x00, 0xB0, 0x31, 0x21]));
+        // Handshake Lefu clásico
+        await sendPacket(new Uint8Array([0xAC, 0x02, 0x00, 0x00, 0xAE]));
       }
     } catch {
       // Ignorar de forma segura si el firmware no requiere handshake

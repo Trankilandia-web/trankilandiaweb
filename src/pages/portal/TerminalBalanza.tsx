@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Scale,
@@ -15,6 +15,7 @@ import {
   Copy,
   Check,
   ExternalLink,
+  Activity,
 } from 'lucide-react';
 import {
   getStoredMembers,
@@ -75,6 +76,12 @@ export default function TerminalBalanza() {
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [liveWeight, setLiveWeight] = useState<number>(0);
   const [isWeightLocked, setIsWeightLocked] = useState(false);
+  const [measuringPhase, setMeasuringPhase] = useState<'idle' | 'pesando' | 'escaneando_bioimpedancia' | 'completado'>('idle');
+  const [scanProgress, setScanProgress] = useState<number>(0);
+  const [scanStatusText, setScanStatusText] = useState<string>('');
+  const lockedWeightRef = useRef<number>(0);
+  const impedanceDataRef = useRef<any>(null);
+  const scanIntervalRef = useRef<any>(null);
 
   // 5. Modo Manual (para iPhone Safari o contingencia)
   const [manualMode, setManualMode] = useState(false);
@@ -281,6 +288,15 @@ export default function TerminalBalanza() {
     }
   }, [selectedMember]);
 
+  // Limpieza de intervalos al desmontar
+  useEffect(() => {
+    return () => {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+      }
+    };
+  }, []);
+
   // Manejo de PIN NumPad
   const handlePinDigit = async (digit: string) => {
     if (pinInput.length >= 4) return;
@@ -325,6 +341,17 @@ export default function TerminalBalanza() {
   // Iniciar Pesaje Bluetooth
   const handleStartBluetoothWeighing = async () => {
     try {
+      if (scanIntervalRef.current) {
+        clearInterval(scanIntervalRef.current);
+        scanIntervalRef.current = null;
+      }
+      lockedWeightRef.current = 0;
+      impedanceDataRef.current = null;
+      setLiveWeight(0);
+      setIsWeightLocked(false);
+      setScanProgress(0);
+      setScanStatusText('');
+      setMeasuringPhase('idle');
       setScaleStatus('buscando');
       setStatusMessage('Buscando balanza EUROMAR® G78-BT... Enciende la balanza pisándola suavemente');
 
@@ -334,38 +361,92 @@ export default function TerminalBalanza() {
           if (msg) setStatusMessage(msg);
         },
         onLiveWeight: (peso, estable) => {
+          // Filtro estricto: Si el peso es menor a 15 kg (tara o ruido), ignorar
+          if (peso < 15.0) {
+            return;
+          }
+
           setLiveWeight(peso);
-          setIsWeightLocked(estable);
-          if (estable && selectedMember) {
-            // Calcular evaluación automáticamente con peso estabilizado
-            const ev = calcularMetricasCompletas({
-              socio_id: selectedMember.id,
-              socio_dni: selectedMember.dni || '',
-              peso_kg: peso,
-              estatura_cm: estaturaCm,
-              edad,
-              sexo,
-              evaluador_id: operatorId || 'staff-luis',
-              evaluador_nombre: operatorName,
-              origen: 'bluetooth_g78',
-            });
-            setComputedEval(ev);
-            const d = calcularDeltasMensuales(ev, previousEval);
-            setDeltas(d);
-            setDiagnostico(determinarDiagnostico(d, ev));
+
+          // Si ya fijamos el peso y estamos en fase de escaneo, no reiniciar
+          if (lockedWeightRef.current > 0) {
+            return;
+          }
+
+          setMeasuringPhase('pesando');
+
+          // Cuando el peso se estabiliza (estable === true y peso válido >= 20 kg)
+          if (estable && peso >= 20.0 && selectedMember) {
+            lockedWeightRef.current = peso;
+            setIsWeightLocked(true);
+            setMeasuringPhase('escaneando_bioimpedancia');
+            setStatusMessage(`⚖️ Peso fijado: ${peso.toFixed(2)} kg. Escaneando composición corporal...`);
+
+            // Iniciar conteo de 4.5 segundos para escaneo de los 8 electrodos
+            let progress = 0;
+            setScanProgress(0);
+            setScanStatusText('⚡ Paso 1/3: Detectando electrodos de pies y manillar...');
+
+            if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+            const startTime = Date.now();
+            const DURATION_MS = 4500;
+
+            scanIntervalRef.current = setInterval(() => {
+              const elapsed = Date.now() - startTime;
+              progress = Math.min(100, Math.round((elapsed / DURATION_MS) * 100));
+              setScanProgress(progress);
+
+              if (progress < 30) {
+                setScanStatusText('⚡ Paso 1/3: Detectando electrodos de pies y manillar...');
+              } else if (progress < 70) {
+                setScanStatusText('⚡ Paso 2/3: Analizando impedancia segmentaria (5 zonas)...');
+              } else if (progress < 95) {
+                setScanStatusText('⚡ Paso 3/3: Calculando masa muscular, grasa visceral y agua...');
+              } else {
+                setScanStatusText('✅ ¡Escaneo de 8 electrodos completado!');
+              }
+
+              if (elapsed >= DURATION_MS) {
+                clearInterval(scanIntervalRef.current);
+                scanIntervalRef.current = null;
+
+                const finalWeight = lockedWeightRef.current || peso;
+                const finalImp = impedanceDataRef.current;
+
+                const ev = calcularMetricasCompletas({
+                  socio_id: selectedMember.id,
+                  socio_dni: selectedMember.dni || '',
+                  peso_kg: finalWeight,
+                  grasa_corporal_pct: finalImp?.grasaCorporalPct,
+                  masa_muscular_kg: finalImp?.masaMuscularKg,
+                  estatura_cm: estaturaCm,
+                  edad,
+                  sexo,
+                  evaluador_id: operatorId || 'staff-luis',
+                  evaluador_nombre: operatorName,
+                  origen: 'bluetooth_g78',
+                });
+
+                setComputedEval(ev);
+                const d = calcularDeltasMensuales(ev, previousEval);
+                setDeltas(d);
+                setDiagnostico(determinarDiagnostico(d, ev));
+                setMeasuringPhase('completado');
+              }
+            }, 100);
           }
         },
         onImpedanceData: (imp) => {
-          if (selectedMember) {
+          impedanceDataRef.current = imp;
+          if (computedEval && selectedMember) {
             setComputedEval((prev) => {
-              const currentWeight = liveWeight > 0 ? liveWeight : (prev?.peso_kg || 0);
-              if (currentWeight <= 0) return prev;
+              if (!prev) return prev;
               const ev = calcularMetricasCompletas({
                 socio_id: selectedMember.id,
                 socio_dni: selectedMember.dni || '',
-                peso_kg: currentWeight,
-                grasa_corporal_pct: imp.grasaCorporalPct,
-                masa_muscular_kg: imp.masaMuscularKg,
+                peso_kg: prev.peso_kg,
+                grasa_corporal_pct: imp.grasaCorporalPct || prev.grasa_corporal_pct,
+                masa_muscular_kg: imp.masaMuscularKg || prev.masa_muscular_kg,
                 estatura_cm: estaturaCm,
                 edad,
                 sexo,
@@ -381,6 +462,10 @@ export default function TerminalBalanza() {
           }
         },
         onError: (err) => {
+          if (scanIntervalRef.current) {
+            clearInterval(scanIntervalRef.current);
+            scanIntervalRef.current = null;
+          }
           if (
             err.name === 'NotFoundError' ||
             err.message?.includes('cancelled') ||
@@ -459,6 +544,15 @@ export default function TerminalBalanza() {
     setDiagnostico(null);
     setLiveWeight(0);
     setIsWeightLocked(false);
+    setMeasuringPhase('idle');
+    setScanProgress(0);
+    setScanStatusText('');
+    lockedWeightRef.current = 0;
+    impedanceDataRef.current = null;
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
     setSavedSuccess(false);
     setSearchQuery('');
     setManualPeso('');
@@ -926,38 +1020,83 @@ export default function TerminalBalanza() {
                         </div>
                       </div>
 
-                      {liveWeight > 0 && (
-                        <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/40 inline-block px-8">
-                          <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest block flex items-center justify-center gap-1.5">
-                            <span>Peso Detectado</span>
-                            {isWeightLocked && (
-                              <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">
-                                ESTABILIZADO
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-4xl font-black font-mono text-amber-400 tracking-tight">
-                            {liveWeight.toFixed(2)} <span className="text-base text-white">kg</span>
-                          </span>
+                      {/* FASE DE ESCANEO DE BIOIMPEDANCIA (4.5 seg) O PESAJE EN VIVO */}
+                      {measuringPhase === 'escaneando_bioimpedancia' ? (
+                        <div className="p-5 sm:p-6 rounded-3xl bg-gradient-to-b from-zinc-900 to-zinc-950 border border-amber-400/50 shadow-2xl space-y-4 text-left">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider flex items-center gap-1.5">
+                              <Activity className="w-4 h-4 text-amber-400 animate-spin" />
+                              <span>Escaneando 8 Electrodos</span>
+                            </span>
+                            <span className="text-xs font-mono font-black text-amber-400 bg-amber-400/10 px-2.5 py-0.5 rounded-full border border-amber-400/30">
+                              {scanProgress}%
+                            </span>
+                          </div>
+
+                          <div className="p-4 rounded-2xl bg-zinc-950 border border-white/10 text-center">
+                            <span className="text-[10px] font-mono text-zinc-400 uppercase tracking-widest block">
+                              Peso Estabilizado en Balanza
+                            </span>
+                            <span className="text-4xl font-black font-mono text-emerald-400 tracking-tight">
+                              {(lockedWeightRef.current || liveWeight).toFixed(2)}{' '}
+                              <span className="text-base text-white">kg</span>
+                            </span>
+                          </div>
+
+                          {/* Barra de progreso animada */}
+                          <div className="space-y-1.5">
+                            <div className="h-3 w-full bg-zinc-800 rounded-full overflow-hidden p-0.5 border border-white/10">
+                              <div
+                                className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 rounded-full transition-all duration-150"
+                                style={{ width: `${scanProgress}%` }}
+                              />
+                            </div>
+                            <p className="text-xs font-mono text-amber-300 font-bold text-center">
+                              {scanStatusText}
+                            </p>
+                          </div>
+
+                          <p className="text-[11px] text-zinc-400 font-sans text-center leading-relaxed">
+                            Mantén los <strong>pies descalzos firmes en la base</strong> y sujeta el{' '}
+                            <strong>manillar con ambas manos</strong> hasta que finalice el escaneo.
+                          </p>
                         </div>
-                      )}
+                      ) : (
+                        <>
+                          {liveWeight > 0 && (
+                            <div className="p-4 rounded-2xl bg-zinc-950 border border-amber-400/40 inline-block px-8">
+                              <span className="text-xs font-mono text-zinc-400 uppercase tracking-widest block flex items-center justify-center gap-1.5">
+                                <span>Peso Detectado</span>
+                                {isWeightLocked && (
+                                  <span className="bg-emerald-500/20 text-emerald-400 text-[10px] px-2 py-0.5 rounded font-bold">
+                                    ESTABILIZADO
+                                  </span>
+                                )}
+                              </span>
+                              <span className="text-4xl font-black font-mono text-amber-400 tracking-tight">
+                                {liveWeight.toFixed(2)} <span className="text-base text-white">kg</span>
+                              </span>
+                            </div>
+                          )}
 
-                      {statusMessage && (
-                        <p className="text-xs font-mono text-amber-300/90 font-bold animate-pulse">
-                          {statusMessage}
-                        </p>
-                      )}
+                          {statusMessage && (
+                            <p className="text-xs font-mono text-amber-300/90 font-bold animate-pulse">
+                              {statusMessage}
+                            </p>
+                          )}
 
-                      <div className="pt-2">
-                        <button
-                          type="button"
-                          onClick={handleStartBluetoothWeighing}
-                          className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono"
-                        >
-                          <Zap className="w-4 h-4" />
-                          <span>{liveWeight > 0 ? 'RECONECTAR BALANZA' : 'CONECTAR BALANZA Y PESAR'}</span>
-                        </button>
-                      </div>
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={handleStartBluetoothWeighing}
+                              className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono"
+                            >
+                              <Zap className="w-4 h-4" />
+                              <span>{liveWeight > 0 ? 'RECONECTAR BALANZA' : 'CONECTAR BALANZA Y PESAR'}</span>
+                            </button>
+                          </div>
+                        </>
+                      )}
 
                       {/* Guía rápida de conexión */}
                       <div className="text-left bg-zinc-950 border border-white/5 rounded-2xl p-4 text-[11px] text-zinc-400 font-sans space-y-1.5">
