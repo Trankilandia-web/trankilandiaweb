@@ -110,6 +110,27 @@ export default function TerminalBalanza() {
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  // Combinar resultados locales + nube sin duplicados (Declarado al inicio para cumplir las Reglas de Hooks)
+  const filteredMembers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const localMatches = members.filter((m) => {
+      const matchDni = m.dni && m.dni.toLowerCase().includes(q);
+      const matchName = m.name && m.name.toLowerCase().includes(q);
+      return matchDni || matchName;
+    });
+
+    const seenIds = new Set(localMatches.map((m) => m.id));
+    const seenDnis = new Set(localMatches.map((m) => m.dni).filter(Boolean));
+
+    const extraCloud = cloudSearchResults.filter(
+      (c) => !seenIds.has(c.id) && (!c.dni || !seenDnis.has(c.dni))
+    );
+
+    return [...localMatches, ...extraCloud].slice(0, 10);
+  }, [members, cloudSearchResults, searchQuery]);
+
   // Carga inicial resiliente de socios (Caché Local -> Excel Canónico 417 -> Supabase 443)
   useEffect(() => {
     setBleSupported(isWebBluetoothAvailable());
@@ -561,26 +582,6 @@ export default function TerminalBalanza() {
     );
   }
 
-  // Combinar resultados locales + nube sin duplicados
-  const filteredMembers = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-
-    const localMatches = members.filter((m) => {
-      const matchDni = m.dni && m.dni.toLowerCase().includes(q);
-      const matchName = m.name && m.name.toLowerCase().includes(q);
-      return matchDni || matchName;
-    });
-
-    const seenIds = new Set(localMatches.map((m) => m.id));
-    const seenDnis = new Set(localMatches.map((m) => m.dni).filter(Boolean));
-
-    const extraCloud = cloudSearchResults.filter(
-      (c) => !seenIds.has(c.id) && (!c.dni || !seenDnis.has(c.dni))
-    );
-
-    return [...localMatches, ...extraCloud].slice(0, 10);
-  }, [members, cloudSearchResults, searchQuery]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col justify-between font-sans selection:bg-amber-400 selection:text-black">
