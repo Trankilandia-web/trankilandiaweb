@@ -317,9 +317,26 @@ export function generateNextMemberId(existingMembers?: GymMember[]): string {
 
 export const saveStoredMembers = (members: GymMember[]) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
+    const existing = getStoredMembers();
+    let toSave = members;
+    // Si la lista a guardar es pequeña (ej: 1 solo socio actualizado) y la existente en localStorage es grande, fusionar en vez de destruir el padrón
+    if (members.length < 50 && existing.length >= 50) {
+      const updateMap = new Map(members.map((m) => [m.id, m]));
+      const updateDniMap = new Map(members.filter((m) => m.dni).map((m) => [m.dni!, m]));
+      toSave = existing.map((ex) => {
+        if (updateMap.has(ex.id)) return updateMap.get(ex.id)!;
+        if (ex.dni && updateDniMap.has(ex.dni)) return updateDniMap.get(ex.dni)!;
+        return ex;
+      });
+      members.forEach((m) => {
+        if (!existing.some((ex) => ex.id === m.id || (m.dni && ex.dni === m.dni))) {
+          toSave.push(m);
+        }
+      });
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('gym-members-updated', { detail: { count: members.length } }));
+      window.dispatchEvent(new CustomEvent('gym-members-updated', { detail: { count: toSave.length } }));
     }
   } catch {}
 };

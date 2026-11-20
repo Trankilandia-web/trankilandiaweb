@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Scale,
@@ -13,7 +13,14 @@ import {
   ChevronRight,
   Zap,
 } from 'lucide-react';
-import { getStoredMembers, GymMember } from '../../data/gymStore';
+import {
+  getStoredMembers,
+  saveStoredMembers,
+  loadCanonicalMembersFromExcel,
+  GymMember,
+} from '../../data/gymStore';
+import { fetchSociosParaAdmin } from '../../lib/supabaseDb';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
   isWebBluetoothAvailable,
   conectarBalanzaG78,
@@ -47,6 +54,8 @@ export default function TerminalBalanza() {
   // 2. Estado de Búsqueda y Selección del Socio
   const [searchQuery, setSearchQuery] = useState('');
   const [members, setMembers] = useState<GymMember[]>([]);
+  const [cloudSearchResults, setCloudSearchResults] = useState<GymMember[]>([]);
+  const [isSearchingCloud, setIsSearchingCloud] = useState(false);
   const [selectedMember, setSelectedMember] = useState<GymMember | null>(null);
   const [previousEval, setPreviousEval] = useState<EvaluacionCorporal | null>(null);
 
@@ -77,10 +86,126 @@ export default function TerminalBalanza() {
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
+  // Carga inicial resiliente de socios (Caché Local -> Excel Canónico 417 -> Supabase 443)
   useEffect(() => {
     setBleSupported(isWebBluetoothAvailable());
-    setMembers(getStoredMembers());
+
+    let isMounted = true;
+
+    const loadAllMembers = async () => {
+      // 1. Mostrar lo que haya en localStorage inmediatamente
+      const local = getStoredMembers();
+      if (local && local.length > 0 && isMounted) {
+        setMembers(local);
+      }
+
+      // 2. Si hay pocos socios (< 50) o está vacío, cargar los 417 canónicos del bundle
+      if (!local || local.length < 50) {
+        try {
+          const canonical = await loadCanonicalMembersFromExcel();
+          if (canonical && canonical.length > 0 && isMounted) {
+            setMembers((prev) => {
+              const prevMap = new Map(prev.map((m) => [m.id, m]));
+              canonical.forEach((c) => {
+                if (!prevMap.has(c.id)) prevMap.set(c.id, c);
+              });
+              const merged = Array.from(prevMap.values());
+              saveStoredMembers(merged);
+              return merged;
+            });
+          }
+        } catch (err) {
+          console.warn('[TerminalBalanza] Error cargando canonical excel:', err);
+        }
+      }
+
+      // 3. Sincronizar catálogo completo en vivo desde Supabase (443 socios)
+      try {
+        const cloudMembers = await fetchSociosParaAdmin();
+        if (cloudMembers && cloudMembers.length > 0 && isMounted) {
+          setMembers(cloudMembers);
+          saveStoredMembers(cloudMembers);
+        }
+      } catch (err) {
+        console.warn('[TerminalBalanza] Error sincronizando socios de Supabase:', err);
+      }
+    };
+
+    loadAllMembers();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  // Búsqueda en vivo en Supabase si se digitan 2+ caracteres
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || q.length < 2) {
+      setCloudSearchResults([]);
+      setIsSearchingCloud(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsSearchingCloud(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        if (!isSupabaseConfigured()) {
+          if (!isCancelled) setIsSearchingCloud(false);
+          return;
+        }
+
+        const isNum = /^\d+$/.test(q);
+        let query = supabase.from('socios').select('*');
+
+        if (isNum) {
+          query = query.ilike('dni', `%${q}%`);
+        } else {
+          query = query.or(`nombre.ilike.%${q}%,dni.ilike.%${q}%`);
+        }
+
+        const { data: dbSocios } = await query.limit(10);
+
+        if (!isCancelled && dbSocios) {
+          const mapped: GymMember[] = dbSocios.map((s: any) => ({
+            id: s.id,
+            name: s.nombre,
+            dni: s.dni || null,
+            phone: s.celular || null,
+            email: s.email || null,
+            plan: s.plan,
+            planPrice: Number(s.precio_plan) || 80,
+            paymentType: s.tipo_pago || 'full',
+            advancePaid: Number(s.adelanto_pagado) || 0,
+            balanceDue: Number(s.saldo_pendiente) || 0,
+            paymentDueDate: s.fecha_limite_pago || null,
+            paymentMethod: 'efectivo',
+            receiptNumber: s.numero_boleta || 'B001-000000',
+            membershipStatus: s.estado_calculado === 'vencido' ? 'inactive' : 'active',
+            expiresAt: s.fecha_fin || '2026-11-30',
+            coachName: s.coach_asignado || 'Coach Marcos Rivas',
+            shift: s.turno || 'manana',
+            registeredAt: s.fecha_inicio || '2026-10-01',
+            age: s.edad || null,
+            gender: s.sexo || null,
+            observations: s.observaciones || null,
+          }));
+          setCloudSearchResults(mapped);
+        }
+      } catch (err) {
+        console.warn('[TerminalBalanza] Error en búsqueda cloud:', err);
+      } finally {
+        if (!isCancelled) setIsSearchingCloud(false);
+      }
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
 
   // Al seleccionar socio, cargar su estatura y última evaluación
   useEffect(() => {
@@ -378,18 +503,26 @@ export default function TerminalBalanza() {
     );
   }
 
-  // Filtrado de socios
-  const filteredMembers = searchQuery.trim()
-    ? members
-        .filter((m) => {
-          const q = searchQuery.toLowerCase();
-          return (
-            (m.dni && m.dni.includes(q)) ||
-            (m.name && m.name.toLowerCase().includes(q))
-          );
-        })
-        .slice(0, 6)
-    : [];
+  // Combinar resultados locales + nube sin duplicados
+  const filteredMembers = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const localMatches = members.filter((m) => {
+      const matchDni = m.dni && m.dni.toLowerCase().includes(q);
+      const matchName = m.name && m.name.toLowerCase().includes(q);
+      return matchDni || matchName;
+    });
+
+    const seenIds = new Set(localMatches.map((m) => m.id));
+    const seenDnis = new Set(localMatches.map((m) => m.dni).filter(Boolean));
+
+    const extraCloud = cloudSearchResults.filter(
+      (c) => !seenIds.has(c.id) && (!c.dni || !seenDnis.has(c.dni))
+    );
+
+    return [...localMatches, ...extraCloud].slice(0, 10);
+  }, [members, cloudSearchResults, searchQuery]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col justify-between font-sans selection:bg-amber-400 selection:text-black">
@@ -457,13 +590,21 @@ export default function TerminalBalanza() {
                   autoFocus
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar por DNI o Nombre (ej: 70447087)..."
-                  className="w-full bg-zinc-950 border border-white/15 rounded-2xl pl-10 pr-4 py-3.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono tracking-wider"
+                  placeholder="Buscar por DNI o Nombre (ej: 70447087, Maximo, Cardenas)..."
+                  className="w-full bg-zinc-950 border border-white/15 rounded-2xl pl-10 pr-10 py-3.5 text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-amber-400 font-mono tracking-wider"
                 />
+                {isSearchingCloud && (
+                  <div className="absolute right-10 top-1/2 -translate-y-1/2">
+                    <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
                 {searchQuery && (
                   <button
                     type="button"
-                    onClick={() => setSearchQuery('')}
+                    onClick={() => {
+                      setSearchQuery('');
+                      setCloudSearchResults([]);
+                    }}
                     className="absolute right-3.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
                   >
                     <X className="w-4 h-4" />
@@ -471,14 +612,28 @@ export default function TerminalBalanza() {
                 )}
               </div>
 
+              {/* Conteo de socios disponibles */}
+              {members.length > 0 && !searchQuery && (
+                <div className="text-[11px] font-mono text-zinc-400 flex items-center justify-between px-1">
+                  <span>Padrón: {members.length} socios sincronizados</span>
+                  <span className="text-zinc-600">Búsqueda offline y en nube</span>
+                </div>
+              )}
+
               {/* Lista de Resultados */}
               {filteredMembers.length > 0 ? (
-                <div className="divide-y divide-white/5 border border-white/10 rounded-2xl overflow-hidden bg-zinc-950/60">
+                <div className="divide-y divide-white/5 border border-white/10 rounded-2xl overflow-hidden bg-zinc-950/60 max-h-80 overflow-y-auto">
                   {filteredMembers.map((m) => (
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => setSelectedMember(m)}
+                      onClick={() => {
+                        setSelectedMember(m);
+                        setMembers((prev) => {
+                          if (prev.some((p) => p.id === m.id)) return prev;
+                          return [m, ...prev];
+                        });
+                      }}
                       className="w-full p-3.5 text-left flex items-center justify-between hover:bg-amber-400/10 hover:border-amber-400/30 transition-all cursor-pointer group"
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -502,7 +657,14 @@ export default function TerminalBalanza() {
                 </div>
               ) : searchQuery.trim().length >= 2 ? (
                 <div className="p-6 text-center text-xs font-mono text-zinc-500 border border-dashed border-white/10 rounded-2xl">
-                  No se encontró ningún socio que coincida con "{searchQuery}".
+                  {isSearchingCloud ? (
+                    <div className="flex items-center justify-center gap-2 text-amber-400">
+                      <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                      <span>Buscando "{searchQuery}" en el padrón del club...</span>
+                    </div>
+                  ) : (
+                    <span>No se encontró ningún socio que coincida con "{searchQuery}".</span>
+                  )}
                 </div>
               ) : null}
             </div>

@@ -71,4 +71,59 @@ describe('Terminal Móvil de Pesaje (TerminalBalanza)', () => {
 
     expect(screen.getByText(/Luis Gerardo Llocclla/i)).toBeDefined();
   });
+
+  it('debe permitir buscar y encontrar a otros socios distintos por DNI o nombre', async () => {
+    sessionStorage.setItem('trankilandia_active_staff_id', 'staff-marisol');
+    sessionStorage.setItem('trankilandia_active_staff_name', 'Marisol Flores');
+
+    saveStoredMembers([
+      {
+        id: 'MEM-001',
+        dni: '70447087',
+        name: 'Luis Gerardo Llocclla',
+        phone: '958183360',
+        plan: 'Membresía Anual',
+        planPrice: 100,
+        paymentType: 'full',
+        advancePaid: 100,
+        balanceDue: 0,
+        paymentMethod: 'efectivo',
+        receiptNumber: 'REC-001',
+        membershipStatus: 'active',
+        expiresAt: '2026-12-31',
+        coachName: 'Luis',
+        registeredAt: '2026-01-01',
+        shift: 'manana',
+      },
+      {
+        id: 'MEM-932',
+        dni: '28289226',
+        name: 'Maximo Cardenas Huaman',
+        phone: '999888777',
+        plan: '6 MESES · Musculación Libre',
+        planPrice: 200,
+        paymentType: 'full',
+        advancePaid: 200,
+        balanceDue: 0,
+        paymentMethod: 'efectivo',
+        receiptNumber: 'REC-002',
+        membershipStatus: 'active',
+        expiresAt: '2027-05-01',
+        coachName: 'Marcos',
+        registeredAt: '2026-01-01',
+        shift: 'tarde',
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <TerminalBalanza />
+      </MemoryRouter>
+    );
+
+    const inputSearch = screen.getByPlaceholderText(/Buscar por DNI o Nombre/i);
+    fireEvent.change(inputSearch, { target: { value: '28289226' } });
+
+    expect(await screen.findByText(/Maximo Cardenas Huaman/i)).toBeDefined();
+  });
 });

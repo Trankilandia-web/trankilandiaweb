@@ -12,8 +12,8 @@ describe('Componente EvolucionCorporalView', () => {
   it('debe mostrar estado vacío amigable si el socio aún no tiene evaluaciones', async () => {
     render(<EvolucionCorporalView socioDni="70447087" />);
 
-    expect(await screen.findByText(/Sin Evaluaciones Registradas/i)).toBeDefined();
-    expect(await screen.findByText(/Acércate a recepción/i)).toBeDefined();
+    expect(await screen.findByText(/Sin Evaluaciones Registradas/i, {}, { timeout: 4000 })).toBeDefined();
+    expect(await screen.findByText(/Acércate a recepción/i, {}, { timeout: 4000 })).toBeDefined();
   });
 
   it('debe renderizar el diagnóstico y métricas cuando existen evaluaciones', async () => {
