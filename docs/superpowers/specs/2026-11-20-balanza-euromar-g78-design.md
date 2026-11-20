@@ -10,8 +10,8 @@
 El objetivo de este proyecto es integrar la balanza inteligente de grasa corporal **EUROMAR® G78-BT** (sistema de bioimpedancia de 8 electrodos con barra de agarre manual segmental) directamente con el sistema de **Trankilandia Gym**, eliminando la dependencia de la app comercial *Fitdays* y su compleja exportación manual de imágenes.
 
 La solución se compone de dos áreas integradas:
-1. **Terminal Móvil de Evaluación (`/balanza`):** Una aplicación web progresiva (PWA) de uso exclusivo para el personal del gimnasio, accesible desde el teléfono Android de recepción mediante un PIN de seguridad de 4 dígitos. Se conecta a la báscula por **Web Bluetooth BLE** (servicio GATT `0xFFB0`), recibe los datos brutos de peso e impedancia segmental, y guarda la evaluación en la base de datos de Supabase.
-2. **Módulo de Socio "Mi Evolución" (`/cliente`):** Rediseño completo de la pestaña de evolución en el portal de clientes para mostrar informes mensuales con diagnóstico de recomposición corporal, deltas de cambio mes a mes (ganancia de músculo vs. pérdida de grasa), mapa corporal segmental de 5 zonas y gráficos históricos de tendencia.
+1. **Terminal Móvil de Evaluación (`/balanza`):** Una aplicación web progresiva (PWA) de uso exclusivo para el personal del gimnasio, accesible desde el teléfono Android de recepción o el **iPhone de Marisol** mediante un PIN de seguridad de 4 dígitos. En Android (Chrome) y navegadores BLE en iOS (como *Bluefy*), se conecta a la báscula por **Web Bluetooth BLE** (servicio GATT `0xFFB0`). En iPhone Safari estándar, detecta automáticamente la ausencia de Web Bluetooth y ofrece un flujo ultra rápido de captura manual guiada para transcribir los datos del display de la báscula en segundos.
+2. **Módulo de Socio "Mi Evolución" (`/cliente`):** Rediseño completo de la pestaña de evolución en el portal de clientes para mostrar informes mensuales con diagnóstico de recomposición corporal, deltas de cambio mes a mes (ganancia de músculo vs. pérdida de grasa), mapa corporal segmental de 5 zonas y gráficos históricos de tendencia, totalmente responsive para móviles iOS y Android.
 
 ---
 
@@ -159,6 +159,14 @@ alter table public.socios add column if not exists estatura_cm numeric(5,1);
    * Visualización del resumen de métricas y diagnóstico instantáneo antes de guardar.
    * Botón de guardado: **`GUARDAR EVALUACIÓN EN TRANKILANDIA`**.
    * Al guardar, muestra botón para compartir o enviar un resumen formateado directamente al WhatsApp del socio.
+
+### 4.3. Compatibilidad con iPhone / iOS (Dispositivo de Marisol)
+* **Detección Automática de Capacidades:** El sistema verifica `navigator.bluetooth`.
+* **En Chrome / Edge (Android):** Activa el botón directo de Web Bluetooth BLE.
+* **En Safari (iOS / iPhone):** Dado que Apple no habilita Web Bluetooth nativo en Safari:
+  1. Si se utiliza la app **Bluefy** (navegador BLE gratuito disponible en App Store), la conexión Bluetooth funciona 100% igual que en Android.
+  2. Si se utiliza Safari estándar, la interfaz se adapta automáticamente a **"Captura Rápida de Display"**: una pantalla optimizada donde Marisol solo ingresa el Peso, % Grasa y Músculo que marca la pantalla de la balanza, y el sistema calcula automáticamente el resto de indicadores (visceral, BMR, agua, deltas y recomposición).
+* **Diseño WebKit / Touch:** Todo el portal de socios y la terminal están adaptados a las zonas seguras de pantalla de iPhone (Safe Areas de iOS, Notch / Dynamic Island y teclado numérico nativo de iOS).
 
 ---
 
