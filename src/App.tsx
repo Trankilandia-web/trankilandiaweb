@@ -17,6 +17,7 @@ const HubReceptionSimple = lazy(() => import('./pages/portal/HubReceptionSimple'
 const ClientePortal = lazy(() => import('./pages/portal/ClientePortal'));
 const PortalRedirect = lazy(() => import('./pages/portal/PortalRedirect'));
 const DesktopStaffLogin = lazy(() => import('./pages/portal/DesktopStaffLogin'));
+const TerminalBalanza = lazy(() => import('./pages/portal/TerminalBalanza'));
 const PlansPage = lazy(() => import('./pages/PlansPage'));
 const SchedulePage = lazy(() => import('./pages/SchedulePage'));
 const FacilitiesPage = lazy(() => import('./pages/FacilitiesPage'));
@@ -44,7 +45,7 @@ function AppContent() {
   // En modo escritorio NUNCA se muestran Navbar ni Footer públicos
   const isPortalRoute =
     isDesktopMode ||
-    ['/portal', '/hub', '/admin', '/caja', '/entrenador', '/cliente'].some(
+    ['/portal', '/hub', '/admin', '/caja', '/entrenador', '/cliente', '/balanza'].some(
       (prefix) => location.pathname === prefix || location.pathname.startsWith(`${prefix}/`)
     );
 
@@ -89,6 +90,7 @@ function AppContent() {
               <>
                 <Route path="/" element={<DesktopStaffLogin />} />
                 <Route path="/hub" element={<DesktopStaffLogin />} />
+                <Route path="/balanza" element={<TerminalBalanza />} />
                 <Route
                   path="/admin"
                   element={
@@ -123,6 +125,7 @@ function AppContent() {
                 {/* Public Landing & Marketing Routes */}
                 <Route path="/" element={<HomePage onOpenTourModal={() => handleOpenTour()} />} />
                 <Route path="/hub" element={<DesktopStaffLogin />} />
+                <Route path="/balanza" element={<TerminalBalanza />} />
                 <Route
                   path="/planes"
                   element={
