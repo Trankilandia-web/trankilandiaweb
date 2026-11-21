@@ -84,6 +84,7 @@ export default function TerminalBalanza() {
   const scanIntervalRef = useRef<any>(null);
   const lastWeightRef = useRef<number>(0);
   const stableSinceRef = useRef<number>(0);
+  const computedEvalRef = useRef<EvaluacionCorporal | null>(null);
 
   // 5. Modo Manual (para iPhone Safari o contingencia)
   const [manualMode, setManualMode] = useState(false);
@@ -343,6 +344,7 @@ export default function TerminalBalanza() {
   // Función centralizada para finalizar evaluación y calcular métricas completas
   const ejecutarFinalizacionEvaluacion = (pesoFinal: number) => {
     if (!selectedMember || pesoFinal < 15.0) return;
+    if (computedEvalRef.current) return;
 
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
@@ -364,6 +366,7 @@ export default function TerminalBalanza() {
       origen: 'bluetooth_g78',
     });
 
+    computedEvalRef.current = ev;
     setComputedEval(ev);
     const d = calcularDeltasMensuales(ev, previousEval);
     setDeltas(d);
@@ -381,6 +384,7 @@ export default function TerminalBalanza() {
       lockedWeightRef.current = 0;
       lastWeightRef.current = 0;
       stableSinceRef.current = 0;
+      computedEvalRef.current = null;
       impedanceDataRef.current = null;
       setLiveWeight(0);
       setIsWeightLocked(false);
@@ -395,19 +399,12 @@ export default function TerminalBalanza() {
           setScaleStatus(estado);
           if (msg) setStatusMessage(msg);
 
-          // Si la balanza finaliza la sesión BLE ('completado' o 'bloqueado')
-          // y tenemos un peso válido, pero aún no se generó computedEval:
-          if ((estado === 'completado' || estado === 'bloqueado') && selectedMember) {
+          // Si la balanza finaliza la sesión BLE ('completado' o 'desconectado')
+          // y tenemos un peso válido capturado pero aún no se generó el informe:
+          if ((estado === 'completado' || estado === 'desconectado') && selectedMember && !computedEvalRef.current) {
             const candidateWeight = lockedWeightRef.current || liveWeight || lastWeightRef.current;
             if (candidateWeight >= 20.0) {
-              setTimeout(() => {
-                setComputedEval((actual) => {
-                  if (!actual) {
-                    ejecutarFinalizacionEvaluacion(candidateWeight);
-                  }
-                  return actual;
-                });
-              }, 400);
+              ejecutarFinalizacionEvaluacion(candidateWeight);
             }
           }
         },
@@ -442,7 +439,7 @@ export default function TerminalBalanza() {
           }
 
           // Cuando el peso se estabiliza (estable o software estable y peso >= 20 kg)
-          if (esEstableFinal && peso >= 20.0 && selectedMember) {
+          if (esEstableFinal && peso >= 20.0 && selectedMember && !lockedWeightRef.current) {
             lockedWeightRef.current = peso;
             setIsWeightLocked(true);
             setMeasuringPhase('escaneando_bioimpedancia');
@@ -454,7 +451,7 @@ export default function TerminalBalanza() {
 
             if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
             const startTime = Date.now();
-            const DURATION_MS = 4000;
+            const DURATION_MS = 3500;
 
             scanIntervalRef.current = setInterval(() => {
               const elapsed = Date.now() - startTime;
@@ -481,14 +478,13 @@ export default function TerminalBalanza() {
         },
         onImpedanceData: (imp) => {
           impedanceDataRef.current = imp;
-          setComputedEval((prev) => {
-            if (!prev || !selectedMember) return prev;
+          if (computedEvalRef.current && selectedMember) {
             const ev = calcularMetricasCompletas({
               socio_id: selectedMember.id,
               socio_dni: selectedMember.dni || '',
-              peso_kg: prev.peso_kg,
-              grasa_corporal_pct: imp.grasaCorporalPct || prev.grasa_corporal_pct,
-              masa_muscular_kg: imp.masaMuscularKg || prev.masa_muscular_kg,
+              peso_kg: computedEvalRef.current.peso_kg,
+              grasa_corporal_pct: imp.grasaCorporalPct || computedEvalRef.current.grasa_corporal_pct,
+              masa_muscular_kg: imp.masaMuscularKg || computedEvalRef.current.masa_muscular_kg,
               estatura_cm: estaturaCm,
               edad,
               sexo,
@@ -496,16 +492,16 @@ export default function TerminalBalanza() {
               evaluador_nombre: operatorName,
               origen: 'bluetooth_g78',
             });
+            computedEvalRef.current = ev;
+            setComputedEval(ev);
             const d = calcularDeltasMensuales(ev, previousEval);
             setDeltas(d);
             setDiagnostico(determinarDiagnostico(d, ev));
-            return ev;
-          });
-
-          // Si llegó bioimpedancia segmental y no se ha computado, avanzar de inmediato
-          const candidateWeight = lockedWeightRef.current || liveWeight;
-          if (candidateWeight >= 20.0 && selectedMember) {
-            ejecutarFinalizacionEvaluacion(candidateWeight);
+          } else {
+            const candidateWeight = lockedWeightRef.current || liveWeight;
+            if (candidateWeight >= 20.0 && selectedMember) {
+              ejecutarFinalizacionEvaluacion(candidateWeight);
+            }
           }
         },
         onError: (err) => {
@@ -560,6 +556,7 @@ export default function TerminalBalanza() {
       origen: 'manual',
     });
 
+    computedEvalRef.current = ev;
     setComputedEval(ev);
     const d = calcularDeltasMensuales(ev, previousEval);
     setDeltas(d);
@@ -586,6 +583,7 @@ export default function TerminalBalanza() {
   // Reiniciar para siguiente socio
   const handleResetForNext = () => {
     setSelectedMember(null);
+    computedEvalRef.current = null;
     setComputedEval(null);
     setDeltas(null);
     setDiagnostico(null);
@@ -1469,7 +1467,10 @@ export default function TerminalBalanza() {
 
                   <button
                     type="button"
-                    onClick={() => setComputedEval(null)}
+                    onClick={() => {
+                      computedEvalRef.current = null;
+                      setComputedEval(null);
+                    }}
                     className="w-full bg-zinc-950 hover:bg-zinc-800 text-zinc-400 py-2.5 rounded-xl text-xs font-mono transition-colors cursor-pointer text-center"
                   >
                     ← Repetir Medición

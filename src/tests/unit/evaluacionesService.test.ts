@@ -1,4 +1,22 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+vi.mock('../../lib/supabase', () => ({
+  supabase: {
+    from: vi.fn().mockReturnValue({
+      upsert: vi.fn().mockResolvedValue({ error: null }),
+      select: vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          order: vi.fn().mockResolvedValue({ data: [], error: null }),
+        }),
+      }),
+      update: vi.fn().mockReturnValue({
+        eq: vi.fn().mockResolvedValue({ error: null }),
+      }),
+    }),
+  },
+  isSupabaseConfigured: () => false,
+}));
+
 import {
   guardarEvaluacion,
   obtenerHistorialEvaluaciones,
@@ -14,9 +32,9 @@ describe('Servicio de Persistencia y Caché Local-First (evaluacionesService)', 
   });
 
   const mockEval: EvaluacionCorporal = {
-    id: 'eval-test-1',
-    socio_id: 'MEM-001',
-    socio_dni: '70447087',
+    id: 'eval-mock-1',
+    socio_id: 'MEM-TEST-001',
+    socio_dni: '99990001',
     fecha: '2026-11-20T10:00:00.000Z',
     estatura_cm: 175,
     edad: 28,
@@ -35,8 +53,8 @@ describe('Servicio de Persistencia y Caché Local-First (evaluacionesService)', 
     proteina_pct: 18.5,
     puntuacion_corporal: 82,
     segmental_data: crearSegmentalDataDefault(),
-    evaluador_id: 'staff-luis',
-    evaluador_nombre: 'Luis Lloclla',
+    evaluador_id: 'staff-test',
+    evaluador_nombre: 'Coach Test',
     origen: 'bluetooth_g78',
   };
 
@@ -46,21 +64,21 @@ describe('Servicio de Persistencia y Caché Local-First (evaluacionesService)', 
 
     const guardadas = JSON.parse(localStorage.getItem(STORAGE_KEY_EVALUACIONES) || '[]');
     expect(guardadas.length).toBe(1);
-    expect(guardadas[0].socio_dni).toBe('70447087');
+    expect(guardadas[0].socio_dni).toBe('99990001');
   });
 
   it('obtenerHistorialEvaluaciones debe filtrar por DNI y ordenar de más reciente a más antigua', async () => {
     const evalAntigua: EvaluacionCorporal = {
       ...mockEval,
-      id: 'eval-test-0',
+      id: 'eval-mock-0',
       fecha: '2026-10-20T10:00:00.000Z',
       peso_kg: 76.5,
     };
 
     const evalOtroSocio: EvaluacionCorporal = {
       ...mockEval,
-      id: 'eval-test-otro',
-      socio_dni: '12345678',
+      id: 'eval-mock-otro',
+      socio_dni: '88880002',
       fecha: '2026-11-19T10:00:00.000Z',
     };
 
@@ -68,24 +86,24 @@ describe('Servicio de Persistencia y Caché Local-First (evaluacionesService)', 
     await guardarEvaluacion(mockEval);
     await guardarEvaluacion(evalOtroSocio);
 
-    const historial = await obtenerHistorialEvaluaciones('70447087');
+    const historial = await obtenerHistorialEvaluaciones('99990001');
     expect(historial.length).toBe(2);
     // El más reciente primero
-    expect(historial[0].id).toBe('eval-test-1');
-    expect(historial[1].id).toBe('eval-test-0');
+    expect(historial[0].id).toBe('eval-mock-1');
+    expect(historial[1].id).toBe('eval-mock-0');
   });
 
   it('obtenerUltimaEvaluacion debe retornar la medición más reciente del socio o null', async () => {
-    const inexistente = await obtenerUltimaEvaluacion('99999999');
+    const inexistente = await obtenerUltimaEvaluacion('00000000');
     expect(inexistente).toBeNull();
 
     await guardarEvaluacion(mockEval);
-    const ultima = await obtenerUltimaEvaluacion('70447087');
+    const ultima = await obtenerUltimaEvaluacion('99990001');
     expect(ultima).not.toBeNull();
     expect(ultima?.peso_kg).toBe(75.0);
   });
 
   it('actualizarEstaturaSocio debe actualizar la estatura sin lanzar excepciones', async () => {
-    await expect(actualizarEstaturaSocio('MEM-001', 175)).resolves.not.toThrow();
+    await expect(actualizarEstaturaSocio('MEM-TEST-001', 175)).resolves.not.toThrow();
   });
 });

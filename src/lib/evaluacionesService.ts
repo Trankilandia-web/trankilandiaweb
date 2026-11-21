@@ -22,7 +22,18 @@ function getLocalEvaluaciones(): EvaluacionCorporal[] {
     const raw = localStorage.getItem(STORAGE_KEY_EVALUACIONES);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // Filtrar automáticamente cualquier residuo de pruebas unitarias o evaluaciones espurias
+        const sanitizadas = parsed.filter(
+          (e) => !e.id?.startsWith('eval-test-') && e.evaluador_nombre !== 'Luis Lloclla'
+        );
+        if (sanitizadas.length !== parsed.length) {
+          try {
+            localStorage.setItem(STORAGE_KEY_EVALUACIONES, JSON.stringify(sanitizadas));
+          } catch {}
+        }
+        return sanitizadas;
+      }
     }
   } catch {}
   return [];
@@ -223,23 +234,84 @@ export async function obtenerHistorialEvaluaciones(socioDni: string): Promise<Ev
         .eq('socio_dni', cleanDni)
         .order('fecha', { ascending: false });
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        // Fusionar sin duplicados
-        const map = new Map<string, EvaluacionCorporal>();
-        locales.forEach((l) => map.set(l.id, l));
-        data.forEach((d: any) => map.set(d.id, fromDbRow(d)));
+      if (!error && Array.isArray(data)) {
+        // 1. Filas autoritativas desde Supabase
+        const cloudEvaluaciones = data.map((d: any) => fromDbRow(d));
 
-        const fusion = Array.from(map.values()).sort(
-          (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()
-        );
-        return fusion;
+        // 2. Evaluaciones pendientes en cola offline no sincronizadas aún
+        let offlineQueue: EvaluacionCorporal[] = [];
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY_OFFLINE_QUEUE);
+          if (raw) offlineQueue = JSON.parse(raw);
+        } catch {}
+        const offlineParaSocio = offlineQueue.filter((o) => o.socio_dni === cleanDni);
+
+        const map = new Map<string, EvaluacionCorporal>();
+        cloudEvaluaciones.forEach((e) => map.set(e.id, e));
+        offlineParaSocio.forEach((e) => {
+          if (!map.has(e.id)) map.set(e.id, e);
+        });
+
+        // 3. Filtrar datos espurios de pruebas unitarias o lecturas de tara < 15 kg
+        const limpias = Array.from(map.values())
+          .filter(
+            (e) =>
+              !e.id?.startsWith('eval-test-') &&
+              e.evaluador_nombre !== 'Luis Lloclla' &&
+              e.peso_kg >= 15.0
+          )
+          .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+        // 4. Deduplicación inteligente por sesión: si existen dos registros con menos de 3 minutos de diferencia
+        // y peso virtualmente idéntico (variación < 0.2 kg), conservar únicamente el más reciente
+        const deduplicadas: EvaluacionCorporal[] = [];
+        for (const ev of limpias) {
+          const yaExiste = deduplicadas.some((prev) => {
+            const timeDiff = Math.abs(new Date(prev.fecha).getTime() - new Date(ev.fecha).getTime());
+            const pesoDiff = Math.abs(prev.peso_kg - ev.peso_kg);
+            return timeDiff < 180000 && pesoDiff < 0.2;
+          });
+          if (!yaExiste) {
+            deduplicadas.push(ev);
+          }
+        }
+
+        // 5. Sincronizar la caché local para este socio limpiando registros fantasma
+        try {
+          const otrasLocales = getLocalEvaluaciones().filter((e) => e.socio_dni !== cleanDni);
+          saveLocalEvaluaciones([...deduplicadas, ...otrasLocales]);
+        } catch {}
+
+        return deduplicadas;
       }
     } catch (err) {
       console.warn('[obtenerHistorialEvaluaciones] Usando caché local:', err);
     }
   }
 
-  return locales.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+  // Fallback offline / local
+  const filtradas = locales
+    .filter(
+      (e) =>
+        !e.id?.startsWith('eval-test-') &&
+        e.evaluador_nombre !== 'Luis Lloclla' &&
+        e.peso_kg >= 15.0
+    )
+    .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+
+  const deduplicadasLocales: EvaluacionCorporal[] = [];
+  for (const ev of filtradas) {
+    const yaExiste = deduplicadasLocales.some((prev) => {
+      const timeDiff = Math.abs(new Date(prev.fecha).getTime() - new Date(ev.fecha).getTime());
+      const pesoDiff = Math.abs(prev.peso_kg - ev.peso_kg);
+      return timeDiff < 180000 && pesoDiff < 0.2;
+    });
+    if (!yaExiste) {
+      deduplicadasLocales.push(ev);
+    }
+  }
+
+  return deduplicadasLocales;
 }
 
 /**
