@@ -301,7 +301,7 @@ export default function GymAnnouncementsControl() {
                         type="button"
                         onClick={() => handleRestoreOfficial(ann.id)}
                         className="inline-flex items-center gap-1 text-zinc-500 hover:text-red-400 transition-colors cursor-pointer py-0.5"
-                        title="Restaurar el audio de estudio oficial con base rítmica"
+                        title="Restaurar el audio oficial de estudio ElevenLabs"
                       >
                         <RotateCcw className="w-3 h-3" />
                         <span>Restaurar original</span>
@@ -322,7 +322,7 @@ export default function GymAnnouncementsControl() {
                 {isMuted ? 'Silenciado' : `${volumePercent}%`}
               </strong>
             </span>
-            <span className="text-zinc-500">Base Fitness & Stinger</span>
+            <span className="text-zinc-500">Audio Oficial ElevenLabs</span>
           </div>
         </div>
       )}

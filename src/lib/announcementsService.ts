@@ -1,12 +1,14 @@
 // ==============================================================================
 // TRANKILANDIA GYM · SERVICIO DE ANUNCIOS Y MENSAJES AL PARLANTE BLUETOOTH
 // ==============================================================================
-// Permite reproducir los mensajes oficiales del gimnasio a través del parlante
-// Bluetooth conectado, respetando el volumen maestro y el silenciador.
-// Admite también subir audios personalizados propios (ej. nota de voz de WhatsApp).
+// Reproduce los audios oficiales de estudio generados con ElevenLabs a través del
+// parlante Bluetooth conectado, respetando el volumen maestro y el silenciador.
+// Incluye audios incrustados (base64) para carga instantánea y 100% offline sin
+// errores 404 ni dependencia de sintetizadores de voz robóticos.
 // ==============================================================================
 
-import { getAlertVolume, isAlertMuted, speakGymAnnouncement, cleanSpeechText } from './audioVoiceAlerts';
+import { getAlertVolume, isAlertMuted } from './audioVoiceAlerts';
+import { OFFICIAL_ANNOUNCEMENTS_EMBEDDED } from './officialAnnouncementsData';
 
 export interface GymAnnouncement {
   id: string;
@@ -20,6 +22,7 @@ export interface GymAnnouncement {
   duration: string;
   fullText: string;
   audioPath: string;
+  embeddedAudio?: string;
 }
 
 export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
@@ -34,8 +37,9 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
     },
     duration: '17s',
     fullText:
-      '¡Atención, guerreros! Les recordamos que faltan 10 minutos para cerrar el gimnasio. Por favor vayan culminando sus rutinas y dejando las máquinas y mancuernas en orden para realizar el cierre a la hora establecida. ¡Muchas gracias por su comprensión y por entrenar con nosotros!',
+      '¡Atención, guerreros! Les recordamos que faltan 10 minutos para cerrar el gimnasio. Por favor, vayan culminando sus rutinas y dejando las máquinas y mancuernas en orden para realizar el cierre a la hora establecida. ¡Muchas gracias por su comprensión y por entrenar con nosotros!',
     audioPath: '/sounds/anuncios/cierre-10min.mp3',
+    embeddedAudio: OFFICIAL_ANNOUNCEMENTS_EMBEDDED['cierre-10min'],
   },
   {
     id: 'orden-accesorios',
@@ -46,10 +50,11 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-cyan-400',
       border: 'border-cyan-500/30',
     },
-    duration: '10s',
+    duration: '6s',
     fullText:
-      '¡Estimados guerreros! Recuerden devolver y guardar cada accesorio en su lugar después de utilizarlo. ¡El orden y la disciplina es responsabilidad de todos!',
+      '¡Estimados guerreros! Recuerden guardar los accesorios en su lugar después de utilizarlo.',
     audioPath: '/sounds/anuncios/orden-accesorios.mp3',
+    embeddedAudio: OFFICIAL_ANNOUNCEMENTS_EMBEDDED['orden-accesorios'],
   },
   {
     id: 'clases-grupales',
@@ -60,14 +65,24 @@ export const GYM_ANNOUNCEMENTS: GymAnnouncement[] = [
       text: 'text-emerald-400',
       border: 'border-emerald-500/30',
     },
-    duration: '9s',
+    duration: '8s',
     fullText:
-      '¡Guerreros y guerreras! Ya llegó nuestra profesora. ¡Los esperamos a todos en el segundo piso para disfrutar de nuestras clases grupales!',
+      '¡Atención guerreros y guerreras! Les informamos que ya se encuentra disponible nuestro instructor de clases grupales en el segundo nivel.',
     audioPath: '/sounds/anuncios/clases-grupales.mp3',
+    embeddedAudio: OFFICIAL_ANNOUNCEMENTS_EMBEDDED['clases-grupales'],
   },
 ];
 
-const CUSTOM_AUDIO_KEY_PREFIX = 'trankilandia_custom_audio_v1_';
+const CUSTOM_AUDIO_KEY_PREFIX = 'trankilandia_custom_audio_v2_';
+
+// Limpieza de claves obsoletas v1 para evitar reproducir cachés robóticos anteriores
+if (typeof window !== 'undefined') {
+  try {
+    ['cierre-10min', 'orden-accesorios', 'clases-grupales'].forEach((id) => {
+      localStorage.removeItem('trankilandia_custom_audio_v1_' + id);
+    });
+  } catch {}
+}
 
 let currentAudio: HTMLAudioElement | null = null;
 let currentAnnouncementId: string | null = null;
@@ -98,7 +113,7 @@ export function setCustomAnnouncementAudio(id: string, dataUrl: string): void {
 }
 
 /**
- * Elimina el audio personalizado y restaura el audio de estudio oficial.
+ * Elimina el audio personalizado y restaura el audio oficial de ElevenLabs.
  */
 export function removeCustomAnnouncementAudio(id: string): void {
   if (typeof window === 'undefined') return;
@@ -163,13 +178,6 @@ export function stopAnnouncement(): void {
     currentAudio = null;
   }
 
-  // Cancelar también síntesis de voz en caso de fallback
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-    try {
-      window.speechSynthesis.cancel();
-    } catch {}
-  }
-
   if (currentAnnouncementId !== null) {
     currentAnnouncementId = null;
     dispatchStateChange();
@@ -177,8 +185,9 @@ export function stopAnnouncement(): void {
 }
 
 /**
- * Reproduce un anuncio oficial o personalizado por el parlante Bluetooth.
+ * Reproduce un anuncio oficial (ElevenLabs incrustado) o personalizado por el parlante Bluetooth.
  * Si ya hay otro mensaje reproduciéndose, lo detiene primero.
+ * NUNCA recurre a sintetizadores de voz robóticos de navegador.
  */
 export async function playAnnouncement(id: string): Promise<void> {
   const item = GYM_ANNOUNCEMENTS.find((a) => a.id === id);
@@ -197,7 +206,8 @@ export async function playAnnouncement(id: string): Promise<void> {
 
   try {
     const customSrc = getCustomAnnouncementAudio(id);
-    const audioSrc = customSrc || item.audioPath;
+    // Prioridad: 1. Audio subido por usuario -> 2. Audio incrustado ElevenLabs -> 3. Ruta pública
+    const audioSrc = customSrc || item.embeddedAudio || item.audioPath;
 
     const audio = new Audio(audioSrc);
     currentAudio = audio;
@@ -213,24 +223,22 @@ export async function playAnnouncement(id: string): Promise<void> {
       }
     };
 
-    audio.onerror = () => {
-      console.warn(`[announcementsService] Error cargando "${audioSrc}". Usando fallback de voz.`);
+    audio.onerror = (e) => {
+      console.warn(`[announcementsService] Error cargando "${audioSrc}":`, e);
       currentAudio = null;
-      // Fallback a síntesis vocal limpia
-      speakGymAnnouncement(cleanSpeechText(item.fullText));
-      // Tras el tiempo estimado, restaurar estado
-      setTimeout(() => {
-        if (currentAnnouncementId === id) {
-          currentAnnouncementId = null;
-          dispatchStateChange();
-        }
-      }, 8000);
+      if (currentAnnouncementId === id) {
+        currentAnnouncementId = null;
+        dispatchStateChange();
+      }
     };
 
     await audio.play();
   } catch (err) {
     console.warn('[announcementsService] Error al reproducir audio HTML5:', err);
-    // Fallback a voz sintética
-    speakGymAnnouncement(cleanSpeechText(item.fullText));
+    currentAudio = null;
+    if (currentAnnouncementId === id) {
+      currentAnnouncementId = null;
+      dispatchStateChange();
+    }
   }
 }

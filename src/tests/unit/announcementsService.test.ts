@@ -38,13 +38,15 @@ describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () 
     expect(orden).toBeDefined();
     expect(orden?.title).toContain('Accesorios');
     expect(orden?.audioPath).toBe('/sounds/anuncios/orden-accesorios.mp3');
-    expect(orden?.fullText).toContain('guardar cada accesorio');
+    expect(orden?.embeddedAudio).toBeDefined();
+    expect(orden?.fullText).toContain('guardar los accesorios');
 
     const clases = GYM_ANNOUNCEMENTS.find((a) => a.id === 'clases-grupales');
     expect(clases).toBeDefined();
     expect(clases?.title).toContain('Clases Grupales');
     expect(clases?.audioPath).toBe('/sounds/anuncios/clases-grupales.mp3');
-    expect(clases?.fullText).toContain('segundo piso');
+    expect(clases?.embeddedAudio).toBeDefined();
+    expect(clases?.fullText).toContain('segundo nivel');
   });
 
   it('inicia en estado inactivo sin reproducción', () => {
@@ -112,5 +114,34 @@ describe('Pruebas Unitarias · Servicio de Anuncios por Parlante Bluetooth', () 
 
     removeCustomAnnouncementAudio(testId);
     expect(getCustomAnnouncementAudio(testId)).toBeNull();
+  });
+
+  it('reproduce el audio incrustado de ElevenLabs y nunca invoca speechSynthesis si falla la carga', async () => {
+    let capturedSrc = '';
+    const audioSpy = vi.spyOn(window, 'Audio').mockImplementation(function (this: any, src?: string) {
+      capturedSrc = src || '';
+      return {
+        play: vi.fn().mockRejectedValue(new Error('Audio playback simulation failure')),
+        pause: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      } as any;
+    });
+
+    const speakSpy = vi.fn();
+    (window as any).speechSynthesis = {
+      speak: speakSpy,
+      cancel: vi.fn(),
+      getVoices: () => [],
+    };
+
+    await playAnnouncement('clases-grupales');
+
+    // Debe usar el audio incrustado en Base64 de ElevenLabs
+    expect(capturedSrc).toMatch(/^data:audio\/mp3;base64,/);
+    // Jamás debe invocar speechSynthesis (la voz robótica eliminada)
+    expect(speakSpy).not.toHaveBeenCalled();
+
+    audioSpy.mockRestore();
   });
 });

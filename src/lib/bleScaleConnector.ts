@@ -81,8 +81,8 @@ export function decodificarTramaPeso(dataView: DataView): BleWeightResult {
   // --------------------------------------------------------------------------
   if (len >= 10 && dataView.getUint8(4) === 0xA2) {
     const status = dataView.getUint8(5);
-    // 0x01: pesando/inestable | 0x02 o 0x03: peso estabilizado/bloqueado | 0x00: socio se bajó
-    esEstable = status === 0x02 || status === 0x03;
+    // 0x01: pesando/inestable | 0x02..0x08 o 0xCA/0xCF: peso estabilizado/bloqueado o bioimpedancia en curso | 0x00: socio se bajó
+    esEstable = (status >= 0x02 && status <= 0x08) || status === 0xCA || status === 0xCF;
 
     if (status === 0x00) {
       return { pesoKg: 0, esEstable: false };
@@ -97,7 +97,7 @@ export function decodificarTramaPeso(dataView: DataView): BleWeightResult {
   // [A2] [07] [00] [A2] [STATUS=02] [00] [B6] [B7] [B8] ...
   else if (len >= 9 && b0 === 0xA2 && dataView.getUint8(3) === 0xA2) {
     const status = dataView.getUint8(4);
-    esEstable = status === 0x02 || status === 0x03;
+    esEstable = (status >= 0x02 && status <= 0x08) || status === 0xCA || status === 0xCF;
     const b6 = dataView.getUint8(6);
     const b7 = dataView.getUint8(7);
     const b8 = dataView.getUint8(8);

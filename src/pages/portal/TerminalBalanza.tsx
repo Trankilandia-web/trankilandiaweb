@@ -82,6 +82,8 @@ export default function TerminalBalanza() {
   const lockedWeightRef = useRef<number>(0);
   const impedanceDataRef = useRef<any>(null);
   const scanIntervalRef = useRef<any>(null);
+  const lastWeightRef = useRef<number>(0);
+  const stableSinceRef = useRef<number>(0);
 
   // 5. Modo Manual (para iPhone Safari o contingencia)
   const [manualMode, setManualMode] = useState(false);
@@ -338,6 +340,37 @@ export default function TerminalBalanza() {
     }
   };
 
+  // Función centralizada para finalizar evaluación y calcular métricas completas
+  const ejecutarFinalizacionEvaluacion = (pesoFinal: number) => {
+    if (!selectedMember || pesoFinal < 15.0) return;
+
+    if (scanIntervalRef.current) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+
+    const finalImp = impedanceDataRef.current;
+    const ev = calcularMetricasCompletas({
+      socio_id: selectedMember.id,
+      socio_dni: selectedMember.dni || '',
+      peso_kg: pesoFinal,
+      grasa_corporal_pct: finalImp?.grasaCorporalPct,
+      masa_muscular_kg: finalImp?.masaMuscularKg,
+      estatura_cm: estaturaCm,
+      edad,
+      sexo,
+      evaluador_id: operatorId || 'staff-luis',
+      evaluador_nombre: operatorName,
+      origen: 'bluetooth_g78',
+    });
+
+    setComputedEval(ev);
+    const d = calcularDeltasMensuales(ev, previousEval);
+    setDeltas(d);
+    setDiagnostico(determinarDiagnostico(d, ev));
+    setMeasuringPhase('completado');
+  };
+
   // Iniciar Pesaje Bluetooth
   const handleStartBluetoothWeighing = async () => {
     try {
@@ -346,6 +379,8 @@ export default function TerminalBalanza() {
         scanIntervalRef.current = null;
       }
       lockedWeightRef.current = 0;
+      lastWeightRef.current = 0;
+      stableSinceRef.current = 0;
       impedanceDataRef.current = null;
       setLiveWeight(0);
       setIsWeightLocked(false);
@@ -359,6 +394,22 @@ export default function TerminalBalanza() {
         onStatusChange: (estado, msg) => {
           setScaleStatus(estado);
           if (msg) setStatusMessage(msg);
+
+          // Si la balanza finaliza la sesión BLE ('completado' o 'bloqueado')
+          // y tenemos un peso válido, pero aún no se generó computedEval:
+          if ((estado === 'completado' || estado === 'bloqueado') && selectedMember) {
+            const candidateWeight = lockedWeightRef.current || liveWeight || lastWeightRef.current;
+            if (candidateWeight >= 20.0) {
+              setTimeout(() => {
+                setComputedEval((actual) => {
+                  if (!actual) {
+                    ejecutarFinalizacionEvaluacion(candidateWeight);
+                  }
+                  return actual;
+                });
+              }, 400);
+            }
+          }
         },
         onLiveWeight: (peso, estable) => {
           // Filtro estricto: Si el peso es menor a 15 kg (tara o ruido), ignorar
@@ -375,21 +426,35 @@ export default function TerminalBalanza() {
 
           setMeasuringPhase('pesando');
 
-          // Cuando el peso se estabiliza (estable === true y peso válido >= 20 kg)
-          if (estable && peso >= 20.0 && selectedMember) {
+          // Detección de estabilidad híbrida (Firmware de balanza + Detección inteligente por software)
+          const now = Date.now();
+          let esEstableFinal = estable;
+
+          if (Math.abs(peso - lastWeightRef.current) <= 0.3) {
+            if (stableSinceRef.current === 0) {
+              stableSinceRef.current = now;
+            } else if (now - stableSinceRef.current >= 1200) {
+              esEstableFinal = true;
+            }
+          } else {
+            lastWeightRef.current = peso;
+            stableSinceRef.current = now;
+          }
+
+          // Cuando el peso se estabiliza (estable o software estable y peso >= 20 kg)
+          if (esEstableFinal && peso >= 20.0 && selectedMember) {
             lockedWeightRef.current = peso;
             setIsWeightLocked(true);
             setMeasuringPhase('escaneando_bioimpedancia');
             setStatusMessage(`⚖️ Peso fijado: ${peso.toFixed(2)} kg. Escaneando composición corporal...`);
 
-            // Iniciar conteo de 4.5 segundos para escaneo de los 8 electrodos
             let progress = 0;
             setScanProgress(0);
             setScanStatusText('⚡ Paso 1/3: Detectando electrodos de pies y manillar...');
 
             if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
             const startTime = Date.now();
-            const DURATION_MS = 4500;
+            const DURATION_MS = 4000;
 
             scanIntervalRef.current = setInterval(() => {
               const elapsed = Date.now() - startTime;
@@ -409,56 +474,38 @@ export default function TerminalBalanza() {
               if (elapsed >= DURATION_MS) {
                 clearInterval(scanIntervalRef.current);
                 scanIntervalRef.current = null;
-
-                const finalWeight = lockedWeightRef.current || peso;
-                const finalImp = impedanceDataRef.current;
-
-                const ev = calcularMetricasCompletas({
-                  socio_id: selectedMember.id,
-                  socio_dni: selectedMember.dni || '',
-                  peso_kg: finalWeight,
-                  grasa_corporal_pct: finalImp?.grasaCorporalPct,
-                  masa_muscular_kg: finalImp?.masaMuscularKg,
-                  estatura_cm: estaturaCm,
-                  edad,
-                  sexo,
-                  evaluador_id: operatorId || 'staff-luis',
-                  evaluador_nombre: operatorName,
-                  origen: 'bluetooth_g78',
-                });
-
-                setComputedEval(ev);
-                const d = calcularDeltasMensuales(ev, previousEval);
-                setDeltas(d);
-                setDiagnostico(determinarDiagnostico(d, ev));
-                setMeasuringPhase('completado');
+                ejecutarFinalizacionEvaluacion(lockedWeightRef.current || peso);
               }
             }, 100);
           }
         },
         onImpedanceData: (imp) => {
           impedanceDataRef.current = imp;
-          if (computedEval && selectedMember) {
-            setComputedEval((prev) => {
-              if (!prev) return prev;
-              const ev = calcularMetricasCompletas({
-                socio_id: selectedMember.id,
-                socio_dni: selectedMember.dni || '',
-                peso_kg: prev.peso_kg,
-                grasa_corporal_pct: imp.grasaCorporalPct || prev.grasa_corporal_pct,
-                masa_muscular_kg: imp.masaMuscularKg || prev.masa_muscular_kg,
-                estatura_cm: estaturaCm,
-                edad,
-                sexo,
-                evaluador_id: operatorId || 'staff-luis',
-                evaluador_nombre: operatorName,
-                origen: 'bluetooth_g78',
-              });
-              const d = calcularDeltasMensuales(ev, previousEval);
-              setDeltas(d);
-              setDiagnostico(determinarDiagnostico(d, ev));
-              return ev;
+          setComputedEval((prev) => {
+            if (!prev || !selectedMember) return prev;
+            const ev = calcularMetricasCompletas({
+              socio_id: selectedMember.id,
+              socio_dni: selectedMember.dni || '',
+              peso_kg: prev.peso_kg,
+              grasa_corporal_pct: imp.grasaCorporalPct || prev.grasa_corporal_pct,
+              masa_muscular_kg: imp.masaMuscularKg || prev.masa_muscular_kg,
+              estatura_cm: estaturaCm,
+              edad,
+              sexo,
+              evaluador_id: operatorId || 'staff-luis',
+              evaluador_nombre: operatorName,
+              origen: 'bluetooth_g78',
             });
+            const d = calcularDeltasMensuales(ev, previousEval);
+            setDeltas(d);
+            setDiagnostico(determinarDiagnostico(d, ev));
+            return ev;
+          });
+
+          // Si llegó bioimpedancia segmental y no se ha computado, avanzar de inmediato
+          const candidateWeight = lockedWeightRef.current || liveWeight;
+          if (candidateWeight >= 20.0 && selectedMember) {
+            ejecutarFinalizacionEvaluacion(candidateWeight);
           }
         },
         onError: (err) => {
@@ -1085,15 +1132,36 @@ export default function TerminalBalanza() {
                             </p>
                           )}
 
-                          <div className="pt-2">
-                            <button
-                              type="button"
-                              onClick={handleStartBluetoothWeighing}
-                              className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono"
-                            >
-                              <Zap className="w-4 h-4" />
-                              <span>{liveWeight > 0 ? 'RECONECTAR BALANZA' : 'CONECTAR BALANZA Y PESAR'}</span>
-                            </button>
+                          <div className="pt-2 space-y-2">
+                            {liveWeight >= 20.0 ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => ejecutarFinalizacionEvaluacion(lockedWeightRef.current || liveWeight)}
+                                  className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-emerald-500/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono animate-in fade-in"
+                                >
+                                  <CheckCircle2 className="w-5 h-5 text-black" />
+                                  <span>VER INFORME COMPLETO CON {(lockedWeightRef.current || liveWeight).toFixed(2)} KG →</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleStartBluetoothWeighing}
+                                  className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold uppercase tracking-wider py-2.5 rounded-xl text-xs transition-all border border-white/10 cursor-pointer flex items-center justify-center gap-1.5 font-mono"
+                                >
+                                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>Reconectar / Volver a Pesar</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={handleStartBluetoothWeighing}
+                                className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono"
+                              >
+                                <Zap className="w-4 h-4" />
+                                <span>CONECTAR BALANZA Y PESAR</span>
+                              </button>
+                            )}
                           </div>
                         </>
                       )}
@@ -1107,7 +1175,10 @@ export default function TerminalBalanza() {
                         <p>1. <strong>Enciende la balanza</strong> pisándola con un pie (pantalla LCD activa).</p>
                         <p>2. Sube descalzo(a) y sujeta el manillar con ambas manos (8 electrodos).</p>
                         <p>3. Toca el botón amarillo y selecciona tu balanza en la lista.</p>
-                        <p className="text-amber-400/90 pt-1 font-mono text-[10px]">
+                        <p className="text-emerald-400/90 pt-1 font-mono text-[10px]">
+                          ⚡ <strong>Tip de Bioimpedancia:</strong> Para registrar grasa y músculo, los pies deben estar 100% descalzos (sin medias) sobre los 4 electrodos de la base y las manos sujetando las 4 placas metálicas del mango.
+                        </p>
+                        <p className="text-amber-400/90 font-mono text-[10px]">
                           ⚠️ Si tienes la app Fitdays abierta en tu teléfono, ciérrala para no ocupar la conexión BLE.
                         </p>
                       </div>
