@@ -84,6 +84,16 @@ export interface DeltasEvaluacion {
   delta_score: number;
 }
 
+export interface ProgresoAcumulado {
+  delta_grasa_kg: number;
+  delta_musculo_kg: number;
+  delta_peso_kg: number;
+  delta_visceral: number;
+  delta_score: number;
+  dias_totales: number;
+  meta_progreso_pct: number;
+}
+
 export type TipoRecomposicion = 'recomposicion' | 'hipertrofia' | 'definicion' | 'mantenimiento';
 
 export interface DiagnosticoRecomposicion {
@@ -263,5 +273,44 @@ export interface ZonaCalorSilueta {
   colorClase: string;
   descripcionEstado: string;
 }
+
+// ==============================================================================
+// TIPOS PARA STORY CARD GENERATOR (REDES SOCIALES)
+// ==============================================================================
+
+export type TemplateStory = 'minimal_dark' | 'gradient_fire' | 'neon_gym';
+export type FormatoStory = 'story_9_16' | 'post_1_1';
+
+export interface MetricaDestacadaStory {
+  tipo: 'grasa_quemada' | 'musculo_ganado' | 'fit_score';
+  valorPrincipal: string; // ej. "-5.2 KG", "+2.4 KG", "88 PTS"
+  etiqueta: string; // ej. "GRASA QUEMADA", "MÚSCULO GANADO"
+  colorHex: string;
+}
+
+export interface MedallaDestacadaStory {
+  titulo: string;
+  nivel: NivelMedalla;
+  categoria: string;
+}
+
+export interface DatosStoryCard {
+  socioNombre?: string;
+  fechaFormateada: string;
+  fitScore: number;
+  metricaDestacada: MetricaDestacadaStory;
+  pesoKg: number;
+  musculoKg: number;
+  grasaPct: number;
+  grasaVisceral: number;
+  medallaDestacada?: MedallaDestacadaStory;
+  hashtags: string[];
+}
+
+export interface ConfigStoryCard {
+  template: TemplateStory;
+  formato: FormatoStory;
+}
+
 
 

@@ -62,6 +62,7 @@ describe('Componente EvolucionCorporalView', () => {
     expect(await screen.findByText(/Tu Composición en Cristiano/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Salud del Corazón & Abdomen/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Tu Motor Metabólico/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Generar Story Card/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Compartir Mi Evolución en WhatsApp/i, {}, { timeout: 8000 })).toBeDefined();
 
     // 2. Acordeón técnico colapsado por defecto para no saturar al usuario

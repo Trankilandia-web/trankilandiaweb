@@ -10,6 +10,7 @@
 import {
   EvaluacionCorporal,
   DeltasEvaluacion,
+  ProgresoAcumulado,
   DiagnosticoRecomposicion,
   SegmentalData,
   SexoBiometrico,
@@ -23,6 +24,9 @@ import {
   ZonaCalorSilueta,
   ModoSilueta,
   ExtremidadId,
+  DatosStoryCard,
+  MetricaDestacadaStory,
+  MedallaDestacadaStory,
 } from '../types/evaluacion';
 
 export interface EntradaMedicion {
@@ -471,15 +475,7 @@ export function determinarDiagnostico(
   };
 }
 
-export interface ProgresoAcumulado {
-  delta_grasa_kg: number;
-  delta_musculo_kg: number;
-  delta_peso_kg: number;
-  delta_visceral: number;
-  delta_score: number;
-  dias_totales: number;
-  meta_progreso_pct: number;
-}
+export type { ProgresoAcumulado };
 
 export function calcularProgresoAcumulado(
   primera: EvaluacionCorporal,
@@ -1232,6 +1228,90 @@ export function calcularZonasCalorSilueta(
 
   return resultado;
 }
+
+// ==============================================================================
+// MOTOR DE STORY CARD (DESTILACIÓN DE MÉTRICAS PUBLICITARIAS PARA REDES)
+// ==============================================================================
+
+export function prepararDatosStoryCard(
+  evaluacion: EvaluacionCorporal,
+  medallas: MedallaLogro[],
+  acumulado: ProgresoAcumulado,
+  socioNombre?: string
+): DatosStoryCard {
+  const fechaFormateada = new Date(evaluacion.fecha).toLocaleDateString('es-PE', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+
+  // 1. Determinar métrica más destacada e impactante
+  let metricaDestacada: MetricaDestacadaStory = {
+    tipo: 'fit_score',
+    valorPrincipal: `${evaluacion.puntuacion_corporal} PTS`,
+    etiqueta: 'FIT SCORE',
+    colorHex: '#F59E0B',
+  };
+
+  if (acumulado.delta_grasa_kg <= -0.8) {
+    metricaDestacada = {
+      tipo: 'grasa_quemada',
+      valorPrincipal: `${acumulado.delta_grasa_kg} KG`,
+      etiqueta: 'GRASA QUEMADA',
+      colorHex: '#F59E0B',
+    };
+  } else if (acumulado.delta_musculo_kg >= 0.8) {
+    metricaDestacada = {
+      tipo: 'musculo_ganado',
+      valorPrincipal: `+${acumulado.delta_musculo_kg} KG`,
+      etiqueta: 'MÚSCULO GANADO',
+      colorHex: '#10B981',
+    };
+  }
+
+  // 2. Seleccionar la medalla desbloqueada de mayor nivel
+  let medallaDestacada: MedallaDestacadaStory | undefined = undefined;
+  const pesoNivel: Record<string, number> = {
+    diamante: 4,
+    oro: 3,
+    plata: 2,
+    bronce: 1,
+  };
+
+  const desbloqueadas = medallas.filter((m) => m.desbloqueada);
+  if (desbloqueadas.length > 0) {
+    const mejor = [...desbloqueadas].sort((a, b) => {
+      return (pesoNivel[b.nivel] || 1) - (pesoNivel[a.nivel] || 1);
+    })[0];
+
+    medallaDestacada = {
+      titulo: mejor.titulo,
+      nivel: mejor.nivel,
+      categoria: mejor.categoria,
+    };
+  }
+
+  const hashtags = [
+    '#TrankilandiaGym',
+    '#MiEvolución',
+    `#FitScore${evaluacion.puntuacion_corporal}`,
+    '#Bioimpedancia8Electrodos',
+  ];
+
+  return {
+    socioNombre,
+    fechaFormateada,
+    fitScore: evaluacion.puntuacion_corporal,
+    metricaDestacada,
+    pesoKg: Number(evaluacion.peso_kg.toFixed(1)),
+    musculoKg: Number(evaluacion.masa_muscular_kg.toFixed(1)),
+    grasaPct: Number(evaluacion.grasa_corporal_pct.toFixed(1)),
+    grasaVisceral: evaluacion.grasa_visceral,
+    medallaDestacada,
+    hashtags,
+  };
+}
+
 
 
 

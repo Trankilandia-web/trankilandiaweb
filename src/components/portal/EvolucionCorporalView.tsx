@@ -13,6 +13,7 @@ import {
   Zap,
   Trophy,
   Dumbbell,
+  Camera,
 } from 'lucide-react';
 import { EvaluacionCorporal } from '../../types/evaluacion';
 import {
@@ -30,6 +31,7 @@ import EvolucionTrendChart from './EvolucionTrendChart';
 import MedallasLogro from './MedallasLogro';
 import SimuladorMetas from './SimuladorMetas';
 import SiluetaAnatomica from './SiluetaAnatomica';
+import StoryCardModal from './StoryCardModal';
 
 export interface EvolucionCorporalViewProps {
   socioDni: string;
@@ -41,6 +43,7 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvalIndex, setSelectedEvalIndex] = useState(0);
   const [showDetallesTecnicos, setShowDetallesTecnicos] = useState(false);
+  const [showStoryModal, setShowStoryModal] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -196,6 +199,16 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setShowStoryModal(true)}
+              className="p-3 rounded-2xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-400 hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-mono font-bold"
+              title="Crear Story Card para Instagram / WhatsApp"
+            >
+              <Camera className="w-4 h-4" />
+              <span className="hidden sm:inline">Story Card</span>
+            </button>
+
             <button
               type="button"
               onClick={handleShare}
@@ -481,12 +494,21 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
         </div>
       </div>
 
-      {/* Botón Destacado de Compartir en WhatsApp */}
-      <div className="pt-1">
+      {/* Botones Destacados: Story Card y WhatsApp */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+        <button
+          type="button"
+          onClick={() => setShowStoryModal(true)}
+          className="py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black uppercase tracking-wider text-xs font-mono shadow-xl shadow-amber-400/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+        >
+          <Camera className="w-4 h-4" />
+          <span>Generar Story Card (Instagram / WhatsApp)</span>
+        </button>
+
         <button
           type="button"
           onClick={handleShare}
-          className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black uppercase tracking-wider text-xs font-mono shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+          className="py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black uppercase tracking-wider text-xs font-mono shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
         >
           <Share2 className="w-4 h-4" />
           <span>Compartir Mi Evolución en WhatsApp</span>
@@ -998,6 +1020,15 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
     </div>
   )}
 </div>
+      {/* Modal Generador de Story Card (Instagram / WhatsApp) */}
+      <StoryCardModal
+        isOpen={showStoryModal}
+        onClose={() => setShowStoryModal(false)}
+        evaluacion={currentEval}
+        medallas={medallas}
+        acumulado={acumulado}
+        socioNombre={socioNombre}
+      />
     </div>
   );
 }
