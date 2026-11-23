@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import {
   Scale,
-  TrendingUp,
-  TrendingDown,
-  Sparkles,
   Calendar,
   Share2,
-  Activity,
   Flame,
   Heart,
   MessageCircle,
+  ChevronDown,
+  ChevronUp,
+  Droplets,
+  Utensils,
+  Zap,
+  Trophy,
+  Dumbbell,
 } from 'lucide-react';
 import { EvaluacionCorporal } from '../../types/evaluacion';
 import {
@@ -19,7 +22,10 @@ import {
   calcularDeltasMensuales,
   determinarDiagnostico,
   obtenerEstandarFitdays,
+  calcularProgresoAcumulado,
+  generarSintesisSaludCotidiana,
 } from '../../lib/bioimpedanceEngine';
+import EvolucionTrendChart from './EvolucionTrendChart';
 
 export interface EvolucionCorporalViewProps {
   socioDni: string;
@@ -30,6 +36,7 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
   const [evaluaciones, setEvaluaciones] = useState<EvaluacionCorporal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvalIndex, setSelectedEvalIndex] = useState(0);
+  const [showDetallesTecnicos, setShowDetallesTecnicos] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -121,8 +128,11 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
   // =========================================================================
   const currentEval = evaluaciones[selectedEvalIndex] || evaluaciones[0];
   const previousEval = evaluaciones[selectedEvalIndex + 1] || null;
+  const initialEval = evaluaciones[evaluaciones.length - 1] || currentEval;
   const deltas = calcularDeltasMensuales(currentEval, previousEval);
+  const acumulado = calcularProgresoAcumulado(initialEval, currentEval);
   const diagnostico = determinarDiagnostico(deltas, currentEval);
+  const sintesis = generarSintesisSaludCotidiana(currentEval);
 
   const fechaFormateada = new Date(currentEval.fecha).toLocaleDateString('es-PE', {
     day: 'numeric',
@@ -130,19 +140,29 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
     year: 'numeric',
   });
 
+  const fechaInicialCorta = new Date(initialEval.fecha).toLocaleDateString('es-PE', {
+    day: 'numeric',
+    month: 'short',
+  });
+
+  const fechaActualCorta = new Date(currentEval.fecha).toLocaleDateString('es-PE', {
+    day: 'numeric',
+    month: 'short',
+  });
+
   // Compartir en WhatsApp
   const handleShare = () => {
     const texto = encodeURIComponent(
-      `*MI EVOLUCIÓN EN TRANKILANDIA GYM*\n` +
+      `*MI EVOLUCIÓN EN TRANKILANDIA GYM* 🏋️‍♂️💪\n` +
       `📅 Fecha: ${fechaFormateada}\n` +
-      `⭐ *Fit Score:* ${currentEval.puntuacion_corporal}/100\n` +
-      `⚖️ *Peso:* ${currentEval.peso_kg.toFixed(2)} kg\n` +
-      `💪 *Masa Muscular:* ${currentEval.masa_muscular_kg.toFixed(2)} kg (${currentEval.masa_muscular_pct}%)\n` +
-      `🔥 *Grasa Corporal:* ${currentEval.grasa_corporal_pct}%\n` +
-      `🫀 *Grasa Visceral:* Nivel ${currentEval.grasa_visceral}\n` +
-      `💧 *Hidratación:* ${currentEval.agua_pct}%\n` +
-      `⚡ *BMR:* ${currentEval.bmr_kcal} kcal/día\n\n` +
-      `🏆 *Diagnóstico:* ${diagnostico.titulo}\n${diagnostico.descripcion}`
+      `⭐ *Fit Score:* ${currentEval.puntuacion_corporal}/100 Pts\n\n` +
+      `🏆 *Veredicto:* ${sintesis.fraseImpacto}\n` +
+      `💪 *Masa Muscular:* ${currentEval.masa_muscular_kg.toFixed(1)} kg (${acumulado.delta_musculo_kg >= 0 ? '+' : ''}${acumulado.delta_musculo_kg} kg)\n` +
+      `🔥 *Grasa Corporal:* ${currentEval.grasa_corporal_pct.toFixed(1)}% (${acumulado.delta_grasa_kg > 0 ? '+' : ''}${acumulado.delta_grasa_kg} kg grasa)\n` +
+      `⚖️ *Peso Total:* ${currentEval.peso_kg.toFixed(1)} kg\n` +
+      `🫀 *Grasa Visceral:* Nivel ${currentEval.grasa_visceral} (${sintesis.visceral.titulo})\n` +
+      `⚡ *Metabolismo Basal:* ${currentEval.bmr_kcal} kcal/día\n\n` +
+      `¡A seguir entrenando con todo en Trankilandia Gym!`
     );
     window.open(`https://wa.me/?text=${texto}`, '_blank');
   };
@@ -213,146 +233,284 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
         )}
       </div>
 
-      {/* 2. Tarjeta de Diagnóstico de Recomposición */}
-      <div className="bg-gradient-to-r from-amber-400/10 via-zinc-900 to-zinc-900 border border-amber-400/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-2">
-        <div className="flex items-center gap-2 text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          <span>{diagnostico.fase}</span>
+      {/* 2. Tarjeta Hero de Veredicto Motivacional */}
+      <div className="bg-gradient-to-br from-amber-400/15 via-zinc-900 to-zinc-950 border border-amber-400/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
+            <Trophy className="w-4 h-4 text-amber-400" />
+            <span>{diagnostico.fase}</span>
+          </div>
+          <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-400/10 text-amber-300 border border-amber-400/20 font-bold">
+            {currentEval.puntuacion_corporal} Pts
+          </span>
         </div>
-        <h4 className="text-lg sm:text-xl font-black text-white uppercase font-display">
-          {diagnostico.titulo}
+        <h4 className="text-xl sm:text-2xl font-black text-white uppercase font-display tracking-tight leading-tight">
+          {sintesis.fraseImpacto}
         </h4>
         <p className="text-xs sm:text-sm text-zinc-300 font-sans leading-relaxed">
           {diagnostico.descripcion}
         </p>
       </div>
 
-      {/* 3. Métricas Clave y Deltas Mensuales */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        {/* Peso Total */}
-        <div className="bg-zinc-900 border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
-            <span>Peso Total</span>
-            <Scale className="w-4 h-4 text-zinc-500" />
+      {/* 3. Tarjeta Visual "Tu Transformación" (Antes vs Hoy) */}
+      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+          <div className="space-y-0.5">
+            <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
+              <Zap className="w-3.5 h-3.5" />
+              <span>Tu Transformación Acumulada</span>
+            </div>
+            <p className="text-[11px] text-zinc-400 font-mono">
+              {evaluaciones.length > 1
+                ? `Inicio (${fechaInicialCorta}) → Hoy (${fechaActualCorta}) · ${acumulado.dias_totales} días de constancia`
+                : 'Punto de partida registrado en tu primera evaluación'}
+            </p>
           </div>
-          <div className="mt-2">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-white tracking-tight">
-              {currentEval.peso_kg.toFixed(2)}
+          {evaluaciones.length > 1 && (
+            <span className="text-[10px] font-mono font-bold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              {acumulado.meta_progreso_pct}% a tu meta
             </span>
-            <span className="text-xs text-zinc-500 font-mono ml-1">kg</span>
-          </div>
-          <div className="mt-2 text-xs font-mono">
-            {deltas ? (
-              <span
-                className={`inline-flex items-center gap-1 font-bold ${
-                  deltas.delta_peso_kg < 0 ? 'text-blue-400' : 'text-zinc-300'
-                }`}
-              >
-                {deltas.delta_peso_kg > 0 ? (
-                  <TrendingUp className="w-3.5 h-3.5" />
-                ) : (
-                  <TrendingDown className="w-3.5 h-3.5" />
-                )}
-                <span>{deltas.delta_peso_kg > 0 ? `+${deltas.delta_peso_kg}` : deltas.delta_peso_kg} kg</span>
-              </span>
-            ) : (
-              <span className="text-zinc-500 text-[11px]">Medición base</span>
-            )}
-          </div>
+          )}
         </div>
 
-        {/* Masa Muscular */}
-        <div className="bg-zinc-900 border border-emerald-500/30 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-mono text-emerald-400">
-            <span>Masa Muscular</span>
-            <Flame className="w-4 h-4" />
-          </div>
-          <div className="mt-2">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-400 tracking-tight">
-              {currentEval.masa_muscular_kg.toFixed(2)}
-            </span>
-            <span className="text-xs text-zinc-500 font-mono ml-1">kg</span>
-          </div>
-          <div className="mt-2 text-xs font-mono">
-            {deltas ? (
-              <span
-                className={`inline-flex items-center gap-1 font-bold ${
-                  deltas.delta_musculo_kg >= 0 ? 'text-emerald-400' : 'text-amber-400'
-                }`}
-              >
-                {deltas.delta_musculo_kg >= 0 ? (
-                  <TrendingUp className="w-3.5 h-3.5" />
-                ) : (
-                  <TrendingDown className="w-3.5 h-3.5" />
-                )}
-                <span>{deltas.delta_musculo_kg > 0 ? `+${deltas.delta_musculo_kg}` : deltas.delta_musculo_kg} kg</span>
+        {/* Barras de Progreso Comparativas */}
+        <div className="space-y-3.5 font-mono text-xs">
+          {/* Músculo */}
+          <div className="space-y-1.5 p-3.5 rounded-2xl bg-zinc-950 border border-emerald-500/20">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                <Dumbbell className="w-3.5 h-3.5" />
+                <span>Masa Muscular</span>
               </span>
-            ) : (
-              <span className="text-zinc-500 text-[11px]">{currentEval.masa_muscular_pct}% de tu cuerpo</span>
-            )}
-          </div>
-        </div>
-
-        {/* Grasa Corporal */}
-        <div className="bg-zinc-900 border border-amber-400/30 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-mono text-amber-400">
-            <span>% Grasa Corporal</span>
-            <Activity className="w-4 h-4" />
-          </div>
-          <div className="mt-2">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-amber-400 tracking-tight">
-              {currentEval.grasa_corporal_pct.toFixed(1)}
-            </span>
-            <span className="text-xs text-zinc-500 font-mono ml-1">%</span>
-          </div>
-          <div className="mt-2 text-xs font-mono">
-            {deltas ? (
-              <span
-                className={`inline-flex items-center gap-1 font-bold ${
-                  deltas.delta_grasa_pct <= 0 ? 'text-emerald-400' : 'text-amber-400'
-                }`}
-              >
-                {deltas.delta_grasa_pct <= 0 ? (
-                  <TrendingDown className="w-3.5 h-3.5" />
-                ) : (
-                  <TrendingUp className="w-3.5 h-3.5" />
-                )}
-                <span>{deltas.delta_grasa_pct > 0 ? `+${deltas.delta_grasa_pct}` : deltas.delta_grasa_pct}%</span>
+              <span className="font-bold text-white text-sm">
+                {currentEval.masa_muscular_kg.toFixed(1)} kg
               </span>
-            ) : (
-              <span className="text-zinc-500 text-[11px]">{currentEval.grasa_corporal_kg.toFixed(1)} kg grasa</span>
-            )}
+            </div>
+            <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden">
+              <div
+                className="bg-emerald-400 h-2.5 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.max(15, (currentEval.masa_muscular_kg / (currentEval.peso_kg || 1)) * 130))}%`,
+                }}
+              />
+            </div>
+            <div className="flex justify-between items-center text-[11px] text-zinc-400">
+              <span>Inicio: {initialEval.masa_muscular_kg.toFixed(1)} kg</span>
+              <span className={`font-bold ${acumulado.delta_musculo_kg >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {acumulado.delta_musculo_kg >= 0 ? `+${acumulado.delta_musculo_kg}` : acumulado.delta_musculo_kg} kg de músculo
+              </span>
+            </div>
           </div>
-        </div>
 
-        {/* Grasa Visceral */}
-        <div className="bg-zinc-900 border border-white/10 rounded-2xl p-4 shadow-lg flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
-            <span>Grasa Visceral</span>
-            <Heart className="w-4 h-4 text-red-400" />
+          {/* Grasa */}
+          <div className="space-y-1.5 p-3.5 rounded-2xl bg-zinc-950 border border-amber-400/20">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5" />
+                <span>Grasa Corporal</span>
+              </span>
+              <span className="font-bold text-white text-sm">
+                {currentEval.grasa_corporal_pct.toFixed(1)}% · {currentEval.grasa_corporal_kg.toFixed(1)} kg
+              </span>
+            </div>
+            <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden">
+              <div
+                className="bg-amber-400 h-2.5 rounded-full transition-all duration-500"
+                style={{
+                  width: `${Math.min(100, Math.max(15, currentEval.grasa_corporal_pct * 2.2))}%`,
+                }}
+              />
+            </div>
+            <div className="flex justify-between items-center text-[11px] text-zinc-400">
+              <span>Inicio: {initialEval.grasa_corporal_pct.toFixed(1)}%</span>
+              <span className={`font-bold ${acumulado.delta_grasa_kg <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {acumulado.delta_grasa_kg > 0 ? `+${acumulado.delta_grasa_kg}` : acumulado.delta_grasa_kg} kg de grasa neta
+              </span>
+            </div>
           </div>
-          <div className="mt-2">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-white tracking-tight">
-              {currentEval.grasa_visceral}
-            </span>
-            <span className="text-xs text-zinc-500 font-mono ml-1">/ 50</span>
-          </div>
-          <div className="mt-2 text-xs font-mono">
-            <span className={`font-bold ${currentEval.grasa_visceral <= 9 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {currentEval.grasa_visceral <= 9 ? 'Nivel Saludable' : 'Nivel Elevado'}
-            </span>
+
+          {/* Peso */}
+          <div className="space-y-1.5 p-3.5 rounded-2xl bg-zinc-950 border border-white/5">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                <Scale className="w-3.5 h-3.5 text-zinc-400" />
+                <span>Peso en Báscula</span>
+              </span>
+              <span className="font-bold text-white text-sm">
+                {currentEval.peso_kg.toFixed(1)} kg
+              </span>
+            </div>
+            <div className="flex justify-between items-center text-[11px] text-zinc-400">
+              <span>Inicio: {initialEval.peso_kg.toFixed(1)} kg</span>
+              <span className="text-zinc-300 font-bold">
+                {acumulado.delta_peso_kg > 0 ? `+${acumulado.delta_peso_kg}` : acumulado.delta_peso_kg} kg total
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* 4. Tabla Completa de Indicadores (Estándar Fitdays EUROMAR® G78) */}
-      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-white/5 pb-3">
-          <div>
-            <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
-              INFORME BIOMÉTRICO FITDAYS
+      {/* 4. Gráfico Táctil de Tendencia Mobile */}
+      <EvolucionTrendChart
+        evaluaciones={evaluaciones}
+        onSelectEval={(ev) => {
+          const idx = evaluaciones.findIndex((e) => e.id === ev.id);
+          if (idx !== -1) setSelectedEvalIndex(idx);
+        }}
+      />
+
+      {/* 5. Semáforos de Salud y Consejos en Lenguaje Cotidiano */}
+      <div className="space-y-3">
+        <div className="px-1">
+          <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
+            SALUD Y RENDIMIENTO
+          </span>
+          <h4 className="text-lg font-black uppercase text-white font-display">
+            Tu Composición en Cristiano
+          </h4>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Tarjeta 1: Grasa Visceral & Corazón */}
+          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                <Heart className="w-4 h-4 text-red-400" />
+                <span>Salud del Corazón & Abdomen</span>
+              </span>
+              <span
+                className={`font-bold px-2 py-0.5 rounded-lg text-[10px] uppercase border ${
+                  sintesis.visceral.estado === 'optimo'
+                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                    : sintesis.visceral.estado === 'atencion'
+                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                    : 'text-red-400 bg-red-500/10 border-red-500/30'
+                }`}
+              >
+                {sintesis.visceral.titulo}
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2 font-mono">
+              <span className="text-2xl font-black text-white">{currentEval.grasa_visceral}</span>
+              <span className="text-xs text-zinc-500">/ 50 nivel</span>
+            </div>
+            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+              {sintesis.visceral.descripcion}
+            </p>
+          </div>
+
+          {/* Tarjeta 2: Motor Metabólico */}
+          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <span>Tu Motor Metabólico</span>
+              </span>
+              <span className="text-amber-400 font-bold text-[10px] uppercase bg-amber-400/10 px-2 py-0.5 rounded-lg border border-amber-400/20">
+                Basal (BMR)
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2 font-mono">
+              <span className="text-2xl font-black text-amber-400">{currentEval.bmr_kcal}</span>
+              <span className="text-xs text-zinc-400">kcal/día en reposo</span>
+            </div>
+            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+              {sintesis.metabolismo.descripcion}
+            </p>
+          </div>
+
+          {/* Tarjeta 3: Hidratación */}
+          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                <Droplets className="w-4 h-4 text-blue-400" />
+                <span>Hidratación Celular</span>
+              </span>
+              <span
+                className={`font-bold px-2 py-0.5 rounded-lg text-[10px] uppercase border ${
+                  sintesis.hidratacion.estado === 'excelente'
+                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                    : 'text-blue-400 bg-blue-500/10 border-blue-500/30'
+                }`}
+              >
+                {currentEval.agua_pct.toFixed(1)}% Agua
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2 font-mono">
+              <span className="text-2xl font-black text-blue-400">{sintesis.hidratacion.litros_recomendados}</span>
+              <span className="text-xs text-zinc-400">Litros/día sugeridos</span>
+            </div>
+            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+              {sintesis.hidratacion.consejo}
+            </p>
+          </div>
+
+          {/* Tarjeta 4: Consumo Proteico */}
+          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+            <div className="flex items-center justify-between text-xs font-mono">
+              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                <Utensils className="w-4 h-4 text-emerald-400" />
+                <span>Meta Proteica Sugerida</span>
+              </span>
+              <span className="text-emerald-400 font-bold text-[10px] uppercase bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                Nutrición
+              </span>
+            </div>
+            <div className="flex items-baseline gap-2 font-mono">
+              <span className="text-2xl font-black text-emerald-400">{sintesis.proteina.gramos_sugeridos}g</span>
+              <span className="text-xs text-zinc-400">Proteína al día</span>
+            </div>
+            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+              {sintesis.proteina.consejo}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* Botón Destacado de Compartir en WhatsApp */}
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={handleShare}
+          className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black uppercase tracking-wider text-xs font-mono shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+        >
+          <Share2 className="w-4 h-4" />
+          <span>Compartir Mi Evolución en WhatsApp</span>
+        </button>
+      </div>
+
+      {/* 6. Acordeón Plegable: Reporte Biométrico Técnico Fitdays (19 Indicadores + Extremidades) */}
+      <div className="pt-2">
+        <button
+          type="button"
+          onClick={() => setShowDetallesTecnicos(!showDetallesTecnicos)}
+          className="w-full py-3.5 px-5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-white/10 text-zinc-300 hover:text-white transition-all flex items-center justify-between text-xs font-mono font-bold cursor-pointer"
+        >
+          <div className="flex items-center gap-2">
+            <Scale className="w-4 h-4 text-amber-400" />
+            <span>
+              {showDetallesTecnicos
+                ? 'Ocultar Reporte Técnico Detallado'
+                : 'Ver Reporte Biométrico Completo (19 Indicadores Técnicos)'}
             </span>
-            <h4 className="text-xl font-black uppercase text-white font-display">
+          </div>
+          {showDetallesTecnicos ? (
+            <ChevronUp className="w-4 h-4 text-zinc-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-zinc-400" />
+          )}
+        </button>
+
+        {showDetallesTecnicos && (
+          <div className="mt-4 space-y-6 animate-in fade-in duration-200">
+            {/* 4. Tabla Completa de Indicadores (Estándar Fitdays EUROMAR® G78) */}
+            <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div>
+                  <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
+                    INFORME BIOMÉTRICO FITDAYS
+                  </span>
+                  <h4 className="text-xl font-black uppercase text-white font-display">
               Indicadores de Composición Corporal
             </h4>
           </div>
@@ -823,6 +981,9 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
           </div>
         </div>
       </div>
+    </div>
+  )}
+</div>
     </div>
   );
 }

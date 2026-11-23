@@ -17,7 +17,7 @@ vi.mock('../../lib/supabase', () => ({
   isSupabaseConfigured: () => false,
 }));
 
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import EvolucionCorporalView from '../../components/portal/EvolucionCorporalView';
 import { guardarEvaluacion } from '../../lib/evaluacionesService';
 import { calcularMetricasCompletas } from '../../lib/bioimpedanceEngine';
@@ -34,7 +34,7 @@ describe('Componente EvolucionCorporalView', () => {
     expect(await screen.findByText(/Acércate a recepción/i, {}, { timeout: 4000 })).toBeDefined();
   });
 
-  it('debe renderizar el diagnóstico y métricas cuando existen evaluaciones', async () => {
+  it('debe renderizar el diagnóstico mobile-first, síntesis cotidiana y permitir abrir el reporte técnico', async () => {
     const evaluacion = calcularMetricasCompletas({
       id: 'eval-mock-unit-1',
       socio_id: 'MEM-TEST-001',
@@ -53,10 +53,21 @@ describe('Componente EvolucionCorporalView', () => {
 
     render(<EvolucionCorporalView socioDni="99990001" />);
 
-    // Esperar a que se cargue la evaluación
+    // 1. Elementos clave Mobile-First
     expect(await screen.findByText(/FIT SCORE/i, {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findAllByText(/75.00/, {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findAllByText(/35.5/, {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findAllByText(/Análisis Segmentario/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Tu Transformación Acumulada/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Tu Composición en Cristiano/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Salud del Corazón & Abdomen/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Tu Motor Metabólico/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Compartir Mi Evolución en WhatsApp/i, {}, { timeout: 8000 })).toBeDefined();
+
+    // 2. Acordeón técnico colapsado por defecto para no saturar al usuario
+    const botonAcordeon = screen.getByText(/Ver Reporte Biométrico Completo/i);
+    expect(botonAcordeon).toBeDefined();
+
+    // 3. Abrir acordeón y verificar que se revelan los datos técnicos
+    fireEvent.click(botonAcordeon);
+    expect(await screen.findByText(/INFORME BIOMÉTRICO FITDAYS/i, {}, { timeout: 4000 })).toBeDefined();
+    expect(await screen.findByText(/Análisis Segmentario Completo/i, {}, { timeout: 4000 })).toBeDefined();
   }, 15000);
 });
