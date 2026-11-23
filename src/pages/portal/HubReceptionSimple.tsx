@@ -27,6 +27,7 @@ import {
   Copy,
   Receipt,
   Eye,
+  Trash2,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
@@ -100,11 +101,13 @@ export default function HubReceptionSimple() {
     descuentoMotivo,
     setDescuentoMotivo,
     totalCarrito,
+    totalItems,
     isProcessing: isPosProcessing,
     ultimoTicket,
     agregarAlCarrito,
     modificarCantidad,
     procesarVentaPOS,
+    limpiarCarrito,
   } = usePosCashier();
 
   // Estados para Detalle de Tickets POS y Auditoría Local/Nube
@@ -2592,7 +2595,7 @@ export default function HubReceptionSimple() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Cuadrícula Táctil de Productos (8 cols) */}
             <div className="lg:col-span-8 space-y-4">
               {/* Buscador y Lector de Códigos de Barras en Mostrador POS */}
@@ -2705,12 +2708,33 @@ export default function HubReceptionSimple() {
               )}
             </div>
 
-            {/* Carrito de Cobro (4 cols) */}
-            <div className="lg:col-span-4 bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl flex flex-col justify-between min-h-[400px]">
+            {/* Carrito de Cobro (4 cols) - Adaptativo y Sticky */}
+            <div className="lg:col-span-4 lg:sticky lg:top-6 self-start bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col space-y-4 transition-all">
               <div>
-                <h3 className="text-base font-black text-white font-display uppercase pb-3 border-b border-white/10">
-                  Cobro de mostrador
-                </h3>
+                <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                  <div className="flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4 text-amber-400" />
+                    <h3 className="text-base font-black text-white font-display uppercase tracking-tight">
+                      Cobro de mostrador
+                    </h3>
+                    {totalItems > 0 && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 font-mono text-[10px] font-bold">
+                        {totalItems} {totalItems === 1 ? 'ítem' : 'ítems'}
+                      </span>
+                    )}
+                  </div>
+                  {carrito.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={limpiarCarrito}
+                      className="text-[11px] font-mono text-zinc-400 hover:text-red-400 cursor-pointer flex items-center gap-1 transition-colors"
+                      title="Vaciar carrito"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      <span>Vaciar</span>
+                    </button>
+                  )}
+                </div>
 
                 {posSuccessMsg && (
                   <div className="my-3 p-3 rounded-xl bg-emerald-500/20 border border-emerald-500 text-emerald-300 text-xs font-mono flex items-center justify-between gap-2">
@@ -2744,18 +2768,20 @@ export default function HubReceptionSimple() {
                 )}
 
                 {carrito.length === 0 ? (
-                  <p className="text-zinc-500 text-xs font-mono py-12 text-center">
-                    Seleccione un producto para cobrar.
-                  </p>
+                  <div className="py-4 text-center space-y-1.5 my-2">
+                    <p className="text-zinc-500 text-xs font-mono">
+                      Seleccione un producto para cobrar.
+                    </p>
+                  </div>
                 ) : (
-                  <div className="divide-y divide-white/5 my-4 max-h-[220px] overflow-y-auto">
+                  <div className="divide-y divide-white/5 my-3 max-h-[220px] overflow-y-auto pr-1">
                     {carrito.map((item) => (
                       <div key={item.id} className="py-2.5 flex items-center justify-between text-xs font-mono">
-                        <div>
-                          <div className="font-bold text-white">{item.nombre}</div>
+                        <div className="pr-2 min-w-0">
+                          <div className="font-bold text-white truncate">{item.nombre}</div>
                           <div className="text-zinc-400">S/. {item.precio.toFixed(2)} c/u</div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
                             onClick={() => modificarCantidad(item.id, -1)}
@@ -2763,7 +2789,7 @@ export default function HubReceptionSimple() {
                           >
                             <Minus className="w-3 h-3" />
                           </button>
-                          <span className="font-black text-amber-400 text-sm">{item.cantidad}</span>
+                          <span className="font-black text-amber-400 text-sm min-w-[16px] text-center">{item.cantidad}</span>
                           <button
                             type="button"
                             onClick={() => modificarCantidad(item.id, 1)}
@@ -2779,23 +2805,23 @@ export default function HubReceptionSimple() {
 
                 {/* Descuento Proporcionado y Auditado */}
                 {carrito.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-white/10">
+                  <div className="mt-2 pt-2 border-t border-white/10">
                     <button
                       type="button"
                       onClick={() => setShowDescuentoForm(!showDescuentoForm)}
-                      className="flex items-center justify-between w-full text-xs font-mono text-amber-400 hover:text-amber-300 font-bold cursor-pointer"
+                      className="flex items-center justify-between w-full text-xs font-mono text-amber-400 hover:text-amber-300 font-bold cursor-pointer py-1"
                     >
                       <span className="flex items-center gap-1.5">
                         <BadgePercent className="w-3.5 h-3.5" />
                         {descuentoMonto > 0
-                          ? `Descuento aplicado: -S/. ${descuentoMonto.toFixed(2)}`
+                          ? `Descuento: -S/. ${descuentoMonto.toFixed(2)}`
                           : '+ Aplicar Descuento / Cortesía'}
                       </span>
                       <span>{showDescuentoForm ? '▲' : '▼'}</span>
                     </button>
 
                     {showDescuentoForm && (
-                      <div className="mt-2.5 p-3 rounded-2xl bg-zinc-950 border border-white/10 space-y-2.5 animate-in fade-in duration-150">
+                      <div className="mt-2 p-3 rounded-2xl bg-zinc-950 border border-white/10 space-y-2 animate-in fade-in duration-150">
                         <div>
                           <label className="block text-[10px] uppercase font-mono text-zinc-400 mb-1">
                             Monto de Descuento (S/.)
@@ -2844,7 +2870,7 @@ export default function HubReceptionSimple() {
 
               <div>
                 {/* Resumen Financiero con desglose */}
-                <div className="pt-3 border-t border-white/10 space-y-1 mb-4">
+                <div className="pt-2 border-t border-white/10 space-y-1 mb-3">
                   {descuentoMonto > 0 && (
                     <>
                       <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
@@ -2894,7 +2920,7 @@ export default function HubReceptionSimple() {
                   type="button"
                   disabled={carrito.length === 0 || isPosProcessing}
                   onClick={procesarVentaPOS}
-                  className="w-full py-4 rounded-2xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-black font-black text-base uppercase transition-transform active:scale-95 cursor-pointer shadow-xl"
+                  className="w-full py-3.5 rounded-2xl bg-amber-400 hover:bg-amber-300 disabled:opacity-40 text-black font-black text-sm uppercase transition-transform active:scale-95 cursor-pointer shadow-xl"
                 >
                   {isPosProcessing ? 'Procesando Cobro...' : `Confirmar Cobro (S/. ${totalCarrito.toFixed(2)})`}
                 </button>

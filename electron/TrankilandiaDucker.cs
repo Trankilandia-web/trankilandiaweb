@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Threading;
 
 namespace TrankilandiaAudio {
     class Program {
@@ -68,7 +69,7 @@ namespace TrankilandiaAudio {
         static void Main(string[] args) {
             string command = args.Length > 0 ? args[0].ToLowerInvariant() : "duck";
             float duckLevel = 0.15f;
-            uint excludePid = 0;
+            HashSet<uint> excludePids = new HashSet<uint>();
 
             if (args.Length > 1) {
                 float parsed;
@@ -78,31 +79,92 @@ namespace TrankilandiaAudio {
             }
 
             if (args.Length > 2) {
-                uint p;
-                if (uint.TryParse(args[2], out p)) {
-                    excludePid = p;
+                string[] tokens = args[2].Split(new char[] { ',', ';', ' ', '|' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var t in tokens) {
+                    uint p;
+                    if (uint.TryParse(t.Trim(), out p)) {
+                        excludePids.Add(p);
+                    }
                 }
             }
 
+            bool hasMutex = false;
+            Mutex mutex = null;
             try {
+                try {
+                    mutex = new Mutex(false, "Global\\TrankilandiaAudioDuckerMutex");
+                    hasMutex = mutex.WaitOne(3000, false);
+                } catch (AbandonedMutexException) {
+                    hasMutex = true;
+                } catch {
+                    hasMutex = true;
+                }
+
                 if (command == "duck") {
-                    DoDuck(duckLevel, excludePid);
+                    DoDuck(duckLevel, excludePids);
                 } else if (command == "restore" || command == "unduck") {
-                    DoRestore();
+                    DoRestore(excludePids);
                 } else if (command == "status") {
                     Console.WriteLine(File.Exists(StateFilePath) ? "DUCKED" : "NORMAL");
                 }
             } catch (Exception ex) {
                 Console.Error.WriteLine("Error: " + ex.Message);
+            } finally {
+                if (mutex != null) {
+                    if (hasMutex) {
+                        try { mutex.ReleaseMutex(); } catch {}
+                    }
+                    try { mutex.Close(); } catch {}
+                }
             }
         }
 
-        static void DoDuck(float duckLevel, uint excludePid) {
+        /// <summary>
+        /// Determina con certeza total si una sesión de audio pertenece a Trankilandia Hub
+        /// (proceso principal, renderizadores, audio service Chromium o subprocesos de Electron).
+        /// </summary>
+        static bool IsTrankilandiaProcess(uint pid, IAudioSessionControl2 ctrl, HashSet<uint> excludePids) {
+            if (pid == 0) return true; // Sesión de sonidos de sistema de Windows, nunca atenuar
+
+            if (excludePids != null && excludePids.Contains(pid)) return true;
+
+            // 1. Verificar identificador de sesión WASAPI de Windows (contiene la ruta al .exe)
+            try {
+                string sessId;
+                int hr = ctrl.GetSessionIdentifier(out sessId);
+                if (hr == 0 && !string.IsNullOrEmpty(sessId)) {
+                    string lowerId = sessId.ToLowerInvariant();
+                    if (lowerId.Contains("trankilandia") || lowerId.Contains("electron")) {
+                        return true;
+                    }
+                }
+            } catch {}
+
+            // 2. Verificar nombre del proceso en Windows (Trankilandia Hub, electron)
+            try {
+                using (Process proc = Process.GetProcessById((int)pid)) {
+                    string name = proc.ProcessName.ToLowerInvariant();
+                    if (name.Contains("trankilandia") || name == "electron") {
+                        return true;
+                    }
+                    try {
+                        string mainMod = proc.MainModule.FileName.ToLowerInvariant();
+                        if (mainMod.Contains("trankilandia") || mainMod.Contains("electron")) {
+                            return true;
+                        }
+                    } catch {}
+                }
+            } catch {}
+
+            return false;
+        }
+
+        static void DoDuck(float duckLevel, HashSet<uint> excludePids) {
             Dictionary<uint, float> saved = new Dictionary<uint, float>();
             bool alreadyDucked = File.Exists(StateFilePath);
 
             if (alreadyDucked) {
-                // Read existing state to not overwrite original volumes
+                // Leer volumen original previo para no sobreescribir con valores ya atenuados
                 try {
                     foreach (var line in File.ReadAllLines(StateFilePath)) {
                         var parts = line.Split(':');
@@ -148,8 +210,21 @@ namespace TrankilandiaAudio {
                         uint pid;
                         ctrl.GetProcessId(out pid);
 
-                        // Don't duck excluded process (Trankilandia) or system (0)
-                        if (pid != excludePid && pid != 0) {
+                        bool isTrankilandia = IsTrankilandiaProcess(pid, ctrl, excludePids);
+
+                        if (isTrankilandia) {
+                            // Trankilandia Hub: NUNCA atenuar. Asegurar volumen al 100% y desmutear
+                            // para que los anuncios y micrófono NUNCA queden enmudecidos
+                            IntPtr pVol;
+                            Marshal.QueryInterface(pSession, ref IID_ISimpleAudioVolume, out pVol);
+                            if (pVol != IntPtr.Zero) {
+                                var simpleVol = (ISimpleAudioVolume)Marshal.GetObjectForIUnknown(pVol);
+                                simpleVol.SetMasterVolume(1.0f, ref emptyGuid);
+                                simpleVol.SetMute(false, ref emptyGuid);
+                                Marshal.Release(pVol);
+                            }
+                        } else {
+                            // Aplicación de música externa (YouTube, Spotify, navegador, etc.)
                             IntPtr pVol;
                             Marshal.QueryInterface(pSession, ref IID_ISimpleAudioVolume, out pVol);
                             if (pVol != IntPtr.Zero) {
@@ -157,8 +232,11 @@ namespace TrankilandiaAudio {
                                 float currentVol;
                                 simpleVol.GetMasterVolume(out currentVol);
 
-                                if (!alreadyDucked && !saved.ContainsKey(pid)) {
-                                    saved[pid] = currentVol;
+                                if (!saved.ContainsKey(pid)) {
+                                    // Si el volumen actual ya está en o por debajo del duckLevel,
+                                    // significa que ya estaba atenuado o bajo; guardar 1.0f para restaurar
+                                    float originalVol = currentVol <= (duckLevel + 0.05f) ? 1.0f : currentVol;
+                                    saved[pid] = originalVol;
                                 }
 
                                 simpleVol.SetMasterVolume(duckLevel, ref emptyGuid);
@@ -172,34 +250,31 @@ namespace TrankilandiaAudio {
             }
             Marshal.Release(pMgr);
 
-            if (!alreadyDucked && saved.Count > 0) {
+            if (saved.Count > 0) {
                 var lines = new List<string>();
                 foreach (var kvp in saved) {
                     lines.Add(kvp.Key + ":" + kvp.Value.ToString("F3", CultureInfo.InvariantCulture));
                 }
-                File.WriteAllLines(StateFilePath, lines.ToArray());
+                try { File.WriteAllLines(StateFilePath, lines.ToArray()); } catch {}
             }
 
             Console.WriteLine("OK: DUCKED " + saved.Count + " sessions to " + (int)(duckLevel * 100) + "%");
         }
 
-        static void DoRestore() {
-            if (!File.Exists(StateFilePath)) {
-                Console.WriteLine("OK: NOT_DUCKED");
-                return;
-            }
-
+        static void DoRestore(HashSet<uint> excludePids) {
             Dictionary<uint, float> saved = new Dictionary<uint, float>();
-            try {
-                foreach (var line in File.ReadAllLines(StateFilePath)) {
-                    var parts = line.Split(':');
-                    if (parts.Length == 2) {
-                        uint pid = uint.Parse(parts[0]);
-                        float vol = float.Parse(parts[1], CultureInfo.InvariantCulture);
-                        saved[pid] = vol;
+            if (File.Exists(StateFilePath)) {
+                try {
+                    foreach (var line in File.ReadAllLines(StateFilePath)) {
+                        var parts = line.Split(':');
+                        if (parts.Length == 2) {
+                            uint pid = uint.Parse(parts[0]);
+                            float vol = float.Parse(parts[1], CultureInfo.InvariantCulture);
+                            saved[pid] = vol;
+                        }
                     }
-                }
-            } catch {}
+                } catch {}
+            }
 
             var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumerator();
             IMMDevice dev;
@@ -234,7 +309,20 @@ namespace TrankilandiaAudio {
                         uint pid;
                         ctrl.GetProcessId(out pid);
 
-                        if (saved.ContainsKey(pid)) {
+                        bool isTrankilandia = IsTrankilandiaProcess(pid, ctrl, excludePids);
+
+                        if (isTrankilandia) {
+                            // Asegurar que Trankilandia Hub esté siempre en 100% de volumen
+                            IntPtr pVol;
+                            Marshal.QueryInterface(pSession, ref IID_ISimpleAudioVolume, out pVol);
+                            if (pVol != IntPtr.Zero) {
+                                var simpleVol = (ISimpleAudioVolume)Marshal.GetObjectForIUnknown(pVol);
+                                simpleVol.SetMasterVolume(1.0f, ref emptyGuid);
+                                simpleVol.SetMute(false, ref emptyGuid);
+                                Marshal.Release(pVol);
+                            }
+                        } else if (saved.ContainsKey(pid)) {
+                            // Restaurar volumen original previo de la aplicación externa
                             IntPtr pVol;
                             Marshal.QueryInterface(pSession, ref IID_ISimpleAudioVolume, out pVol);
                             if (pVol != IntPtr.Zero) {

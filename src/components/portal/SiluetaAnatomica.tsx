@@ -317,6 +317,31 @@ export default function SiluetaAnatomica({ evaluacion }: SiluetaAnatomicaProps) 
               {zonaActiva.descripcionEstado}
             </p>
 
+            {/* Interpretación Clínica y Funcional */}
+            {zonaActiva.interpretacionClinica && (
+              <div className="p-3 rounded-2xl bg-zinc-900/80 border border-white/5 space-y-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 block">
+                  Función Biomecánica & Rendimiento
+                </span>
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                  {zonaActiva.interpretacionClinica}
+                </p>
+              </div>
+            )}
+
+            {/* Ejercicios Recomendados en Trankilandia */}
+            {zonaActiva.ejerciciosRecomendados && (
+              <div className="p-3 rounded-2xl bg-amber-400/5 border border-amber-400/20 space-y-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <Dumbbell className="w-3.5 h-3.5" />
+                  <span>Ejercicios Clave en Trankilandia</span>
+                </span>
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                  {zonaActiva.ejerciciosRecomendados}
+                </p>
+              </div>
+            )}
+
             {/* Comparativa bilateral con contraparte */}
             {simetriaInfo && (
               <div className="pt-3 border-t border-white/5 space-y-1.5">
@@ -389,6 +414,13 @@ export default function SiluetaAnatomica({ evaluacion }: SiluetaAnatomicaProps) 
               {simetria.piernas.mensaje}
             </span>
           </div>
+        </div>
+
+        <div className="p-3 rounded-xl bg-zinc-900/60 border border-white/5 text-[11px] font-sans text-zinc-400 leading-relaxed">
+          <span className="font-bold text-zinc-300 font-mono text-[10px] uppercase block mb-0.5">
+            ¿Por qué importa la simetría bilateral?
+          </span>
+          Un equilibrio menor al 10% entre ambos lados previene sobrecargas en articulaciones y tendones, garantiza una postura erguida y protege tu espalda baja en levantamientos como sentadillas, peso muerto y prensa.
         </div>
       </div>
     </div>

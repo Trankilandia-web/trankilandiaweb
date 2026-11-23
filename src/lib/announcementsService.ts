@@ -87,6 +87,14 @@ if (typeof window !== 'undefined') {
 
 let currentAudio: HTMLAudioElement | null = null;
 let currentAnnouncementId: string | null = null;
+let announcementSafetyTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearSafetyTimer(): void {
+  if (announcementSafetyTimer) {
+    clearTimeout(announcementSafetyTimer);
+    announcementSafetyTimer = null;
+  }
+}
 
 /**
  * Obtiene el audio personalizado si el usuario subió uno propio para este anuncio.
@@ -167,8 +175,11 @@ export function isAnnouncementPlaying(): boolean {
 
 /**
  * Detiene cualquier anuncio que se esté emitiendo por el parlante.
+ * @param options.preserveDuck Si es true (por ejemplo al cambiar a otro mensaje), no restaura el audio entre mensajes para evitar oscilaciones.
  */
-export function stopAnnouncement(): void {
+export function stopAnnouncement(options?: { preserveDuck?: boolean }): void {
+  clearSafetyTimer();
+
   if (currentAudio) {
     try {
       currentAudio.pause();
@@ -179,8 +190,10 @@ export function stopAnnouncement(): void {
     currentAudio = null;
   }
 
-  // Restaurar volumen de música de fondo (YouTube / Spotify)
-  releaseAudioDuck('announcement');
+  // Restaurar volumen de música de fondo (YouTube / Spotify) salvo que se preserve el ducking
+  if (!options?.preserveDuck) {
+    releaseAudioDuck('announcement');
+  }
 
   if (currentAnnouncementId !== null) {
     currentAnnouncementId = null;
@@ -200,8 +213,8 @@ export async function playAnnouncement(id: string): Promise<void> {
     return;
   }
 
-  // Detener previo si existe
-  stopAnnouncement();
+  // Detener previo si existe preservando la atenuación activa
+  stopAnnouncement({ preserveDuck: true });
 
   currentAnnouncementId = id;
   dispatchStateChange();
@@ -222,7 +235,19 @@ export async function playAnnouncement(id: string): Promise<void> {
     const initialVol = isAlertMuted() ? 0 : getAlertVolume();
     audio.volume = Math.max(0, Math.min(1, initialVol));
 
+    // Temporizador de seguridad: Si el navegador suspende o no dispara onended, liberar ducking a los 90s
+    clearSafetyTimer();
+    announcementSafetyTimer = setTimeout(() => {
+      releaseAudioDuck('announcement');
+      if (currentAnnouncementId === id) {
+        currentAnnouncementId = null;
+        currentAudio = null;
+        dispatchStateChange();
+      }
+    }, 90000);
+
     audio.onended = () => {
+      clearSafetyTimer();
       releaseAudioDuck('announcement');
       if (currentAnnouncementId === id) {
         currentAnnouncementId = null;
@@ -232,6 +257,7 @@ export async function playAnnouncement(id: string): Promise<void> {
     };
 
     audio.onerror = (e) => {
+      clearSafetyTimer();
       console.warn(`[announcementsService] Error cargando "${audioSrc}":`, e);
       releaseAudioDuck('announcement');
       currentAudio = null;
@@ -243,6 +269,7 @@ export async function playAnnouncement(id: string): Promise<void> {
 
     await audio.play();
   } catch (err) {
+    clearSafetyTimer();
     console.warn('[announcementsService] Error al reproducir audio HTML5:', err);
     releaseAudioDuck('announcement');
     currentAudio = null;

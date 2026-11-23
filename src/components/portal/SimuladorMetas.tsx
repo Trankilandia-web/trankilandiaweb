@@ -382,6 +382,27 @@ export default function SimuladorMetas({ evaluaciones, currentEval }: SimuladorM
         <p className="text-xs sm:text-sm text-zinc-300 font-sans leading-relaxed">
           {proyeccion.mensajeMotivacional}
         </p>
+
+        {/* Estrategia Fisiológica y Calórica del Coach */}
+        {proyeccion.interpretacionEstrategia && (
+          <div className="pt-2 border-t border-white/5 space-y-2">
+            <div className="p-3 rounded-xl bg-zinc-900/80 border border-white/5 space-y-1">
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 block">
+                Estrategia del Coach para esta Meta
+              </span>
+              <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                {proyeccion.interpretacionEstrategia}
+              </p>
+            </div>
+
+            {proyeccion.caloriasAjusteSugeridas && (
+              <div className="p-2.5 rounded-xl bg-amber-400/10 border border-amber-400/20 flex flex-col sm:flex-row sm:items-center justify-between gap-1 text-[11px] font-mono">
+                <span className="text-amber-400 font-bold uppercase">⚡ Pauta Nutricional Sugerida:</span>
+                <span className="text-white font-bold">{proyeccion.caloriasAjusteSugeridas}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -98,4 +98,30 @@ describe('Pruebas Unitarias · Sistema de Auto-Ducking (Atenuación de Música d
     expect(isAudioDucked()).toBe(false);
     expect(unduckMock).toHaveBeenCalled();
   });
+
+  it('mantiene la atenuación activa sin rebotes al encadenar múltiples anuncios o mensajes consecutivos', async () => {
+    const duckMock = vi.fn().mockResolvedValue({ ok: true });
+    const unduckMock = vi.fn().mockResolvedValue({ ok: true });
+    (window as any).electronAPI = {
+      isElectron: true,
+      duckBackgroundAudio: duckMock,
+      unduckBackgroundAudio: unduckMock,
+    };
+
+    // Mensaje 1
+    await requestAudioDuck('announcement');
+    expect(isAudioDucked()).toBe(true);
+    expect(duckMock).toHaveBeenCalledTimes(1);
+
+    // Mensaje 2 (inmediato, sin liberar previamente)
+    await requestAudioDuck('announcement');
+    expect(isAudioDucked()).toBe(true);
+    expect(duckMock).toHaveBeenCalledTimes(1);
+    expect(unduckMock).not.toHaveBeenCalled();
+
+    // Finaliza
+    await releaseAudioDuck('announcement');
+    expect(isAudioDucked()).toBe(false);
+    expect(unduckMock).toHaveBeenCalledTimes(1);
+  });
 });

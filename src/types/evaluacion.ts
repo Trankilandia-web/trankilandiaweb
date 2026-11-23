@@ -94,6 +94,22 @@ export interface ProgresoAcumulado {
   meta_progreso_pct: number;
 }
 
+export interface InterpretacionRangoMetrica {
+  etiqueta: string;
+  subtitulo: string;
+  colorClass: string;
+  badgeBg: string;
+  interpretacion: string;
+}
+
+export interface InterpretacionRecomposicionDetallada {
+  titulo: string;
+  resumen: string;
+  desglose: string;
+  consejoCoach: string;
+  enfoqueSugerido: string;
+}
+
 export type TipoRecomposicion = 'recomposicion' | 'hipertrofia' | 'definicion' | 'mantenimiento';
 
 export interface DiagnosticoRecomposicion {
@@ -101,6 +117,44 @@ export interface DiagnosticoRecomposicion {
   titulo: string;
   descripcion: string;
   tipo: TipoRecomposicion;
+}
+
+export interface SintesisSaludCotidiana {
+  visceral: {
+    nivel: number;
+    estado: 'optimo' | 'atencion' | 'alerta';
+    titulo: string;
+    descripcion: string;
+    queSignifica?: string;
+    accionPractica?: string;
+  };
+  metabolismo: {
+    bmr_kcal: number;
+    calorias_diarias_estimadas: number;
+    descripcion: string;
+    queSignifica?: string;
+    accionPractica?: string;
+  };
+  hidratacion: {
+    pct: number;
+    estado: 'excelente' | 'adecuado' | 'bajo';
+    consejo: string;
+    litros_recomendados: number;
+    queSignifica?: string;
+    accionPractica?: string;
+  };
+  proteina: {
+    gramos_sugeridos: number;
+    consejo: string;
+    queSignifica?: string;
+    accionPractica?: string;
+    ejemploComida?: string;
+  };
+  fraseImpacto: string;
+  rangoGrasa?: InterpretacionRangoMetrica;
+  rangoMusculo?: InterpretacionRangoMetrica;
+  rangoPeso?: InterpretacionRangoMetrica;
+  recomposicionDetallada?: InterpretacionRecomposicionDetallada;
 }
 
 /**
@@ -235,6 +289,8 @@ export interface ProyeccionMeta {
   puntosCurva: PuntoProyeccion[];
   mensajeMotivacional: string;
   estadoFactibilidad: 'alcanzable' | 'desafiante' | 'mantenimiento';
+  interpretacionEstrategia?: string;
+  caloriasAjusteSugeridas?: string;
 }
 
 // ==============================================================================
@@ -272,6 +328,8 @@ export interface ZonaCalorSilueta {
   colorHex: string;
   colorClase: string;
   descripcionEstado: string;
+  interpretacionClinica?: string;
+  ejerciciosRecomendados?: string;
 }
 
 // ==============================================================================

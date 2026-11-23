@@ -6,6 +6,7 @@ import {
   calcularPuntuacionCorporal,
   calcularProgresoAcumulado,
   generarSintesisSaludCotidiana,
+  generarDiagnosticoRecomposicionDetallada,
   EntradaMedicion,
 } from '../../lib/bioimpedanceEngine';
 import { EvaluacionCorporal } from '../../types/evaluacion';
@@ -168,10 +169,40 @@ describe('Motor de Bioimpedancia y Diagnóstico de Recomposición (bioimpedanceE
     const sintesis = generarSintesisSaludCotidiana(evaluacion);
     expect(sintesis.visceral.estado).toBe('optimo');
     expect(sintesis.visceral.titulo).toContain('Seguro');
+    expect(sintesis.visceral.queSignifica).toBeTruthy();
+    expect(sintesis.visceral.accionPractica).toBeTruthy();
     expect(sintesis.metabolismo.bmr_kcal).toBe(1750);
     expect(sintesis.metabolismo.descripcion).toContain('calorías');
+    expect(sintesis.metabolismo.queSignifica).toBeTruthy();
+    expect(sintesis.metabolismo.accionPractica).toBeTruthy();
     expect(sintesis.hidratacion.litros_recomendados).toBeGreaterThan(2);
     expect(sintesis.proteina.gramos_sugeridos).toBeGreaterThan(50);
+    expect(sintesis.proteina.ejemploComida).toContain('huevos');
     expect(sintesis.fraseImpacto).toBeTruthy();
+    expect(sintesis.rangoGrasa).toBeDefined();
+    expect(sintesis.rangoMusculo).toBeDefined();
+    expect(sintesis.rangoPeso).toBeDefined();
+    expect(sintesis.recomposicionDetallada).toBeDefined();
+  });
+
+  it('interpretarRangoGrasa, Musculo y Peso deben clasificar con rigor pedagógico y deportivo', () => {
+    const evaluacion = {
+      ...calcularMetricasCompletas(mockEntrada),
+      id: 'eval-actual-1',
+    };
+    const primera: EvaluacionCorporal = {
+      ...evaluacion,
+      id: 'eval-primera-1',
+      peso_kg: 78.0,
+      masa_muscular_kg: 34.0,
+      grasa_corporal_kg: 15.0,
+      grasa_corporal_pct: 19.2,
+    };
+
+    const recomposicion = generarDiagnosticoRecomposicionDetallada(evaluacion, primera);
+    expect(recomposicion.titulo).toContain('Recomposición');
+    expect(recomposicion.resumen).toContain('grasa pura');
+    expect(recomposicion.consejoCoach).toBeTruthy();
+    expect(recomposicion.enfoqueSugerido).toBeTruthy();
   });
 });

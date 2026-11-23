@@ -16,6 +16,8 @@ import {
   User,
   TrendingUp,
   Award,
+  HelpCircle,
+  Sparkles,
 } from 'lucide-react';
 import { EvaluacionCorporal } from '../../types/evaluacion';
 import {
@@ -46,6 +48,7 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
   const [selectedEvalIndex, setSelectedEvalIndex] = useState(0);
   const [tabActiva, setTabActiva] = useState<'silueta' | 'graficos' | 'salud'>('silueta');
   const [showDetallesTecnicos, setShowDetallesTecnicos] = useState(false);
+  const [showGuiaInterpretacion, setShowGuiaInterpretacion] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
 
   useEffect(() => {
@@ -142,7 +145,7 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
   const deltas = calcularDeltasMensuales(currentEval, previousEval);
   const acumulado = calcularProgresoAcumulado(initialEval, currentEval);
   const diagnostico = determinarDiagnostico(deltas, currentEval);
-  const sintesis = generarSintesisSaludCotidiana(currentEval);
+  const sintesis = generarSintesisSaludCotidiana(currentEval, initialEval);
   const medallas = calcularMedallasSocio(evaluaciones);
 
   const fechaFormateada = new Date(currentEval.fecha).toLocaleDateString('es-PE', {
@@ -233,7 +236,7 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
 
           <div className="grid grid-cols-3 gap-2 font-mono">
             {/* 1. Músculo */}
-            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-emerald-500/25 space-y-0.5">
+            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-emerald-500/25 space-y-1">
               <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-emerald-400">
                 <Dumbbell className="w-3 h-3 shrink-0" />
                 <span className="truncate">Músculo</span>
@@ -244,10 +247,17 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
               <div className="text-[10px] font-bold text-emerald-400 truncate">
                 {acumulado.delta_musculo_kg >= 0 ? `+${acumulado.delta_musculo_kg}` : acumulado.delta_musculo_kg} kg
               </div>
+              {sintesis.rangoMusculo && (
+                <div className="pt-0.5">
+                  <span className={`inline-block text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-md border font-semibold truncate max-w-full leading-tight ${sintesis.rangoMusculo.badgeBg}`}>
+                    {sintesis.rangoMusculo.etiqueta}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 2. Grasa */}
-            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-amber-400/25 space-y-0.5">
+            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-amber-400/25 space-y-1">
               <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-amber-400">
                 <Flame className="w-3 h-3 shrink-0" />
                 <span className="truncate">Grasa</span>
@@ -258,10 +268,17 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
               <div className={`text-[10px] font-bold truncate ${acumulado.delta_grasa_kg <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                 {acumulado.delta_grasa_kg <= 0 ? `${acumulado.delta_grasa_kg}` : `+${acumulado.delta_grasa_kg}`} kg
               </div>
+              {sintesis.rangoGrasa && (
+                <div className="pt-0.5">
+                  <span className={`inline-block text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-md border font-semibold truncate max-w-full leading-tight ${sintesis.rangoGrasa.badgeBg}`}>
+                    {sintesis.rangoGrasa.etiqueta}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* 3. Peso */}
-            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-white/10 space-y-0.5">
+            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-white/10 space-y-1">
               <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-zinc-400">
                 <Scale className="w-3 h-3 shrink-0" />
                 <span className="truncate">Peso</span>
@@ -272,8 +289,144 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
               <div className="text-[10px] font-bold text-zinc-400 truncate">
                 {acumulado.delta_peso_kg > 0 ? `+${acumulado.delta_peso_kg}` : acumulado.delta_peso_kg} kg
               </div>
+              {sintesis.rangoPeso && (
+                <div className="pt-0.5">
+                  <span className={`inline-block text-[8px] sm:text-[9px] px-1.5 py-0.5 rounded-md border font-semibold truncate max-w-full leading-tight ${sintesis.rangoPeso.badgeBg}`}>
+                    {sintesis.rangoPeso.etiqueta}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
+        </div>
+
+        {/* Panel de Diagnóstico Inteligente del Coach & Recomposición */}
+        {sintesis.recomposicionDetallada && (
+          <div className="p-4 rounded-2xl bg-zinc-950/90 border border-amber-400/25 space-y-3 shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-white/5 pb-2.5">
+              <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Diagnóstico del Coach & Recomposición</span>
+              </div>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 uppercase w-fit">
+                {sintesis.rangoGrasa?.etiqueta || 'Fase Activa'}
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <h4 className="text-sm sm:text-base font-black text-white uppercase font-display tracking-tight">
+                {sintesis.recomposicionDetallada.titulo}
+              </h4>
+              <p className="text-xs sm:text-sm font-bold text-amber-300 font-sans leading-snug">
+                {sintesis.recomposicionDetallada.resumen}
+              </p>
+              <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+                {sintesis.recomposicionDetallada.desglose}
+              </p>
+            </div>
+
+            {/* Escala Visual de % de Grasa Corporal */}
+            <div className="space-y-1.5 pt-1">
+              <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400">
+                <span className="uppercase tracking-wider">Escala Grasa Corporal ({currentEval.sexo}):</span>
+                <span className="font-bold text-white">
+                  Tu nivel: <span className="text-amber-400">{currentEval.grasa_corporal_pct.toFixed(1)}%</span>
+                </span>
+              </div>
+
+              {/* Barra de Rango Segmentada */}
+              <div className="space-y-1">
+                <div className="grid grid-cols-5 gap-1 h-2 rounded-full overflow-hidden bg-zinc-800 p-0.5">
+                  <div className="bg-cyan-500 rounded-sm" title="Atleta" />
+                  <div className="bg-emerald-500 rounded-sm" title="Atlético" />
+                  <div className="bg-emerald-400 rounded-sm" title="Saludable" />
+                  <div className="bg-amber-500 rounded-sm" title="Límite" />
+                  <div className="bg-rose-500 rounded-sm" title="Sobregrasa" />
+                </div>
+                <div className="grid grid-cols-5 gap-1 text-[9px] font-mono text-center text-zinc-500 leading-tight">
+                  <span className="truncate">Atleta</span>
+                  <span className="truncate">Atlético</span>
+                  <span className="truncate">Saludable</span>
+                  <span className="truncate">Límite</span>
+                  <span className="truncate">Sobregrasa</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Consejos del Coach */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 font-mono text-[11px]">
+              <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5 space-y-1">
+                <span className="text-amber-400 font-bold block flex items-center gap-1">
+                  <span>💡 Consejo del Coach:</span>
+                </span>
+                <p className="text-zinc-300 font-sans text-xs leading-relaxed">
+                  {sintesis.recomposicionDetallada.consejoCoach}
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-zinc-900 border border-white/5 space-y-1">
+                <span className="text-emerald-400 font-bold block flex items-center gap-1">
+                  <span>⚡ Enfoque Sugerido:</span>
+                </span>
+                <p className="text-zinc-300 font-sans text-xs leading-relaxed">
+                  {sintesis.recomposicionDetallada.enfoqueSugerido}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Botón Plegable: Guía Rápida de Interpretación */}
+        <div className="pt-0.5">
+          <button
+            type="button"
+            onClick={() => setShowGuiaInterpretacion(!showGuiaInterpretacion)}
+            className="w-full py-2 px-3 rounded-xl bg-zinc-950 hover:bg-zinc-900 border border-white/5 text-zinc-400 hover:text-white transition-all flex items-center justify-between text-[11px] font-mono cursor-pointer"
+          >
+            <span className="flex items-center gap-1.5">
+              <HelpCircle className="w-3.5 h-3.5 text-amber-400" />
+              <span>¿Cómo interpretar mis números biométricos?</span>
+            </span>
+            {showGuiaInterpretacion ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+          </button>
+
+          {showGuiaInterpretacion && (
+            <div className="mt-2 p-3.5 rounded-2xl bg-zinc-950 border border-white/10 space-y-2.5 text-xs font-sans text-zinc-300 animate-in fade-in duration-200">
+              <div className="space-y-1 border-b border-white/5 pb-2">
+                <span className="font-bold text-white font-mono text-[11px] flex items-center gap-1.5 text-emerald-400">
+                  <Dumbbell className="w-3 h-3" />
+                  1. Músculo vs. Peso de la Báscula
+                </span>
+                <p className="text-[11px] leading-relaxed text-zinc-400">
+                  El músculo es tejido denso y compacto (ocupa 18% menos volumen que la misma cantidad de grasa). Si ganas músculo y quemas grasa, tu peso total puede bajar lento o mantenerse, pero tu cintura y medidas se reducen notablemente.
+                </p>
+              </div>
+
+              <div className="space-y-1 border-b border-white/5 pb-2">
+                <span className="font-bold text-white font-mono text-[11px] flex items-center gap-1.5 text-red-400">
+                  <Heart className="w-3 h-3" />
+                  2. Grasa Visceral vs. Grasa Subcutánea
+                </span>
+                <p className="text-[11px] leading-relaxed text-zinc-400">
+                  La grasa subcutánea es la que se palpa bajo la piel (estética). La grasa visceral rodea el corazón, hígado y vísceras. Mantenerla en nivel 1 a 9 es el seguro de vida metabólico más potente contra diabetes e hipertensión.
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <span className="font-bold text-white font-mono text-[11px] flex items-center gap-1.5 text-blue-400">
+                  <Droplets className="w-3 h-3" />
+                  3. Agua e Hidratación Diaria
+                </span>
+                <p className="text-[11px] leading-relaxed text-zinc-400">
+                  El músculo almacena hasta 75% de agua celular. Tomar agua suficiente no engorda: desinflama tejidos, transporta nutrientes y evita fatigas prematuras durante tus series en Trankilandia.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Selector de Historial de Fechas (si hay varias evaluaciones) */}
@@ -379,7 +532,7 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Tarjeta 1: Grasa Visceral & Corazón */}
-              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2.5 shadow-lg">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="font-bold text-zinc-300 flex items-center gap-1.5">
                     <Heart className="w-4 h-4 text-red-400" />
@@ -401,13 +554,36 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
                   <span className="text-2xl font-black text-white">{currentEval.grasa_visceral}</span>
                   <span className="text-xs text-zinc-500">/ 50 nivel</span>
                 </div>
-                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
                   {sintesis.visceral.descripcion}
                 </p>
+
+                {sintesis.visceral.queSignifica && (
+                  <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs font-sans">
+                    <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-1">
+                      <span className="text-[10px] font-mono font-bold text-red-400 uppercase tracking-wider block">
+                        ¿Qué significa para tu salud?
+                      </span>
+                      <p className="text-zinc-400 text-[11px] leading-relaxed">
+                        {sintesis.visceral.queSignifica}
+                      </p>
+                    </div>
+                    {sintesis.visceral.accionPractica && (
+                      <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-1">
+                        <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider block">
+                          Consejo en Trankilandia:
+                        </span>
+                        <p className="text-zinc-400 text-[11px] leading-relaxed">
+                          {sintesis.visceral.accionPractica}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Tarjeta 2: Motor Metabólico */}
-              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2.5 shadow-lg">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="font-bold text-zinc-300 flex items-center gap-1.5">
                     <Zap className="w-4 h-4 text-amber-400" />
@@ -421,13 +597,36 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
                   <span className="text-2xl font-black text-amber-400">{currentEval.bmr_kcal}</span>
                   <span className="text-xs text-zinc-400">kcal/día en reposo</span>
                 </div>
-                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
                   {sintesis.metabolismo.descripcion}
                 </p>
+
+                {sintesis.metabolismo.queSignifica && (
+                  <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs font-sans">
+                    <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-1">
+                      <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider block">
+                        ¿Cómo funciona tu metabolismo?
+                      </span>
+                      <p className="text-zinc-400 text-[11px] leading-relaxed">
+                        {sintesis.metabolismo.queSignifica}
+                      </p>
+                    </div>
+                    {sintesis.metabolismo.accionPractica && (
+                      <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-1">
+                        <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider block">
+                          Acelerador en el Gym:
+                        </span>
+                        <p className="text-zinc-400 text-[11px] leading-relaxed">
+                          {sintesis.metabolismo.accionPractica}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Tarjeta 3: Hidratación */}
-              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2.5 shadow-lg">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="font-bold text-zinc-300 flex items-center gap-1.5">
                     <Droplets className="w-4 h-4 text-blue-400" />
@@ -447,13 +646,36 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
                   <span className="text-2xl font-black text-blue-400">{sintesis.hidratacion.litros_recomendados}</span>
                   <span className="text-xs text-zinc-400">Litros/día sugeridos</span>
                 </div>
-                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
                   {sintesis.hidratacion.consejo}
                 </p>
+
+                {sintesis.hidratacion.queSignifica && (
+                  <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs font-sans">
+                    <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-1">
+                      <span className="text-[10px] font-mono font-bold text-blue-400 uppercase tracking-wider block">
+                        Impacto en tu rendimiento:
+                      </span>
+                      <p className="text-zinc-400 text-[11px] leading-relaxed">
+                        {sintesis.hidratacion.queSignifica}
+                      </p>
+                    </div>
+                    {sintesis.hidratacion.accionPractica && (
+                      <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-1">
+                        <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider block">
+                          Pauta Diaria:
+                        </span>
+                        <p className="text-zinc-400 text-[11px] leading-relaxed">
+                          {sintesis.hidratacion.accionPractica}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Tarjeta 4: Consumo Proteico */}
-              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2.5 shadow-lg">
                 <div className="flex items-center justify-between text-xs font-mono">
                   <span className="font-bold text-zinc-300 flex items-center gap-1.5">
                     <Utensils className="w-4 h-4 text-emerald-400" />
@@ -467,9 +689,32 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
                   <span className="text-2xl font-black text-emerald-400">{sintesis.proteina.gramos_sugeridos}g</span>
                   <span className="text-xs text-zinc-400">Proteína al día</span>
                 </div>
-                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                <p className="text-xs text-zinc-300 font-sans leading-relaxed">
                   {sintesis.proteina.consejo}
                 </p>
+
+                {sintesis.proteina.queSignifica && (
+                  <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs font-sans">
+                    <div className="p-2.5 rounded-xl bg-zinc-950/70 border border-white/5 space-y-1">
+                      <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-wider block">
+                        ¿Para qué sirve la proteína?
+                      </span>
+                      <p className="text-zinc-400 text-[11px] leading-relaxed">
+                        {sintesis.proteina.queSignifica}
+                      </p>
+                    </div>
+                    {sintesis.proteina.ejemploComida && (
+                      <div className="p-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/20 space-y-1">
+                        <span className="text-[10px] font-mono font-bold text-emerald-300 uppercase tracking-wider block">
+                          Ejemplo Real de Menú Diario:
+                        </span>
+                        <p className="text-zinc-300 text-[11px] leading-relaxed">
+                          {sintesis.proteina.ejemploComida}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>

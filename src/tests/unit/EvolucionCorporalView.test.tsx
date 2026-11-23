@@ -57,15 +57,26 @@ describe('Componente EvolucionCorporalView', () => {
     expect((await screen.findAllByText(/FIT SCORE/i, {}, { timeout: 8000 })).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/Tu Transformación Acumulada/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Story Card/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Diagnóstico del Coach & Recomposición/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Escala Grasa Corporal/i, {}, { timeout: 8000 })).toBeDefined();
+
+    // 1.1 Guía rápida de interpretación
+    const btnGuia = await screen.findByText(/¿Cómo interpretar mis números biométricos\?/i, {}, { timeout: 8000 });
+    expect(btnGuia).toBeDefined();
+    fireEvent.click(btnGuia);
+    expect(await screen.findByText(/Músculo vs. Peso de la Báscula/i, {}, { timeout: 4000 })).toBeDefined();
 
     // 2. Pestaña Activa por defecto: Mi Silueta
     expect(await screen.findByText(/Silueta Anatómica Visual/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Función Biomecánica & Rendimiento/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Ejercicios Clave en Trankilandia/i, {}, { timeout: 8000 })).toBeDefined();
 
     // 3. Navegar a pestaña Gráficos & Metas
     const tabGraficos = screen.getByRole('button', { name: /Gráficos & Metas/i });
     fireEvent.click(tabGraficos);
     expect(await screen.findByText(/Simulador de Metas/i, {}, { timeout: 8000 })).toBeDefined();
     expect((await screen.findAllByText(/Punto de Partida/i, {}, { timeout: 8000 })).length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText(/Estrategia del Coach para esta Meta/i, {}, { timeout: 8000 })).toBeDefined();
 
     // 4. Navegar a pestaña Medallas & Salud
     const tabSalud = screen.getByRole('button', { name: /Medallas & Salud/i });
@@ -74,6 +85,7 @@ describe('Componente EvolucionCorporalView', () => {
     expect(await screen.findByText(/Tu Composición en Cristiano/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Salud del Corazón & Abdomen/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Tu Motor Metabólico/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/¿Qué significa para tu salud\?/i, {}, { timeout: 8000 })).toBeDefined();
 
     // 5. Acordeón técnico colapsado por defecto para no saturar al usuario
     const botonAcordeon = screen.getByText(/Ver Reporte Biométrico Completo/i);

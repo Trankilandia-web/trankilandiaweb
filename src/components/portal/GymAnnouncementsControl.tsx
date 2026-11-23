@@ -198,7 +198,7 @@ export default function GymAnnouncementsControl() {
             {isPlaying && (
               <button
                 type="button"
-                onClick={stopAnnouncement}
+                onClick={() => stopAnnouncement()}
                 className="px-2.5 py-1 rounded-lg bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer shadow-sm"
                 title="Detener el audio de inmediato"
               >

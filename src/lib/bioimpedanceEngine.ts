@@ -27,7 +27,16 @@ import {
   DatosStoryCard,
   MetricaDestacadaStory,
   MedallaDestacadaStory,
+  InterpretacionRangoMetrica,
+  InterpretacionRecomposicionDetallada,
+  SintesisSaludCotidiana,
 } from '../types/evaluacion';
+
+export type {
+  InterpretacionRangoMetrica,
+  InterpretacionRecomposicionDetallada,
+  SintesisSaludCotidiana,
+};
 
 export interface EntradaMedicion {
   id?: string;
@@ -511,65 +520,319 @@ export function calcularProgresoAcumulado(
   };
 }
 
-export interface SintesisSaludCotidiana {
-  visceral: {
-    nivel: number;
-    estado: 'optimo' | 'atencion' | 'alerta';
-    titulo: string;
-    descripcion: string;
+// ==============================================================================
+// MOTORES DE INTERPRETACIÓN CLÍNICA, DEPORTIVA Y RECOMPOSICIÓN CORPORAL
+// ==============================================================================
+
+/**
+ * Interpreta el rango clínico y deportivo del porcentaje de grasa corporal
+ */
+export function interpretarRangoGrasa(
+  grasaPct: number,
+  sexo: SexoBiometrico
+): InterpretacionRangoMetrica {
+  const isMasc = sexo === 'Masculino';
+  if (isMasc) {
+    if (grasaPct < 11) {
+      return {
+        etiqueta: 'Atleta · Competición',
+        subtitulo: 'Nivel magro extremo (<11%)',
+        colorClass: 'text-cyan-400',
+        badgeBg: 'bg-cyan-500/10 border-cyan-400/30 text-cyan-300',
+        interpretacion: 'Grasa esencial mínima con vascularización y relieve muscular muy marcados.',
+      };
+    }
+    if (grasaPct <= 18) {
+      return {
+        etiqueta: 'Atlético · Fitness',
+        subtitulo: 'Zona óptima de definición (11% - 18%)',
+        colorClass: 'text-emerald-400',
+        badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+        interpretacion: 'Excelente condición física. Buena definición abdominal y tono muscular visible.',
+      };
+    }
+    if (grasaPct <= 23) {
+      return {
+        etiqueta: 'Saludable · Estándar',
+        subtitulo: 'Rango equilibrado (18.1% - 23%)',
+        colorClass: 'text-emerald-400',
+        badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+        interpretacion: 'Equilibrio metabólico saludable. Buena reserva de energía para entrenamientos diarios.',
+      };
+    }
+    if (grasaPct <= 28) {
+      return {
+        etiqueta: 'Límite · Sobregrasa Leve',
+        subtitulo: 'Zona de atención (23.1% - 28%)',
+        colorClass: 'text-amber-400',
+        badgeBg: 'bg-amber-500/10 border-amber-400/30 text-amber-300',
+        interpretacion: 'Ligero exceso adiposo. Se recomienda déficit calórico moderado y trabajo de fuerza.',
+      };
+    }
+    return {
+      etiqueta: 'Sobregrasa · Prioridad Reducción',
+      subtitulo: 'Elevado (>28%)',
+      colorClass: 'text-rose-400',
+      badgeBg: 'bg-rose-500/10 border-rose-400/30 text-rose-300',
+      interpretacion: 'Adiposidad elevada. Priorizar entrenamiento regular y reducir azúcares ultraprocesados.',
+    };
+  } else {
+    // Femenino
+    if (grasaPct < 18) {
+      return {
+        etiqueta: 'Atleta · Competición',
+        subtitulo: 'Nivel magro muy bajo (<18%)',
+        colorClass: 'text-cyan-400',
+        badgeBg: 'bg-cyan-500/10 border-cyan-400/30 text-cyan-300',
+        interpretacion: 'Nivel competitivo fitness. Precaución con mantener la grasa esencial hormonal.',
+      };
+    }
+    if (grasaPct <= 24.9) {
+      return {
+        etiqueta: 'Atlética · Fitness',
+        subtitulo: 'Excelente tono y definición (18% - 24.9%)',
+        colorClass: 'text-emerald-400',
+        badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+        interpretacion: 'Excelente composición corporal. Musculatura tonificada y perfil metabólico óptimo.',
+      };
+    }
+    if (grasaPct <= 30) {
+      return {
+        etiqueta: 'Saludable · Estándar',
+        subtitulo: 'Rango equilibrado (25% - 30%)',
+        colorClass: 'text-emerald-400',
+        badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+        interpretacion: 'Composición corporal normal y saludable con adecuada función endocrina.',
+      };
+    }
+    if (grasaPct <= 35) {
+      return {
+        etiqueta: 'Límite · Sobregrasa Leve',
+        subtitulo: 'Zona de atención (30.1% - 35%)',
+        colorClass: 'text-amber-400',
+        badgeBg: 'bg-amber-500/10 border-amber-400/30 text-amber-300',
+        interpretacion: 'Ligera concentración de tejido graso. Beneficiará mucho el entrenamiento de fuerza.',
+      };
+    }
+    return {
+      etiqueta: 'Sobregrasa · Prioridad Reducción',
+      subtitulo: 'Elevado (>35%)',
+      colorClass: 'text-rose-400',
+      badgeBg: 'bg-rose-500/10 border-rose-400/30 text-rose-300',
+      interpretacion: 'Porcentaje adiposo alto. Enfocar la rutina en quema de grasa y consistencia semanal.',
+    };
+  }
+}
+
+/**
+ * Interpreta la densidad y calidad de masa muscular respecto al peso corporal
+ */
+export function interpretarRangoMusculo(
+  masaKg: number,
+  pesoKg: number,
+  sexo: SexoBiometrico
+): InterpretacionRangoMetrica {
+  const pctMusculo = pesoKg > 0 ? (masaKg / pesoKg) * 100 : 50;
+  const isMasc = sexo === 'Masculino';
+  const umbralAlto = isMasc ? 55 : 48;
+  const umbralMedio = isMasc ? 45 : 40;
+
+  if (pctMusculo >= umbralAlto) {
+    return {
+      etiqueta: `Alta Densidad Magra · ${pctMusculo.toFixed(1)}%`,
+      subtitulo: 'Músculo dominante y protector',
+      colorClass: 'text-emerald-400',
+      badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+      interpretacion: 'Tu masa muscular es el motor metabólico activo principal: quema calorías de forma constante incluso en reposo.',
+    };
+  }
+  if (pctMusculo >= umbralMedio) {
+    return {
+      etiqueta: `Masa Magra Normal · ${pctMusculo.toFixed(1)}%`,
+      subtitulo: 'Buen soporte funcional',
+      colorClass: 'text-emerald-400',
+      badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+      interpretacion: 'Nivel adecuado de sostén muscular para postura, fuerza diaria y prevención de lesiones.',
+    };
+  }
+  return {
+    etiqueta: `Masa por Desarrollar · ${pctMusculo.toFixed(1)}%`,
+    subtitulo: 'Oportunidad de hipertrofia',
+    colorClass: 'text-amber-400',
+    badgeBg: 'bg-amber-500/10 border-amber-400/30 text-amber-300',
+    interpretacion: 'Potencial para construir tejido magro con sobrecarga progresiva en máquinas y peso libre.',
   };
-  metabolismo: {
-    bmr_kcal: number;
-    calorias_diarias_estimadas: number;
-    descripcion: string;
+}
+
+/**
+ * Interpreta el peso en báscula combinándolo con el IMC y la composición corporal
+ */
+export function interpretarRangoPeso(
+  pesoKg: number,
+  imc: number,
+  grasaPct: number,
+  sexo: SexoBiometrico
+): InterpretacionRangoMetrica {
+  void pesoKg;
+  const isMasc = sexo === 'Masculino';
+  const grasaOptima = isMasc ? grasaPct <= 20 : grasaPct <= 26;
+
+  if (imc < 18.5) {
+    return {
+      etiqueta: `Bajo Peso · IMC ${imc.toFixed(1)}`,
+      subtitulo: 'Constitución muy delgada',
+      colorClass: 'text-sky-400',
+      badgeBg: 'bg-sky-500/10 border-sky-400/30 text-sky-300',
+      interpretacion: 'Peso inferior al estándar. Conviene superávit calórico y entrenamiento para ganar masa magra.',
+    };
+  }
+  if (imc >= 18.5 && imc < 25) {
+    return {
+      etiqueta: `Saludable · IMC ${imc.toFixed(1)}`,
+      subtitulo: 'Normopeso equilibrado',
+      colorClass: 'text-emerald-400',
+      badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+      interpretacion: 'Relación peso-estatura en rango óptimo para longevidad y rendimiento atlético.',
+    };
+  }
+  // IMC >= 25
+  if (grasaOptima) {
+    return {
+      etiqueta: `Atlético Robusto · IMC ${imc.toFixed(1)}`,
+      subtitulo: 'Peso muscular libre de sobregrasa',
+      colorClass: 'text-emerald-400',
+      badgeBg: 'bg-emerald-500/10 border-emerald-400/30 text-emerald-300',
+      interpretacion: 'El IMC tradicional clasificaría como sobrepeso, pero la bioimpedancia confirma que tu peso es masa muscular densa.',
+    };
+  }
+  return {
+    etiqueta: `Sobrepeso Graso · IMC ${imc.toFixed(1)}`,
+    subtitulo: 'Carga articular adicional',
+    colorClass: 'text-amber-400',
+    badgeBg: 'bg-amber-500/10 border-amber-400/30 text-amber-300',
+    interpretacion: 'El peso total está influido por mayor proporción de grasa. Ideal priorizar recomposición corporal.',
   };
-  hidratacion: {
-    pct: number;
-    estado: 'excelente' | 'adecuado' | 'bajo';
-    consejo: string;
-    litros_recomendados: number;
+}
+
+/**
+ * Genera el diagnóstico fisiológico detallado del Coach explicando la recomposición corporal
+ */
+export function generarDiagnosticoRecomposicionDetallada(
+  actual: EvaluacionCorporal,
+  primera?: EvaluacionCorporal
+): InterpretacionRecomposicionDetallada {
+  if (!primera || primera === actual || (primera.id && actual.id && primera.id === actual.id)) {
+    const pctMagra = actual.peso_kg > 0 ? ((actual.masa_muscular_kg / actual.peso_kg) * 100).toFixed(1) : '55';
+    return {
+      titulo: 'Tu Mapa de Partida Fisiológico',
+      resumen: `Inicias con ${actual.peso_kg} kg, de los cuales ${actual.masa_muscular_kg.toFixed(1)} kg (${pctMagra}%) son masa muscular activa y ${actual.grasa_corporal_pct.toFixed(1)}% es tejido graso.`,
+      desglose: 'El músculo es tejido metabolicamente denso (ocupa aprox. 18% menos volumen que la grasa para el mismo peso). Tu objetivo en Trankilandia es estimular el músculo para que actúe como un horno que quema grasa de manera sostenida.',
+      consejoCoach: 'No te obsesiones con el peso de la balanza tradicional: si entrenas fuerza y consumes suficiente proteína, tu cuerpo cambiará de forma y medidas antes de que el peso total se mueva mucho.',
+      enfoqueSugerido: 'Fuerza 3 a 4 veces por semana + consumo de proteína (1.6 a 1.8g por kg de peso) + hidratación continua.',
+    };
+  }
+
+  const dPeso = Number((actual.peso_kg - primera.peso_kg).toFixed(1));
+  const dGrasaKg = Number((actual.grasa_corporal_kg - primera.grasa_corporal_kg).toFixed(1));
+  const dMusculoKg = Number((actual.masa_muscular_kg - primera.masa_muscular_kg).toFixed(1));
+  const dGrasaPct = Number((actual.grasa_corporal_pct - primera.grasa_corporal_pct).toFixed(1));
+
+  // Caso 1: Recomposición pura (bajó grasa y subió músculo)
+  if (dGrasaKg < 0 && dMusculoKg > 0) {
+    return {
+      titulo: '¡Recomposición Corporal en Estado Puro!',
+      resumen: `Has eliminado ${Math.abs(dGrasaKg)} kg de grasa pura mientras ganaste +${dMusculoKg} kg de masa muscular firme.`,
+      desglose: `Aunque el peso en balanza solo varió ${dPeso >= 0 ? '+' + dPeso : dPeso} kg, por dentro tu cuerpo sustituyó grasa voluminosa por músculo magro y compacto. Por eso tu ropa te queda más holgada aunque peses parecido.`,
+      consejoCoach: 'Estás en la ruta más saludable del fitness: aumentar masa magra eleva tu metabolismo basal y asegura que no haya efecto rebote.',
+      enfoqueSugerido: 'Conserva la sobrecarga progresiva en tus ejercicios principales (Prensa, Press banca, Poleas) y no bajes la ingesta proteica.',
+    };
+  }
+
+  // Caso 2: Quema de grasa con retención muscular
+  if (dGrasaKg < 0 && dMusculoKg >= -0.3) {
+    return {
+      titulo: 'Definición y Quema Grasa Efectiva',
+      resumen: `Lograste una reducción neta de ${Math.abs(dGrasaKg)} kg de grasa corporal (${dGrasaPct}% en porcentaje), preservando tu músculo.`,
+      desglose: `Tus reservas de grasa se están utilizando como combustible de entrenamiento. Tu masa muscular se mantuvo sólida en ${actual.masa_muscular_kg.toFixed(1)} kg.`,
+      consejoCoach: 'Excelente disciplina en el déficit calórico: perder grasa sin sacrificar masa muscular es la marca de un entrenamiento bien planificado.',
+      enfoqueSugerido: 'Mantén días de descanso activo para permitir que las fibras musculares se regeneren con glucógeno fresco.',
+    };
+  }
+
+  // Caso 3: Hipertrofia y ganancia muscular limpia
+  if (dMusculoKg > 0.5 && dGrasaKg < 0.8) {
+    return {
+      titulo: 'Construcción Muscular & Hipertrofia Limpia',
+      resumen: `Desarrollaste +${dMusculoKg} kg de masa muscular magra con la grasa corporal bajo estricto control.`,
+      desglose: `Cada kilo de músculo nuevo incrementa tu fuerza, densidad ósea y gasto calórico diario. Tu cuerpo tiene ahora mayor capacidad atlética.`,
+      consejoCoach: 'El estímulo mecánico en el gimnasio y la síntesis proteica están funcionando con máxima eficiencia.',
+      enfoqueSugerido: 'Asegura entre 7 y 8 horas de sueño de calidad: es durante el descanso profundo donde se reparan las fibras.',
+    };
+  }
+
+  // Caso 4: Consolidación / Mantenimiento
+  return {
+    titulo: 'Consolidación y Mantenimiento Metabólico',
+    resumen: `Mantienes tu composición corporal estable (${actual.peso_kg.toFixed(1)} kg con ${actual.grasa_corporal_pct.toFixed(1)}% de grasa y ${actual.masa_muscular_kg.toFixed(1)} kg de músculo).`,
+    desglose: 'La estabilidad biométrica es la base de la longevidad. Consolidar un peso sin efecto rebote es una victoria fisiológica clave.',
+    consejoCoach: 'Para desbloquear el siguiente nivel, podemos aumentar la intensidad de tus series o ajustar 200 kcal en tu plan alimentario.',
+    enfoqueSugerido: 'Conversa con tu coach de Trankilandia para ajustar la rutina mensual a nuevas metas de fuerza o resistencia.',
   };
-  proteina: {
-    gramos_sugeridos: number;
-    consejo: string;
-  };
-  fraseImpacto: string;
 }
 
 export function generarSintesisSaludCotidiana(
-  actual: EvaluacionCorporal
+  actual: EvaluacionCorporal,
+  primera?: EvaluacionCorporal
 ): SintesisSaludCotidiana {
   let estadoVisceral: 'optimo' | 'atencion' | 'alerta' = 'optimo';
   let tituloVisceral = 'Rango Seguro';
   let descVisceral = 'Tus órganos vitales y corazón están protegidos con un nivel de grasa interna saludable.';
+  let queSignificaVisceral = 'La grasa visceral recubre el hígado, estómago e intestinos. Por debajo de nivel 9 es un escudo protector de tus órganos.';
+  let accionPracticaVisceral = 'Mantén 20 a 30 minutos de actividad continua y cena al menos 2 horas antes de dormir para digestión óptima.';
+
   if (actual.grasa_visceral > 14) {
     estadoVisceral = 'alerta';
     tituloVisceral = 'Riesgo Cardiovascular Elevado';
     descVisceral = 'La grasa que rodea tus órganos está elevada. Prioriza el cardio y reduce azúcares ultraprocesados.';
+    queSignificaVisceral = 'La grasa intra-abdominal en niveles altos presiona las arterias y el hígado, aumentando la resistencia a la insulina.';
+    accionPracticaVisceral = 'Combina tus rutinas de máquinas con 20 minutos de cardio al final de cada sesión y reduce harinas refinadas por la noche.';
   } else if (actual.grasa_visceral >= 10) {
     estadoVisceral = 'atencion';
     tituloVisceral = 'Atención Abdominal';
     descVisceral = 'Nivel ligeramente elevado. Con entrenamiento de fuerza constante y déficit calórico descenderá rápido.';
+    queSignificaVisceral = 'Indica que parte del excedente calórico se está depositando entre los órganos. Es la primera grasa que el cuerpo quema cuando entrenas.';
+    accionPracticaVisceral = 'Mantén tus 3 a 4 entrenamientos semanales en Trankilandia; la grasa visceral es la más sensible al ejercicio de fuerza.';
   }
 
   const bmr = actual.bmr_kcal;
   const caloriasActivas = Math.round(bmr * 1.45);
   const descMetabolismo = `Tu masa muscular quema ${bmr} calorías al día solo existiendo. En un día normal de gym quemas aprox. ${caloriasActivas} kcal.`;
+  const queSignificaMetabolismo = 'Tu Tasa Metabólica Basal (BMR) es el gasto energético obligatorio de tus órganos y músculos en 24 horas.';
+  const accionPracticaMetabolismo = 'Cada kilo de músculo ganado incrementa tu quema en reposo, permitiéndote comer más sin acumular grasa corporal.';
 
   const minAgua = actual.sexo === 'Masculino' ? 55 : 50;
   let estadoAgua: 'excelente' | 'adecuado' | 'bajo' = 'adecuado';
   let consejoAgua = 'Buen nivel de hidratación para la recuperación muscular.';
+  let queSignificaAgua = 'El agua muscular transporta aminoácidos a las fibras y amortigua las articulaciones durante las series pesadas.';
+  let accionPracticaAgua = 'Toma un termo de agua durante tu sesión y bebe un vaso grande apenas despiertes.';
+
   if (actual.agua_pct >= minAgua) {
     estadoAgua = 'excelente';
     consejoAgua = '¡Excelente hidratación celular! Tus músculos se recuperan al máximo.';
+    queSignificaAgua = 'Tus células musculares retienen agua intracelular óptima, lo que maximiza la fuerza y previene contracturas.';
   } else if (actual.agua_pct < minAgua - 5) {
     estadoAgua = 'bajo';
     consejoAgua = 'Toma 1 o 2 vasos más de agua al día para evitar fatiga en tus entrenamientos.';
+    queSignificaAgua = 'Un nivel bajo de hidratación reduce hasta un 15% tu fuerza máxima y ralentiza la recuperación muscular pos-entreno.';
+    accionPracticaAgua = 'Incrementa tu consumo diario en 500 ml y añade una pizca de sales minerales o electrolitos si sudas mucho.';
   }
   const litrosRecomendados = Number((actual.peso_kg * 0.035).toFixed(1));
 
   const gramosProteina = Math.round(Math.max(60, (actual.masa_muscular_kg || actual.peso_kg * 0.7) * 1.8));
   const consejoProteina = `Apunta a ingerir aprox. ${gramosProteina}g de proteína al día repartidos en tus comidas para tonificar.`;
+  const queSignificaProteina = 'La proteína provee los aminoácidos para reparar y reconstruir las micro-fibras musculares que estimulas en el gimnasio.';
+  const accionPracticaProteina = `Distribuye tus ${gramosProteina}g en 3 o 4 tomas diarias (aprox. 30 a 40g por comida principal).`;
+  const ejemploComidaProteina = `Ejemplo del día: Desayuno con 3 huevos (~18g) + Almuerzo con 150g de pechuga de pollo o carne (~35g) + Merienda con 1 lata de atún (~30g) + Cena con queso fresco y menestras.`;
 
   let fraseImpacto = '¡Excelente constancia! Tu cuerpo se sigue fortaleciendo.';
   if (actual.puntuacion_corporal >= 80) {
@@ -580,29 +843,48 @@ export function generarSintesisSaludCotidiana(
     fraseImpacto = '¡Cada sesión en el gym cuenta! Estás activando tu quema de grasa.';
   }
 
+  // Rangos interpretados
+  const rangoGrasa = interpretarRangoGrasa(actual.grasa_corporal_pct, actual.sexo);
+  const rangoMusculo = interpretarRangoMusculo(actual.masa_muscular_kg, actual.peso_kg, actual.sexo);
+  const rangoPeso = interpretarRangoPeso(actual.peso_kg, actual.imc, actual.grasa_corporal_pct, actual.sexo);
+  const recomposicionDetallada = generarDiagnosticoRecomposicionDetallada(actual, primera);
+
   return {
     visceral: {
       nivel: actual.grasa_visceral,
       estado: estadoVisceral,
       titulo: tituloVisceral,
       descripcion: descVisceral,
+      queSignifica: queSignificaVisceral,
+      accionPractica: accionPracticaVisceral,
     },
     metabolismo: {
       bmr_kcal: bmr,
       calorias_diarias_estimadas: caloriasActivas,
       descripcion: descMetabolismo,
+      queSignifica: queSignificaMetabolismo,
+      accionPractica: accionPracticaMetabolismo,
     },
     hidratacion: {
       pct: actual.agua_pct,
       estado: estadoAgua,
       consejo: consejoAgua,
       litros_recomendados: litrosRecomendados,
+      queSignifica: queSignificaAgua,
+      accionPractica: accionPracticaAgua,
     },
     proteina: {
       gramos_sugeridos: gramosProteina,
       consejo: consejoProteina,
+      queSignifica: queSignificaProteina,
+      accionPractica: accionPracticaProteina,
+      ejemploComida: ejemploComidaProteina,
     },
     fraseImpacto,
+    rangoGrasa,
+    rangoMusculo,
+    rangoPeso,
+    recomposicionDetallada,
   };
 }
 
@@ -999,6 +1281,10 @@ export function calcularProyeccionMeta(
       mensajeMotivacional:
         '¡Estás exactamente en tu zona objetivo! Mantén tu constancia para consolidar este nivel.',
       estadoFactibilidad: 'mantenimiento',
+      interpretacionEstrategia:
+        'Has alcanzado el punto de equilibrio deseado. Ahora la prioridad es consolidar tu masa muscular sin variaciones bruscas de peso.',
+      caloriasAjusteSugeridas:
+        'Calorías normocalóricas (mantenimiento metabólico) asegurando 1.6 a 1.8g de proteína/kg.',
     };
   }
 
@@ -1055,10 +1341,17 @@ export function calcularProyeccionMeta(
   const estadoFactibilidad = semanasRestantes > 36 ? 'desafiante' : 'alcanzable';
 
   let mensajeMotivacional = '';
+  let interpretacionEstrategia = '';
+  let caloriasAjusteSugeridas = '';
+
   if (tipo === 'grasa') {
     mensajeMotivacional = `A un ritmo constante de ${freq} sesiones semanales, alcanzarás el ${valorObjetivo}% de grasa en aprox. ${semanasRestantes} semanas (~${mesesAprox} meses). ¡Un objetivo completamente alcanzable con disciplina!`;
+    interpretacionEstrategia = `Para reducir de ${valorActual.toFixed(1)}% a ${valorObjetivo.toFixed(1)}% a un ritmo saludable de -${ritmoSemanal.toFixed(2)}% por semana, el secreto no es pasar hambre sino mantener un déficit calórico ligero (-300 a -400 kcal) priorizando proteína magra (para proteger tu músculo) y 8,000 a 10,000 pasos diarios.`;
+    caloriasAjusteSugeridas = 'Déficit calórico moderado (~350 kcal/día) con 1.8g proteína/kg.';
   } else {
     mensajeMotivacional = `Con ${freq} días de entrenamiento de fuerza por semana, alcanzarás ${valorObjetivo} kg de masa muscular en unas ${semanasRestantes} semanas (~${mesesAprox} meses). ¡Cada repetición cuenta!`;
+    interpretacionEstrategia = `Para subir de ${valorActual.toFixed(1)} kg a ${valorObjetivo.toFixed(1)} kg de músculo a +${ritmoSemanal.toFixed(3)} kg por semana, enfócate en la sobrecarga progresiva en Trankilandia (anota tus pesos en cada máquina) y un ligero superávit calórico controlado (+200 a +300 kcal).`;
+    caloriasAjusteSugeridas = 'Superávit limpio (~250 kcal/día) con 1.8 a 2.0g proteína/kg.';
   }
 
   return {
@@ -1072,6 +1365,8 @@ export function calcularProyeccionMeta(
     puntosCurva,
     mensajeMotivacional,
     estadoFactibilidad,
+    interpretacionEstrategia,
+    caloriasAjusteSugeridas,
   };
 }
 
@@ -1160,6 +1455,42 @@ export function calcularZonasCalorSilueta(
 
   const resultado = {} as Record<ExtremidadId, ZonaCalorSilueta>;
 
+  const detallesZonas: Record<
+    ExtremidadId,
+    { interpretacionClinica: string; ejerciciosRecomendados: string }
+  > = {
+    tronco: {
+      interpretacionClinica:
+        'El tronco es el centro de estabilidad biomecánica (core, transverso, recto abdominal y erectores espinales). Un core fuerte estabiliza la columna y previene dolores lumbares.',
+      ejerciciosRecomendados:
+        'Planchas isométricas, Hip Thrust, Rueda abdominal, Sentadilla libre y Press militar en Trankilandia.',
+    },
+    brazo_izq: {
+      interpretacionClinica:
+        'Representa la musculatura del tren superior izquierdo (bíceps, tríceps, deltoides y antebrazo). Fundamental para tracción y empuje bilateral equilibrado.',
+      ejerciciosRecomendados:
+        'Press de banca con mancuernas, Jalón al pecho con agarre neutro, Curl de bíceps alterno y Extensiones de tríceps en polea.',
+    },
+    brazo_der: {
+      interpretacionClinica:
+        'Representa la musculatura del tren superior derecho (bíceps, tríceps, deltoides y antebrazo). Suele exhibir mayor destreza neuro-muscular en personas diestras.',
+      ejerciciosRecomendados:
+        'Press inclinado con mancuernas, Remo unilateral en polea baja, Fondos en paralelas y Dominadas asistidas.',
+    },
+    pierna_izq: {
+      interpretacionClinica:
+        'Soporte gravitacional y potencia unilateral del tren inferior (cuádriceps, isquiotibiales, glúteos y gemelos). Clave para la estabilidad de rodilla y cadera.',
+      ejerciciosRecomendados:
+        'Prensa de piernas a 45°, Sentadilla búlgara con mancuerna, Zancadas dinámicas y Curl femoral tumbado.',
+    },
+    pierna_der: {
+      interpretacionClinica:
+        'Soporte gravitacional y potencia unilateral del tren inferior (cuádriceps, isquiotibiales, glúteos y gemelos). Equilibra el despegue al caminar o correr.',
+      ejerciciosRecomendados:
+        'Prensa de piernas a 45°, Peso muerto rumano, Extensiones de cuádriceps en máquina y Elevación de talones.',
+    },
+  };
+
   configZonas.forEach(({ id, nombre, zona }) => {
     const musculoKg = zona.musculo_kg;
     const musculoPct = zona.musculo_pct || 100;
@@ -1211,6 +1542,8 @@ export function calcularZonasCalorSilueta(
       }
     }
 
+    const { interpretacionClinica, ejerciciosRecomendados } = detallesZonas[id];
+
     resultado[id] = {
       id,
       nombre,
@@ -1223,6 +1556,8 @@ export function calcularZonasCalorSilueta(
       colorHex,
       colorClase,
       descripcionEstado,
+      interpretacionClinica,
+      ejerciciosRecomendados,
     };
   });
 

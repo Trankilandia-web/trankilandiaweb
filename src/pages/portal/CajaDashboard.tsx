@@ -2618,7 +2618,7 @@ export default function CajaDashboard() {
             PESTAÑA 2: TERMINAL PUNTO DE VENTA (POS) & INVENTARIO INTEGRADO
            ========================================================================= */}
         {activeTab === 'pos' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* CATÁLOGO DE PRODUCTOS (8 cols) */}
             <div className="lg:col-span-8 space-y-4">
               {/* Barra de Filtros y Búsqueda */}
@@ -2735,8 +2735,8 @@ export default function CajaDashboard() {
               </div>
             </div>
 
-            {/* CARRITO Y COBRO EN CAJA (4 cols) */}
-            <div className="lg:col-span-4 bg-zinc-900/90 border border-white/10 rounded-3xl p-5 shadow-2xl flex flex-col justify-between space-y-4">
+            {/* CARRITO Y COBRO EN CAJA (4 cols) - Adaptativo y Sticky */}
+            <div className="lg:col-span-4 lg:sticky lg:top-6 self-start bg-zinc-900/90 border border-white/10 rounded-3xl p-5 shadow-2xl flex flex-col space-y-4">
               <div>
                 <div className="flex items-center justify-between pb-3 border-b border-white/10">
                   <div className="flex items-center gap-2">

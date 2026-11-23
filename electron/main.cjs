@@ -4,36 +4,57 @@ const { execFile, execFileSync } = require('child_process');
 
 const duckerPath = path.join(__dirname, 'TrankilandiaDucker.exe').replace('app.asar', 'app.asar.unpacked');
 
-// IPC Handlers para Auto-Ducking (Atenuación automática de música externa en Windows)
-ipcMain.handle('audio:duck', async (_event, level = 0.15) => {
-  return new Promise((resolve) => {
-    execFile(duckerPath, ['duck', String(level), String(process.pid)], (err, stdout) => {
-      if (err) {
-        console.warn('[AutoDucker] Error ducking:', err.message);
-        resolve({ ok: false, error: err.message });
-      } else {
-        resolve({ ok: true, output: stdout?.trim() });
-      }
+// Obtiene todos los PIDs de Trankilandia (Proceso Principal, Renderizadores y Audio Service Chromium)
+function getAppPidsString() {
+  const pids = new Set([process.pid]);
+  try {
+    for (const m of app.getAppMetrics()) {
+      if (m.pid) pids.add(m.pid);
+    }
+  } catch {}
+  if (mainWindow && mainWindow.webContents) {
+    try {
+      const rPid = mainWindow.webContents.getOSProcessId();
+      if (rPid) pids.add(rPid);
+    } catch {}
+  }
+  return Array.from(pids).join(',');
+}
+
+// Cola de ejecución secuencial para evitar condiciones de carrera entre duck y restore
+let duckerQueue = Promise.resolve();
+
+function runDucker(args) {
+  duckerQueue = duckerQueue.then(() => {
+    return new Promise((resolve) => {
+      execFile(duckerPath, args, { windowsHide: true }, (err, stdout) => {
+        if (err) {
+          console.warn('[AutoDucker] Error ejecutando ducker nativo:', err.message);
+          resolve({ ok: false, error: err.message });
+        } else {
+          resolve({ ok: true, output: stdout?.trim() });
+        }
+      });
     });
   });
+  return duckerQueue;
+}
+
+// IPC Handlers para Auto-Ducking (Atenuación automática de música externa en Windows)
+ipcMain.handle('audio:duck', async (_event, level = 0.15) => {
+  const pids = getAppPidsString();
+  return runDucker(['duck', String(level), pids]);
 });
 
 ipcMain.handle('audio:unduck', async () => {
-  return new Promise((resolve) => {
-    execFile(duckerPath, ['restore'], (err, stdout) => {
-      if (err) {
-        console.warn('[AutoDucker] Error restoring:', err.message);
-        resolve({ ok: false, error: err.message });
-      } else {
-        resolve({ ok: true, output: stdout?.trim() });
-      }
-    });
-  });
+  const pids = getAppPidsString();
+  return runDucker(['restore', '0', pids]);
 });
 
 app.on('before-quit', () => {
   try {
-    execFileSync(duckerPath, ['restore']);
+    const pids = getAppPidsString();
+    execFileSync(duckerPath, ['restore', '0', pids], { windowsHide: true });
   } catch {}
 });
 

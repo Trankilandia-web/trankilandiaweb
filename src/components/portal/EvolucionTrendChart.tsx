@@ -376,6 +376,36 @@ export default function EvolucionTrendChart({
           💡 Toca cualquier punto de la curva con el dedo para ver los detalles de esa fecha
         </span>
       </div>
+
+      {/* Diagnóstico de Lectura de Tendencia */}
+      {cronologicas.length >= 2 && (
+        <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-white/5 space-y-1">
+          <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-amber-400 block">
+            Lectura de Tendencia Fisiológica
+          </span>
+          <p className="text-xs text-zinc-300 font-sans leading-relaxed">
+            {currentTab === 'musculo' && (
+              <>
+                {cronologicas[cronologicas.length - 1].masa_muscular_kg >= cronologicas[0].masa_muscular_kg
+                  ? `Tendencia Positiva: Has ganado +${(cronologicas[cronologicas.length - 1].masa_muscular_kg - cronologicas[0].masa_muscular_kg).toFixed(1)} kg de músculo desde tu primera medición. El tejido magro actúa como un acelerador metabólico que quema calorías 24/7.`
+                  : `Mantenimiento Muscular: La masa magra se mantiene en rango estable. Con sobrecarga progresiva en máquinas y descanso adecuado volverá a subir.`}
+              </>
+            )}
+            {currentTab === 'grasa' && (
+              <>
+                {cronologicas[cronologicas.length - 1].grasa_corporal_pct <= cronologicas[0].grasa_corporal_pct
+                  ? `Quema Activa: Reducción de ${(cronologicas[0].grasa_corporal_pct - cronologicas[cronologicas.length - 1].grasa_corporal_pct).toFixed(1)}% en porcentaje graso (${Math.abs(Number((cronologicas[cronologicas.length - 1].grasa_corporal_kg - cronologicas[0].grasa_corporal_kg).toFixed(1)))} kg menos de grasa pura). Excelente definición sin perder vitalidad.`
+                  : `Zona de Ajuste: El porcentaje graso muestra una leve subida. Un pequeño ajuste en la cena o añadir 15 min de caminata acelerará la definición.`}
+              </>
+            )}
+            {currentTab === 'peso' && (
+              <>
+                {`Evolución de Báscula: Tu peso total pasó de ${cronologicas[0].peso_kg.toFixed(1)} kg a ${cronologicas[cronologicas.length - 1].peso_kg.toFixed(1)} kg. Recuerda: en recomposición corporal, el peso total importa menos que la proporción entre músculo denso y grasa eliminada.`}
+              </>
+            )}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
