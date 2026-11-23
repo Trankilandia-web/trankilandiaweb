@@ -227,3 +227,41 @@ export interface ProyeccionMeta {
   estadoFactibilidad: 'alcanzable' | 'desafiante' | 'mantenimiento';
 }
 
+// ==============================================================================
+// TIPOS PARA SILUETA ANATÓMICA Y ANÁLISIS DE SIMETRÍA
+// ==============================================================================
+
+export type ModoSilueta = 'musculo' | 'grasa';
+export type ExtremidadId = 'brazo_izq' | 'brazo_der' | 'tronco' | 'pierna_izq' | 'pierna_der';
+
+export interface DetalleSimetriaPar {
+  diferenciaKg: number;
+  diferenciaPct: number;
+  ladoDominante: 'izquierdo' | 'derecho' | 'equilibrado';
+  indiceSimetriaPct: number; // 0 - 100%
+  alertaDesbalance: boolean;
+  mensaje: string;
+}
+
+export interface AnalisisSimetria {
+  brazos: DetalleSimetriaPar;
+  piernas: DetalleSimetriaPar;
+  balanceGlobal: 'optimo' | 'leve_asimetria' | 'desbalance_atencion';
+  resumen: string;
+}
+
+export interface ZonaCalorSilueta {
+  id: ExtremidadId;
+  nombre: string;
+  musculoKg: number;
+  musculoPct: number;
+  grasaKg: number;
+  grasaPct: number;
+  nivelMusculo: 'bajo' | 'normal' | 'desarrollado';
+  nivelGrasa: 'bajo' | 'optimo' | 'elevado';
+  colorHex: string;
+  colorClase: string;
+  descripcionEstado: string;
+}
+
+

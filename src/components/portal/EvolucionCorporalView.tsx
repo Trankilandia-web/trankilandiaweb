@@ -29,6 +29,7 @@ import {
 import EvolucionTrendChart from './EvolucionTrendChart';
 import MedallasLogro from './MedallasLogro';
 import SimuladorMetas from './SimuladorMetas';
+import SiluetaAnatomica from './SiluetaAnatomica';
 
 export interface EvolucionCorporalViewProps {
   socioDni: string;
@@ -354,7 +355,10 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
         </div>
       </div>
 
-      {/* 4. Gamificación: Medallas de Logro e Hitos */}
+      {/* 4. Silueta Anatómica Visual Interactiva (Mapa Segmental) */}
+      <SiluetaAnatomica evaluacion={currentEval} />
+
+      {/* 5. Gamificación: Medallas de Logro e Hitos */}
       <MedallasLogro medallas={medallas} socioNombre={socioNombre} />
 
       {/* 5. Gráfico Táctil de Tendencia Mobile */}

@@ -56,6 +56,7 @@ describe('Componente EvolucionCorporalView', () => {
     // 1. Elementos clave Mobile-First
     expect((await screen.findAllByText(/FIT SCORE/i, {}, { timeout: 8000 })).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/Tu Transformación Acumulada/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Silueta Anatómica Visual/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Tus Medallas y Logros/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Simulador de Metas/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Tu Composición en Cristiano/i, {}, { timeout: 8000 })).toBeDefined();

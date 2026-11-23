@@ -18,6 +18,11 @@ import {
   ObjetivoSimulador,
   ProyeccionMeta,
   PuntoProyeccion,
+  AnalisisSimetria,
+  DetalleSimetriaPar,
+  ZonaCalorSilueta,
+  ModoSilueta,
+  ExtremidadId,
 } from '../types/evaluacion';
 
 export interface EntradaMedicion {
@@ -1073,5 +1078,160 @@ export function calcularProyeccionMeta(
     estadoFactibilidad,
   };
 }
+
+// ==============================================================================
+// MOTOR DE SIMETRÍA Y ZONAS DE CALOR PARA SILUETA ANATÓMICA
+// ==============================================================================
+
+function evaluarParSimetrico(
+  nombrePar: 'Brazos' | 'Piernas',
+  izqKg: number,
+  derKg: number
+): DetalleSimetriaPar {
+  const diffKg = Number(Math.abs(izqKg - derKg).toFixed(1));
+  const maxKg = Math.max(0.1, Math.max(izqKg, derKg));
+  const indice = Math.min(100, Math.round((Math.min(izqKg, derKg) / maxKg) * 100));
+  const diffPct = Math.round((diffKg / maxKg) * 100);
+
+  let ladoDominante: 'izquierdo' | 'derecho' | 'equilibrado' = 'equilibrado';
+  if (diffKg >= 0.1) {
+    ladoDominante = izqKg > derKg ? 'izquierdo' : 'derecho';
+  }
+
+  const alerta = diffPct >= 10;
+  let mensaje = `Excelente equilibrio bilateral en ${nombrePar.toLowerCase()} (${indice}% simetría).`;
+  if (alerta) {
+    mensaje = `Desbalance perceptible: tu lado ${ladoDominante} tiene +${diffKg} kg de músculo respecto al otro.`;
+  } else if (ladoDominante !== 'equilibrado') {
+    mensaje = `Simetría dentro de rango fisiológico normal con leve predominancia del lado ${ladoDominante}.`;
+  }
+
+  return {
+    diferenciaKg: diffKg,
+    diferenciaPct: diffPct,
+    ladoDominante,
+    indiceSimetriaPct: indice,
+    alertaDesbalance: alerta,
+    mensaje,
+  };
+}
+
+export function analizarSimetriaCorporal(segmental: SegmentalData): AnalisisSimetria {
+  const brazos = evaluarParSimetrico(
+    'Brazos',
+    segmental.brazo_izq.musculo_kg,
+    segmental.brazo_der.musculo_kg
+  );
+
+  const piernas = evaluarParSimetrico(
+    'Piernas',
+    segmental.pierna_izq.musculo_kg,
+    segmental.pierna_der.musculo_kg
+  );
+
+  let balanceGlobal: 'optimo' | 'leve_asimetria' | 'desbalance_atencion' = 'optimo';
+  let resumen = 'Estructura muscular perfectamente equilibrada entre ambos hemisferios corporales.';
+
+  if (brazos.alertaDesbalance || piernas.alertaDesbalance) {
+    balanceGlobal = 'desbalance_atencion';
+    resumen = 'Se detecta un desbalance muscular a corregir con ejercicios unilaterales (mancuernas y poleas).';
+  } else if (brazos.ladoDominante !== 'equilibrado' || piernas.ladoDominante !== 'equilibrado') {
+    balanceGlobal = 'leve_asimetria';
+    resumen = 'Ligera asimetría natural cotidiana, sin riesgo lesivo.';
+  }
+
+  return {
+    brazos,
+    piernas,
+    balanceGlobal,
+    resumen,
+  };
+}
+
+export function calcularZonasCalorSilueta(
+  evaluacion: EvaluacionCorporal,
+  modo: ModoSilueta
+): Record<ExtremidadId, ZonaCalorSilueta> {
+  const seg = evaluacion.segmental_data;
+
+  const configZonas: Array<{ id: ExtremidadId; nombre: string; zona: typeof seg.tronco }> = [
+    { id: 'brazo_izq', nombre: 'Brazo Izquierdo', zona: seg.brazo_izq },
+    { id: 'brazo_der', nombre: 'Brazo Derecho', zona: seg.brazo_der },
+    { id: 'tronco', nombre: 'Tronco / Abdomen', zona: seg.tronco },
+    { id: 'pierna_izq', nombre: 'Pierna Izquierda', zona: seg.pierna_izq },
+    { id: 'pierna_der', nombre: 'Pierna Derecha', zona: seg.pierna_der },
+  ];
+
+  const resultado = {} as Record<ExtremidadId, ZonaCalorSilueta>;
+
+  configZonas.forEach(({ id, nombre, zona }) => {
+    const musculoKg = zona.musculo_kg;
+    const musculoPct = zona.musculo_pct || 100;
+    const grasaKg = zona.grasa_kg || 0;
+    const grasaPct = zona.grasa_pct || 100;
+
+    // Clasificación Músculo: <90% Bajo, 90-110% Normal, >110% Desarrollado
+    let nivelMusculo: 'bajo' | 'normal' | 'desarrollado' = 'normal';
+    if (musculoPct > 110) nivelMusculo = 'desarrollado';
+    else if (musculoPct < 90) nivelMusculo = 'bajo';
+
+    // Clasificación Grasa: <80% Bajo, 80-160% Óptimo, >160% Elevado
+    let nivelGrasa: 'bajo' | 'optimo' | 'elevado' = 'optimo';
+    if (grasaPct > 160) nivelGrasa = 'elevado';
+    else if (grasaPct < 80) nivelGrasa = 'bajo';
+
+    let colorHex = '#10b981';
+    let colorClase = 'text-emerald-400 bg-emerald-500/20 border-emerald-400/40';
+    let descripcionEstado = '';
+
+    if (modo === 'musculo') {
+      if (nivelMusculo === 'desarrollado') {
+        colorHex = '#38bdf8'; // Cyan deportivo brillante
+        colorClase = 'text-cyan-400 bg-cyan-500/20 border-cyan-400/40';
+        descripcionEstado = 'Masa muscular desarrollada y tonificada sobre el promedio.';
+      } else if (nivelMusculo === 'normal') {
+        colorHex = '#10b981'; // Esmeralda saludable
+        colorClase = 'text-emerald-400 bg-emerald-500/20 border-emerald-400/40';
+        descripcionEstado = 'Nivel de masa muscular en rango estándar óptimo.';
+      } else {
+        colorHex = '#71717a'; // Zinc / atenuado
+        colorClase = 'text-zinc-400 bg-zinc-800/40 border-zinc-600/40';
+        descripcionEstado = 'Zona con potencial para ganar mayor masa y fuerza.';
+      }
+    } else {
+      // Modo Grasa
+      if (nivelGrasa === 'elevado') {
+        colorHex = '#f87171'; // Rojo / Naranja
+        colorClase = 'text-red-400 bg-red-500/20 border-red-400/40';
+        descripcionEstado = 'Porcentaje de grasa segmental elevado. Zona prioritaria para definición.';
+      } else if (nivelGrasa === 'optimo') {
+        colorHex = '#fbbf24'; // Ámbar dorado de Trankilandia
+        colorClase = 'text-amber-400 bg-amber-500/20 border-amber-400/40';
+        descripcionEstado = 'Nivel de grasa segmental dentro de límites saludables estándar.';
+      } else {
+        colorHex = '#06b6d4'; // Cyan atlético / bajo
+        colorClase = 'text-cyan-400 bg-cyan-500/20 border-cyan-400/40';
+        descripcionEstado = 'Bajo porcentaje de grasa en esta extremidad (condición definida).';
+      }
+    }
+
+    resultado[id] = {
+      id,
+      nombre,
+      musculoKg,
+      musculoPct,
+      grasaKg,
+      grasaPct,
+      nivelMusculo,
+      nivelGrasa,
+      colorHex,
+      colorClase,
+      descripcionEstado,
+    };
+  });
+
+  return resultado;
+}
+
 
 
