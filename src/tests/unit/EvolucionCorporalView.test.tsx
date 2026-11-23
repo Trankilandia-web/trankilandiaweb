@@ -53,23 +53,33 @@ describe('Componente EvolucionCorporalView', () => {
 
     render(<EvolucionCorporalView socioDni="99990001" />);
 
-    // 1. Elementos clave Mobile-First
+    // 1. Elementos clave Mobile-First en el Hero Header
     expect((await screen.findAllByText(/FIT SCORE/i, {}, { timeout: 8000 })).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText(/Tu Transformación Acumulada/i, {}, { timeout: 8000 })).toBeDefined();
+    expect(await screen.findByText(/Story Card/i, {}, { timeout: 8000 })).toBeDefined();
+
+    // 2. Pestaña Activa por defecto: Mi Silueta
     expect(await screen.findByText(/Silueta Anatómica Visual/i, {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findByText(/Tus Medallas y Logros/i, {}, { timeout: 8000 })).toBeDefined();
+
+    // 3. Navegar a pestaña Gráficos & Metas
+    const tabGraficos = screen.getByRole('button', { name: /Gráficos & Metas/i });
+    fireEvent.click(tabGraficos);
     expect(await screen.findByText(/Simulador de Metas/i, {}, { timeout: 8000 })).toBeDefined();
+    expect((await screen.findAllByText(/Punto de Partida/i, {}, { timeout: 8000 })).length).toBeGreaterThanOrEqual(1);
+
+    // 4. Navegar a pestaña Medallas & Salud
+    const tabSalud = screen.getByRole('button', { name: /Medallas & Salud/i });
+    fireEvent.click(tabSalud);
+    expect(await screen.findByText(/Tus Medallas y Logros/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Tu Composición en Cristiano/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Salud del Corazón & Abdomen/i, {}, { timeout: 8000 })).toBeDefined();
     expect(await screen.findByText(/Tu Motor Metabólico/i, {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findByText(/Generar Story Card/i, {}, { timeout: 8000 })).toBeDefined();
-    expect(await screen.findByText(/Compartir Mi Evolución en WhatsApp/i, {}, { timeout: 8000 })).toBeDefined();
 
-    // 2. Acordeón técnico colapsado por defecto para no saturar al usuario
+    // 5. Acordeón técnico colapsado por defecto para no saturar al usuario
     const botonAcordeon = screen.getByText(/Ver Reporte Biométrico Completo/i);
     expect(botonAcordeon).toBeDefined();
 
-    // 3. Abrir acordeón y verificar que se revelan los datos técnicos
+    // 6. Abrir acordeón y verificar que se revelan los datos técnicos
     fireEvent.click(botonAcordeon);
     expect(await screen.findByText(/INFORME BIOMÉTRICO FITDAYS/i, {}, { timeout: 4000 })).toBeDefined();
     expect(await screen.findByText(/Análisis Segmentario Completo/i, {}, { timeout: 4000 })).toBeDefined();

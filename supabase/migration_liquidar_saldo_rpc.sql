@@ -33,6 +33,9 @@ DECLARE
   v_metodo_limpio TEXT;
   v_tipo_ingreso TEXT;
 BEGIN
+  -- Activar bypass de protección para esta transacción
+  PERFORM set_config('app.bypass_saldo_protection', 'true', true);
+
   -- 1. Validaciones estrictas de entrada
   IF p_socio_id IS NULL OR TRIM(p_socio_id) = '' THEN
     RAISE EXCEPTION 'El ID del socio es requerido.';
@@ -118,6 +121,7 @@ END;
 $$;
 
 -- Permisos controlados de ejecución
+ALTER FUNCTION public.liquidar_saldo_socio(TEXT, NUMERIC, TEXT, TEXT) OWNER TO postgres;
 REVOKE EXECUTE ON FUNCTION public.liquidar_saldo_socio(TEXT, NUMERIC, TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.liquidar_saldo_socio(TEXT, NUMERIC, TEXT, TEXT) TO anon, authenticated, service_role;
 

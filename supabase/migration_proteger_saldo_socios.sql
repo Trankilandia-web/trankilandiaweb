@@ -11,14 +11,18 @@
 CREATE OR REPLACE FUNCTION public.proteger_reduccion_saldo_socios()
 RETURNS TRIGGER
 LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 BEGIN
-  -- Si la petición se ejecuta bajo el rol anon (PostgREST directo sin función SECURITY DEFINER)
-  IF CURRENT_USER = 'anon' THEN
-    -- Bloquear cualquier intento de reducir o condonar saldo_pendiente (incluso enviando NULL)
-    IF COALESCE(NEW.saldo_pendiente, 0) < COALESCE(OLD.saldo_pendiente, 0) THEN
-      RAISE EXCEPTION 'Operación rechazada: La anulación o reducción directa de saldos pendientes está prohibida. Toda liquidación o abono debe realizarse mediante la función oficial liquidar_saldo_socio.';
-    END IF;
+  -- Si la petición proviene de una función oficial autorizada en la misma transacción (bypass local)
+  IF current_setting('app.bypass_saldo_protection', true) = 'true' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Bloquear cualquier intento de reducir o condonar saldo_pendiente por REST directo
+  IF COALESCE(NEW.saldo_pendiente, 0) < COALESCE(OLD.saldo_pendiente, 0) THEN
+    RAISE EXCEPTION 'Operación rechazada: La anulación o reducción directa de saldos pendientes está prohibida. Toda liquidación o abono debe realizarse mediante la función oficial liquidar_saldo_socio.';
   END IF;
 
   RETURN NEW;
@@ -32,4 +36,4 @@ BEFORE UPDATE ON public.socios
 FOR EACH ROW
 EXECUTE FUNCTION public.proteger_reduccion_saldo_socios();
 
-SELECT 'Trigger trg_proteger_saldo_socios activado: Reducción directa de saldo por anon bloqueada con éxito' AS resultado;
+SELECT 'Trigger trg_proteger_saldo_socios activado: Reducción directa de saldo bloqueada con éxito' AS resultado;

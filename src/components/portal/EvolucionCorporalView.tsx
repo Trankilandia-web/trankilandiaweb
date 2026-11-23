@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import {
   Scale,
   Calendar,
-  Share2,
   Flame,
   Heart,
   MessageCircle,
@@ -14,6 +13,9 @@ import {
   Trophy,
   Dumbbell,
   Camera,
+  User,
+  TrendingUp,
+  Award,
 } from 'lucide-react';
 import { EvaluacionCorporal } from '../../types/evaluacion';
 import {
@@ -42,6 +44,7 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
   const [evaluaciones, setEvaluaciones] = useState<EvaluacionCorporal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvalIndex, setSelectedEvalIndex] = useState(0);
+  const [tabActiva, setTabActiva] = useState<'silueta' | 'graficos' | 'salud'>('silueta');
   const [showDetallesTecnicos, setShowDetallesTecnicos] = useState(false);
   const [showStoryModal, setShowStoryModal] = useState(false);
 
@@ -148,96 +151,141 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
     year: 'numeric',
   });
 
-  const fechaInicialCorta = new Date(initialEval.fecha).toLocaleDateString('es-PE', {
-    day: 'numeric',
-    month: 'short',
-  });
-
-  const fechaActualCorta = new Date(currentEval.fecha).toLocaleDateString('es-PE', {
-    day: 'numeric',
-    month: 'short',
-  });
-
-  // Compartir en WhatsApp
-  const handleShare = () => {
-    const texto = encodeURIComponent(
-      `*MI EVOLUCIÓN EN TRANKILANDIA GYM* 🏋️‍♂️💪\n` +
-      `📅 Fecha: ${fechaFormateada}\n` +
-      `⭐ *Fit Score:* ${currentEval.puntuacion_corporal}/100 Pts\n\n` +
-      `🏆 *Veredicto:* ${sintesis.fraseImpacto}\n` +
-      `💪 *Masa Muscular:* ${currentEval.masa_muscular_kg.toFixed(1)} kg (${acumulado.delta_musculo_kg >= 0 ? '+' : ''}${acumulado.delta_musculo_kg} kg)\n` +
-      `🔥 *Grasa Corporal:* ${currentEval.grasa_corporal_pct.toFixed(1)}% (${acumulado.delta_grasa_kg > 0 ? '+' : ''}${acumulado.delta_grasa_kg} kg grasa)\n` +
-      `⚖️ *Peso Total:* ${currentEval.peso_kg.toFixed(1)} kg\n` +
-      `🫀 *Grasa Visceral:* Nivel ${currentEval.grasa_visceral} (${sintesis.visceral.titulo})\n` +
-      `⚡ *Metabolismo Basal:* ${currentEval.bmr_kcal} kcal/día\n\n` +
-      `¡A seguir entrenando con todo en Trankilandia Gym!`
-    );
-    window.open(`https://wa.me/?text=${texto}`, '_blank');
-  };
-
   const segmental = currentEval.segmental_data;
 
   return (
-    <div className="space-y-6 font-sans">
-      {/* 1. Header con Resumen & Fit Score */}
-      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-7 shadow-xl space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-amber-400">
-              <Scale className="w-4 h-4" />
-              <span>Bioimpedancia Segmental (8 Electrodos)</span>
+    <div className="space-y-4 font-sans">
+      {/* 1. HERO HEADER UNIFICADO: Fit Score, Veredicto & Métricas Clave */}
+      <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-white/10 rounded-3xl p-4 sm:p-6 shadow-xl space-y-4">
+        {/* Fila Superior: Título + Fit Score + Botón Story Card */}
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-1 min-w-0">
+            <div className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider text-amber-400">
+              <Scale className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">Bioimpedancia 8 Electrodos</span>
             </div>
-            <h3 className="text-2xl sm:text-3xl font-black uppercase text-white font-display tracking-tight">
+            <h3 className="text-xl sm:text-2xl font-black uppercase text-white font-display tracking-tight truncate">
               Mi Evolución Corporal
             </h3>
-            <p className="text-xs text-zinc-400 font-mono flex items-center gap-2 pt-0.5">
-              <Calendar className="w-3.5 h-3.5 text-zinc-500" />
-              <span>Evaluación del <strong className="text-white">{fechaFormateada}</strong></span>
-              <span>·</span>
-              <span className="text-zinc-500">Coach: {currentEval.evaluador_nombre}</span>
+            <p className="text-[11px] text-zinc-400 font-mono flex items-center gap-1.5">
+              <Calendar className="w-3 h-3 text-zinc-500 shrink-0" />
+              <span>{fechaFormateada}</span>
+              {currentEval.evaluador_nombre && (
+                <>
+                  <span className="text-zinc-600">·</span>
+                  <span className="text-zinc-500 truncate">Coach: {currentEval.evaluador_nombre}</span>
+                </>
+              )}
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Botón Story Card (Discreto, elegante, mobile-friendly) */}
             <button
               type="button"
               onClick={() => setShowStoryModal(true)}
-              className="p-3 rounded-2xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-400 hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-2 text-xs font-mono font-bold"
-              title="Crear Story Card para Instagram / WhatsApp"
+              className="px-3 py-2 rounded-xl bg-amber-400/10 hover:bg-amber-400/20 border border-amber-400/30 text-amber-400 hover:text-amber-300 transition-all cursor-pointer flex items-center gap-1.5 text-xs font-mono font-bold active:scale-95 shadow-sm"
+              title="Generar Story Card para Instagram / WhatsApp"
             >
-              <Camera className="w-4 h-4" />
-              <span className="hidden sm:inline">Story Card</span>
+              <Camera className="w-3.5 h-3.5" />
+              <span className="text-[11px]">Story Card</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleShare}
-              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white transition-colors cursor-pointer flex items-center gap-2 text-xs font-mono"
-              title="Compartir en WhatsApp"
-            >
-              <Share2 className="w-4 h-4 text-emerald-400" />
-              <span className="hidden sm:inline">Compartir</span>
-            </button>
-
-            {/* Fit Score Badge */}
-            <div className="px-4 py-3 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-500 text-black font-mono shadow-lg shadow-amber-400/20 text-center min-w-[100px]">
-              <span className="text-[10px] font-black uppercase tracking-wider block">FIT SCORE</span>
-              <span className="text-2xl font-black leading-none">{currentEval.puntuacion_corporal}</span>
-              <span className="text-[9px] font-bold block mt-0.5 opacity-80">/ 100 PTS</span>
+            {/* Fit Score Badge Compacto */}
+            <div className="px-3 py-1.5 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 text-black font-mono shadow-md shadow-amber-400/20 text-center min-w-[76px]">
+              <span className="text-[9px] font-black uppercase tracking-wider block leading-none">FIT SCORE</span>
+              <span className="text-xl font-black leading-tight block">{currentEval.puntuacion_corporal}</span>
+              <span className="text-[8px] font-bold block opacity-80 leading-none">/ 100 PTS</span>
             </div>
           </div>
         </div>
 
-        {/* Selector de Fecha si hay varias evaluaciones */}
+        {/* Veredicto Motivacional Compacto */}
+        <div className="p-3 sm:p-3.5 rounded-2xl bg-zinc-950/80 border border-amber-400/25 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shrink-0">
+            <Trophy className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-wider">
+                {diagnostico.fase}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-bold text-white font-sans truncate">
+              {sintesis.fraseImpacto}
+            </p>
+          </div>
+        </div>
+
+        {/* Tira Compacta de 3 Métricas Clave (Tu Transformación) */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400 px-0.5">
+            <span className="uppercase tracking-wider font-bold text-zinc-400 flex items-center gap-1">
+              <Zap className="w-3 h-3 text-amber-400" />
+              <span>Tu Transformación Acumulada</span>
+            </span>
+            {evaluaciones.length > 1 ? (
+              <span className="text-zinc-500">{acumulado.dias_totales} días de constancia</span>
+            ) : (
+              <span className="text-zinc-500">Punto de partida inicial</span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 font-mono">
+            {/* 1. Músculo */}
+            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-emerald-500/25 space-y-0.5">
+              <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-emerald-400">
+                <Dumbbell className="w-3 h-3 shrink-0" />
+                <span className="truncate">Músculo</span>
+              </div>
+              <div className="text-base sm:text-lg font-black text-white leading-tight">
+                {currentEval.masa_muscular_kg.toFixed(1)} <span className="text-[10px] text-zinc-500 font-normal">kg</span>
+              </div>
+              <div className="text-[10px] font-bold text-emerald-400 truncate">
+                {acumulado.delta_musculo_kg >= 0 ? `+${acumulado.delta_musculo_kg}` : acumulado.delta_musculo_kg} kg
+              </div>
+            </div>
+
+            {/* 2. Grasa */}
+            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-amber-400/25 space-y-0.5">
+              <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-amber-400">
+                <Flame className="w-3 h-3 shrink-0" />
+                <span className="truncate">Grasa</span>
+              </div>
+              <div className="text-base sm:text-lg font-black text-white leading-tight">
+                {currentEval.grasa_corporal_pct.toFixed(1)}<span className="text-[10px] text-zinc-500 font-normal">%</span>
+              </div>
+              <div className={`text-[10px] font-bold truncate ${acumulado.delta_grasa_kg <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {acumulado.delta_grasa_kg <= 0 ? `${acumulado.delta_grasa_kg}` : `+${acumulado.delta_grasa_kg}`} kg
+              </div>
+            </div>
+
+            {/* 3. Peso */}
+            <div className="p-2.5 sm:p-3 rounded-2xl bg-zinc-950 border border-white/10 space-y-0.5">
+              <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-zinc-400">
+                <Scale className="w-3 h-3 shrink-0" />
+                <span className="truncate">Peso</span>
+              </div>
+              <div className="text-base sm:text-lg font-black text-white leading-tight">
+                {currentEval.peso_kg.toFixed(1)} <span className="text-[10px] text-zinc-500 font-normal">kg</span>
+              </div>
+              <div className="text-[10px] font-bold text-zinc-400 truncate">
+                {acumulado.delta_peso_kg > 0 ? `+${acumulado.delta_peso_kg}` : acumulado.delta_peso_kg} kg
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Selector de Historial de Fechas (si hay varias evaluaciones) */}
         {evaluaciones.length > 1 && (
           <div className="pt-2 border-t border-white/5 flex items-center gap-2 overflow-x-auto pb-1">
-            <span className="text-[11px] font-mono text-zinc-500 uppercase shrink-0">Historial:</span>
+            <span className="text-[10px] font-mono text-zinc-500 uppercase shrink-0">Historial:</span>
             {evaluaciones.map((ev, idx) => (
               <button
                 key={ev.id}
                 type="button"
                 onClick={() => setSelectedEvalIndex(idx)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-mono whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-mono whitespace-nowrap transition-all cursor-pointer ${
                   selectedEvalIndex === idx
                     ? 'bg-amber-400 text-black font-bold shadow'
                     : 'bg-zinc-950 text-zinc-400 hover:text-white border border-white/10'
@@ -251,269 +299,182 @@ export default function EvolucionCorporalView({ socioDni, socioNombre }: Evoluci
         )}
       </div>
 
-      {/* 2. Tarjeta Hero de Veredicto Motivacional */}
-      <div className="bg-gradient-to-br from-amber-400/15 via-zinc-900 to-zinc-950 border border-amber-400/30 rounded-3xl p-5 sm:p-6 shadow-xl space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">
-            <Trophy className="w-4 h-4 text-amber-400" />
-            <span>{diagnostico.fase}</span>
-          </div>
-          <span className="text-[11px] font-mono px-2.5 py-0.5 rounded-full bg-amber-400/10 text-amber-300 border border-amber-400/20 font-bold">
-            {currentEval.puntuacion_corporal} Pts
-          </span>
-        </div>
-        <h4 className="text-xl sm:text-2xl font-black text-white uppercase font-display tracking-tight leading-tight">
-          {sintesis.fraseImpacto}
-        </h4>
-        <p className="text-xs sm:text-sm text-zinc-300 font-sans leading-relaxed">
-          {diagnostico.descripcion}
-        </p>
-      </div>
-
-      {/* 3. Tarjeta Visual "Tu Transformación" (Antes vs Hoy) */}
-      <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 sm:p-6 shadow-xl space-y-4">
-        <div className="flex items-center justify-between border-b border-white/5 pb-3">
-          <div className="space-y-0.5">
-            <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
-              <Zap className="w-3.5 h-3.5" />
-              <span>Tu Transformación Acumulada</span>
-            </div>
-            <p className="text-[11px] text-zinc-400 font-mono">
-              {evaluaciones.length > 1
-                ? `Inicio (${fechaInicialCorta}) → Hoy (${fechaActualCorta}) · ${acumulado.dias_totales} días de constancia`
-                : 'Punto de partida registrado en tu primera evaluación'}
-            </p>
-          </div>
-          {evaluaciones.length > 1 && (
-            <span className="text-[10px] font-mono font-bold px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              {acumulado.meta_progreso_pct}% a tu meta
-            </span>
-          )}
-        </div>
-
-        {/* Barras de Progreso Comparativas */}
-        <div className="space-y-3.5 font-mono text-xs">
-          {/* Músculo */}
-          <div className="space-y-1.5 p-3.5 rounded-2xl bg-zinc-950 border border-emerald-500/20">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-emerald-400 flex items-center gap-1.5">
-                <Dumbbell className="w-3.5 h-3.5" />
-                <span>Masa Muscular</span>
-              </span>
-              <span className="font-bold text-white text-sm">
-                {currentEval.masa_muscular_kg.toFixed(1)} kg
-              </span>
-            </div>
-            <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden">
-              <div
-                className="bg-emerald-400 h-2.5 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, Math.max(15, (currentEval.masa_muscular_kg / (currentEval.peso_kg || 1)) * 130))}%`,
-                }}
-              />
-            </div>
-            <div className="flex justify-between items-center text-[11px] text-zinc-400">
-              <span>Inicio: {initialEval.masa_muscular_kg.toFixed(1)} kg</span>
-              <span className={`font-bold ${acumulado.delta_musculo_kg >= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {acumulado.delta_musculo_kg >= 0 ? `+${acumulado.delta_musculo_kg}` : acumulado.delta_musculo_kg} kg de músculo
-              </span>
-            </div>
-          </div>
-
-          {/* Grasa */}
-          <div className="space-y-1.5 p-3.5 rounded-2xl bg-zinc-950 border border-amber-400/20">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-amber-400 flex items-center gap-1.5">
-                <Flame className="w-3.5 h-3.5" />
-                <span>Grasa Corporal</span>
-              </span>
-              <span className="font-bold text-white text-sm">
-                {currentEval.grasa_corporal_pct.toFixed(1)}% · {currentEval.grasa_corporal_kg.toFixed(1)} kg
-              </span>
-            </div>
-            <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden">
-              <div
-                className="bg-amber-400 h-2.5 rounded-full transition-all duration-500"
-                style={{
-                  width: `${Math.min(100, Math.max(15, currentEval.grasa_corporal_pct * 2.2))}%`,
-                }}
-              />
-            </div>
-            <div className="flex justify-between items-center text-[11px] text-zinc-400">
-              <span>Inicio: {initialEval.grasa_corporal_pct.toFixed(1)}%</span>
-              <span className={`font-bold ${acumulado.delta_grasa_kg <= 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                {acumulado.delta_grasa_kg > 0 ? `+${acumulado.delta_grasa_kg}` : acumulado.delta_grasa_kg} kg de grasa neta
-              </span>
-            </div>
-          </div>
-
-          {/* Peso */}
-          <div className="space-y-1.5 p-3.5 rounded-2xl bg-zinc-950 border border-white/5">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
-                <Scale className="w-3.5 h-3.5 text-zinc-400" />
-                <span>Peso en Báscula</span>
-              </span>
-              <span className="font-bold text-white text-sm">
-                {currentEval.peso_kg.toFixed(1)} kg
-              </span>
-            </div>
-            <div className="flex justify-between items-center text-[11px] text-zinc-400">
-              <span>Inicio: {initialEval.peso_kg.toFixed(1)} kg</span>
-              <span className="text-zinc-300 font-bold">
-                {acumulado.delta_peso_kg > 0 ? `+${acumulado.delta_peso_kg}` : acumulado.delta_peso_kg} kg total
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 4. Silueta Anatómica Visual Interactiva (Mapa Segmental) */}
-      <SiluetaAnatomica evaluacion={currentEval} />
-
-      {/* 5. Gamificación: Medallas de Logro e Hitos */}
-      <MedallasLogro medallas={medallas} socioNombre={socioNombre} />
-
-      {/* 5. Gráfico Táctil de Tendencia Mobile */}
-      <EvolucionTrendChart
-        evaluaciones={evaluaciones}
-        onSelectEval={(ev) => {
-          const idx = evaluaciones.findIndex((e) => e.id === ev.id);
-          if (idx !== -1) setSelectedEvalIndex(idx);
-        }}
-      />
-
-      {/* 6. Simulador Interactivo de Metas */}
-      <SimuladorMetas evaluaciones={evaluaciones} currentEval={currentEval} />
-
-      {/* 7. Semáforos de Salud y Consejos en Lenguaje Cotidiano */}
-      <div className="space-y-3">
-        <div className="px-1">
-          <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
-            SALUD Y RENDIMIENTO
-          </span>
-          <h4 className="text-lg font-black uppercase text-white font-display">
-            Tu Composición en Cristiano
-          </h4>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {/* Tarjeta 1: Grasa Visceral & Corazón */}
-          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
-            <div className="flex items-center justify-between text-xs font-mono">
-              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
-                <Heart className="w-4 h-4 text-red-400" />
-                <span>Salud del Corazón & Abdomen</span>
-              </span>
-              <span
-                className={`font-bold px-2 py-0.5 rounded-lg text-[10px] uppercase border ${
-                  sintesis.visceral.estado === 'optimo'
-                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                    : sintesis.visceral.estado === 'atencion'
-                    ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
-                    : 'text-red-400 bg-red-500/10 border-red-500/30'
-                }`}
-              >
-                {sintesis.visceral.titulo}
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2 font-mono">
-              <span className="text-2xl font-black text-white">{currentEval.grasa_visceral}</span>
-              <span className="text-xs text-zinc-500">/ 50 nivel</span>
-            </div>
-            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
-              {sintesis.visceral.descripcion}
-            </p>
-          </div>
-
-          {/* Tarjeta 2: Motor Metabólico */}
-          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
-            <div className="flex items-center justify-between text-xs font-mono">
-              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-amber-400" />
-                <span>Tu Motor Metabólico</span>
-              </span>
-              <span className="text-amber-400 font-bold text-[10px] uppercase bg-amber-400/10 px-2 py-0.5 rounded-lg border border-amber-400/20">
-                Basal (BMR)
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2 font-mono">
-              <span className="text-2xl font-black text-amber-400">{currentEval.bmr_kcal}</span>
-              <span className="text-xs text-zinc-400">kcal/día en reposo</span>
-            </div>
-            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
-              {sintesis.metabolismo.descripcion}
-            </p>
-          </div>
-
-          {/* Tarjeta 3: Hidratación */}
-          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
-            <div className="flex items-center justify-between text-xs font-mono">
-              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
-                <Droplets className="w-4 h-4 text-blue-400" />
-                <span>Hidratación Celular</span>
-              </span>
-              <span
-                className={`font-bold px-2 py-0.5 rounded-lg text-[10px] uppercase border ${
-                  sintesis.hidratacion.estado === 'excelente'
-                    ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
-                    : 'text-blue-400 bg-blue-500/10 border-blue-500/30'
-                }`}
-              >
-                {currentEval.agua_pct.toFixed(1)}% Agua
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2 font-mono">
-              <span className="text-2xl font-black text-blue-400">{sintesis.hidratacion.litros_recomendados}</span>
-              <span className="text-xs text-zinc-400">Litros/día sugeridos</span>
-            </div>
-            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
-              {sintesis.hidratacion.consejo}
-            </p>
-          </div>
-
-          {/* Tarjeta 4: Consumo Proteico */}
-          <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
-            <div className="flex items-center justify-between text-xs font-mono">
-              <span className="font-bold text-zinc-300 flex items-center gap-1.5">
-                <Utensils className="w-4 h-4 text-emerald-400" />
-                <span>Meta Proteica Sugerida</span>
-              </span>
-              <span className="text-emerald-400 font-bold text-[10px] uppercase bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
-                Nutrición
-              </span>
-            </div>
-            <div className="flex items-baseline gap-2 font-mono">
-              <span className="text-2xl font-black text-emerald-400">{sintesis.proteina.gramos_sugeridos}g</span>
-              <span className="text-xs text-zinc-400">Proteína al día</span>
-            </div>
-            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
-              {sintesis.proteina.consejo}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Botones Destacados: Story Card y WhatsApp */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+      {/* 2. SELECTOR DE PESTAÑAS MOBILE-FIRST */}
+      <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-zinc-950 border border-white/10 font-mono text-xs shadow-inner">
         <button
           type="button"
-          onClick={() => setShowStoryModal(true)}
-          className="py-4 px-6 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-black font-black uppercase tracking-wider text-xs font-mono shadow-xl shadow-amber-400/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+          onClick={() => setTabActiva('silueta')}
+          className={`py-2.5 px-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            tabActiva === 'silueta'
+              ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+              : 'text-zinc-400 hover:text-white hover:bg-white/5'
+          }`}
         >
-          <Camera className="w-4 h-4" />
-          <span>Generar Story Card (Instagram / WhatsApp)</span>
+          <User className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Mi Silueta</span>
         </button>
 
         <button
           type="button"
-          onClick={handleShare}
-          className="py-4 px-6 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black uppercase tracking-wider text-xs font-mono shadow-xl shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+          onClick={() => setTabActiva('graficos')}
+          className={`py-2.5 px-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            tabActiva === 'graficos'
+              ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+              : 'text-zinc-400 hover:text-white hover:bg-white/5'
+          }`}
         >
-          <Share2 className="w-4 h-4" />
-          <span>Compartir Mi Evolución en WhatsApp</span>
+          <TrendingUp className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Gráficos & Metas</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setTabActiva('salud')}
+          className={`py-2.5 px-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+            tabActiva === 'salud'
+              ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/20'
+              : 'text-zinc-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          <Award className="w-3.5 h-3.5 shrink-0" />
+          <span className="truncate">Medallas & Salud</span>
         </button>
       </div>
+
+      {/* 3. CONTENIDO SEGÚN LA PESTAÑA ACTIVA */}
+      {tabActiva === 'silueta' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <SiluetaAnatomica evaluacion={currentEval} />
+        </div>
+      )}
+
+      {tabActiva === 'graficos' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <EvolucionTrendChart
+            evaluaciones={evaluaciones}
+            onSelectEval={(ev) => {
+              const idx = evaluaciones.findIndex((e) => e.id === ev.id);
+              if (idx !== -1) setSelectedEvalIndex(idx);
+            }}
+          />
+          <SimuladorMetas evaluaciones={evaluaciones} currentEval={currentEval} />
+        </div>
+      )}
+
+      {tabActiva === 'salud' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          {/* Medallas de Logro e Hitos */}
+          <MedallasLogro medallas={medallas} socioNombre={socioNombre} />
+
+          {/* Semáforos de Salud Cotidiana */}
+          <div className="space-y-3">
+            <div className="px-1">
+              <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
+                SALUD Y RENDIMIENTO
+              </span>
+              <h4 className="text-lg font-black uppercase text-white font-display">
+                Tu Composición en Cristiano
+              </h4>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Tarjeta 1: Grasa Visceral & Corazón */}
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                    <Heart className="w-4 h-4 text-red-400" />
+                    <span>Salud del Corazón & Abdomen</span>
+                  </span>
+                  <span
+                    className={`font-bold px-2 py-0.5 rounded-lg text-[10px] uppercase border ${
+                      sintesis.visceral.estado === 'optimo'
+                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                        : sintesis.visceral.estado === 'atencion'
+                        ? 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                        : 'text-red-400 bg-red-500/10 border-red-500/30'
+                    }`}
+                  >
+                    {sintesis.visceral.titulo}
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 font-mono">
+                  <span className="text-2xl font-black text-white">{currentEval.grasa_visceral}</span>
+                  <span className="text-xs text-zinc-500">/ 50 nivel</span>
+                </div>
+                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                  {sintesis.visceral.descripcion}
+                </p>
+              </div>
+
+              {/* Tarjeta 2: Motor Metabólico */}
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-amber-400" />
+                    <span>Tu Motor Metabólico</span>
+                  </span>
+                  <span className="text-amber-400 font-bold text-[10px] uppercase bg-amber-400/10 px-2 py-0.5 rounded-lg border border-amber-400/20">
+                    Basal (BMR)
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 font-mono">
+                  <span className="text-2xl font-black text-amber-400">{currentEval.bmr_kcal}</span>
+                  <span className="text-xs text-zinc-400">kcal/día en reposo</span>
+                </div>
+                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                  {sintesis.metabolismo.descripcion}
+                </p>
+              </div>
+
+              {/* Tarjeta 3: Hidratación */}
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                    <Droplets className="w-4 h-4 text-blue-400" />
+                    <span>Hidratación Celular</span>
+                  </span>
+                  <span
+                    className={`font-bold px-2 py-0.5 rounded-lg text-[10px] uppercase border ${
+                      sintesis.hidratacion.estado === 'excelente'
+                        ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                        : 'text-blue-400 bg-blue-500/10 border-blue-500/30'
+                    }`}
+                  >
+                    {currentEval.agua_pct.toFixed(1)}% Agua
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 font-mono">
+                  <span className="text-2xl font-black text-blue-400">{sintesis.hidratacion.litros_recomendados}</span>
+                  <span className="text-xs text-zinc-400">Litros/día sugeridos</span>
+                </div>
+                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                  {sintesis.hidratacion.consejo}
+                </p>
+              </div>
+
+              {/* Tarjeta 4: Consumo Proteico */}
+              <div className="p-4 rounded-2xl bg-zinc-900 border border-white/10 space-y-2 shadow-lg">
+                <div className="flex items-center justify-between text-xs font-mono">
+                  <span className="font-bold text-zinc-300 flex items-center gap-1.5">
+                    <Utensils className="w-4 h-4 text-emerald-400" />
+                    <span>Meta Proteica Sugerida</span>
+                  </span>
+                  <span className="text-emerald-400 font-bold text-[10px] uppercase bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20">
+                    Nutrición
+                  </span>
+                </div>
+                <div className="flex items-baseline gap-2 font-mono">
+                  <span className="text-2xl font-black text-emerald-400">{sintesis.proteina.gramos_sugeridos}g</span>
+                  <span className="text-xs text-zinc-400">Proteína al día</span>
+                </div>
+                <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+                  {sintesis.proteina.consejo}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 6. Acordeón Plegable: Reporte Biométrico Técnico Fitdays (19 Indicadores + Extremidades) */}
       <div className="pt-2">

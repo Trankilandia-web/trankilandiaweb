@@ -9,7 +9,6 @@ import {
   Zap,
   Sparkles,
   Lock,
-  Share2,
   Flag,
   Award,
 } from 'lucide-react';
@@ -20,7 +19,7 @@ interface MedallasLogroProps {
   socioNombre?: string;
 }
 
-export default function MedallasLogro({ medallas, socioNombre }: MedallasLogroProps) {
+export default function MedallasLogro({ medallas }: MedallasLogroProps) {
   const [filtro, setFiltro] = useState<'todas' | CategoriaMedalla>('todas');
 
   if (!medallas || medallas.length === 0) {
@@ -105,17 +104,6 @@ export default function MedallasLogro({ medallas, socioNombre }: MedallasLogroPr
           label: 'BRONCE',
         };
     }
-  };
-
-  const handleCompartirMedalla = (medalla: MedallaLogro) => {
-    const saludo = socioNombre ? `¡Hola! Soy ${socioNombre} y` : '¡Hola!';
-    const texto = encodeURIComponent(
-      `🏆 *¡NUEVO LOGRO EN TRANKILANDIA GYM!* 🏋️‍♂️\n\n` +
-        `${saludo} acabo de desbloquear la medalla *${medalla.titulo}* (${medalla.nivel.toUpperCase()}) en mi evaluación de bioimpedancia.\n\n` +
-        `⭐ *Detalle:* ${medalla.descripcion}\n\n` +
-        `¡Avanzando con todo en Trankilandia Gym! 💪🔥`
-    );
-    window.open(`https://wa.me/?text=${texto}`, '_blank');
   };
 
   return (
@@ -217,18 +205,6 @@ export default function MedallasLogro({ medallas, socioNombre }: MedallasLogroPr
                       </span>
                     </div>
                   </div>
-
-                  {/* Botón de compartir individual */}
-                  {medalla.desbloqueada && (
-                    <button
-                      type="button"
-                      onClick={() => handleCompartirMedalla(medalla)}
-                      title="Compartir medalla en WhatsApp"
-                      className="p-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/20 text-zinc-400 hover:text-emerald-400 border border-white/5 transition-all cursor-pointer"
-                    >
-                      <Share2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                 </div>
 
                 {/* Título y descripción */}

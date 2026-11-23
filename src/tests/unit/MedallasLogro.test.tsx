@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import MedallasLogro from '../../components/portal/MedallasLogro';
 import { MedallaLogro } from '../../types/evaluacion';
@@ -85,17 +85,5 @@ describe('Componente MedallasLogro', () => {
 
     expect(screen.getByText('Quemador de Grasa')).toBeDefined();
     expect(screen.getByText(/0.4 \/ 1 kg grasa/i)).toBeDefined();
-  });
-
-  it('abre enlace de compartir al hacer clic en compartir medalla', () => {
-    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
-    render(<MedallasLogro medallas={mockMedallas} socioNombre="Luis" />);
-
-    const shareButtons = screen.getAllByTitle(/compartir medalla en whatsapp/i);
-    expect(shareButtons.length).toBeGreaterThan(0);
-    fireEvent.click(shareButtons[0]);
-
-    expect(openSpy).toHaveBeenCalled();
-    openSpy.mockRestore();
   });
 });
