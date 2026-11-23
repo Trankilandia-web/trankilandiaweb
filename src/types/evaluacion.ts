@@ -177,3 +177,53 @@ export function validarMetricasEvaluacion(
 
   return { valido: true };
 }
+
+// ==============================================================================
+// TIPOS PARA GAMIFICACIÓN (MEDALLAS DE LOGRO) Y SIMULADOR DE METAS
+// ==============================================================================
+
+export type NivelMedalla = 'bronce' | 'plata' | 'oro' | 'diamante';
+export type CategoriaMedalla = 'musculo' | 'grasa' | 'salud' | 'constancia' | 'secreta';
+
+export interface MedallaLogro {
+  id: string;
+  categoria: CategoriaMedalla;
+  titulo: string;
+  descripcion: string;
+  nivel: NivelMedalla;
+  icono: string; // identificador semántico para Lucide icon
+  desbloqueada: boolean;
+  fechaDesbloqueo?: string;
+  progresoActual: number;
+  metaNivel: number;
+  unidad: string;
+  esSecreta?: boolean;
+}
+
+export interface ObjetivoSimulador {
+  tipo: 'grasa' | 'musculo';
+  valorActual: number;
+  valorObjetivo: number;
+  frecuenciaSemanal: number; // 2, 3, 4, 5 sesiones/semana
+}
+
+export interface PuntoProyeccion {
+  fecha: string;
+  valor: number;
+  esProyectado: boolean;
+  etiqueta?: string;
+}
+
+export interface ProyeccionMeta {
+  tipo: 'grasa' | 'musculo';
+  valorInicial: number;
+  valorActual: number;
+  valorObjetivo: number;
+  ritmoSemanalEstimado: number; // kg o % por semana
+  semanasRestantes: number;
+  fechaEstimada: string;
+  puntosCurva: PuntoProyeccion[];
+  mensajeMotivacional: string;
+  estadoFactibilidad: 'alcanzable' | 'desafiante' | 'mantenimiento';
+}
+

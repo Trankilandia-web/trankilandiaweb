@@ -13,6 +13,11 @@ import {
   DiagnosticoRecomposicion,
   SegmentalData,
   SexoBiometrico,
+  MedallaLogro,
+  NivelMedalla,
+  ObjetivoSimulador,
+  ProyeccionMeta,
+  PuntoProyeccion,
 } from '../types/evaluacion';
 
 export interface EntradaMedicion {
@@ -599,3 +604,474 @@ export function generarSintesisSaludCotidiana(
     fraseImpacto,
   };
 }
+
+// ==============================================================================
+// SISTEMA DE GAMIFICACIÓN Y MEDALLAS DE LOGRO
+// ==============================================================================
+
+export function calcularMedallasSocio(evaluaciones: EvaluacionCorporal[]): MedallaLogro[] {
+  if (!evaluaciones || evaluaciones.length === 0) {
+    return [];
+  }
+
+  // Ordenar cronológicamente ascendente (más antigua a más reciente)
+  const sorted = [...evaluaciones].sort(
+    (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+  );
+
+  const primera = sorted[0];
+  const actual = sorted[sorted.length - 1];
+
+  const deltaMusculo = Number((actual.masa_muscular_kg - primera.masa_muscular_kg).toFixed(1));
+  const deltaGrasaKg = Number((actual.grasa_corporal_kg - primera.grasa_corporal_kg).toFixed(1));
+  const grasaPerdidaKg = Math.max(0, -deltaGrasaKg);
+  const visceralActual = actual.grasa_visceral;
+  const aguaActual = actual.agua_pct;
+  const scoreActual = actual.puntuacion_corporal;
+  const pctMusculoActual = actual.masa_muscular_pct;
+  const totalEvals = sorted.length;
+
+  const medallas: MedallaLogro[] = [];
+
+  // 1. Primera Evaluación
+  medallas.push({
+    id: 'primera_evaluacion',
+    categoria: 'constancia',
+    titulo: 'Primera Huella',
+    descripcion: 'Iniciaste tu viaje biométrico con la báscula de 8 electrodos EUROMAR® G78.',
+    nivel: 'bronce',
+    icono: 'Flag',
+    desbloqueada: true,
+    fechaDesbloqueo: primera.fecha,
+    progresoActual: 1,
+    metaNivel: 1,
+    unidad: 'evaluación',
+    esSecreta: false,
+  });
+
+  // 2. Constructor de Músculo
+  let nivelConstructor: NivelMedalla = 'bronce';
+  let desbloqueadaConstructor = false;
+  let metaConstructor = 0.5;
+
+  if (deltaMusculo >= 5.0) {
+    nivelConstructor = 'diamante';
+    desbloqueadaConstructor = true;
+    metaConstructor = 5.0;
+  } else if (deltaMusculo >= 3.0) {
+    nivelConstructor = 'oro';
+    desbloqueadaConstructor = true;
+    metaConstructor = 3.0;
+  } else if (deltaMusculo >= 1.5) {
+    nivelConstructor = 'plata';
+    desbloqueadaConstructor = true;
+    metaConstructor = 1.5;
+  } else if (deltaMusculo >= 0.5) {
+    nivelConstructor = 'bronce';
+    desbloqueadaConstructor = true;
+    metaConstructor = 0.5;
+  }
+
+  medallas.push({
+    id: 'constructor',
+    categoria: 'musculo',
+    titulo: 'Constructor Muscular',
+    descripcion: desbloqueadaConstructor
+      ? `Has desarrollado +${deltaMusculo} kg de masa muscular pura desde tu inicio.`
+      : 'Gana al menos 0.5 kg de masa muscular para desbloquear el nivel Bronce.',
+    nivel: nivelConstructor,
+    icono: 'Dumbbell',
+    desbloqueada: desbloqueadaConstructor,
+    progresoActual: Math.max(0, deltaMusculo),
+    metaNivel: metaConstructor,
+    unidad: 'kg músculo',
+    esSecreta: false,
+  });
+
+  // 3. Quemador de Grasa
+  let nivelQuemador: NivelMedalla = 'bronce';
+  let desbloqueadaQuemador = false;
+  let metaQuemador = 1.0;
+
+  if (grasaPerdidaKg >= 10.0) {
+    nivelQuemador = 'diamante';
+    desbloqueadaQuemador = true;
+    metaQuemador = 10.0;
+  } else if (grasaPerdidaKg >= 5.0) {
+    nivelQuemador = 'oro';
+    desbloqueadaQuemador = true;
+    metaQuemador = 5.0;
+  } else if (grasaPerdidaKg >= 3.0) {
+    nivelQuemador = 'plata';
+    desbloqueadaQuemador = true;
+    metaQuemador = 3.0;
+  } else if (grasaPerdidaKg >= 1.0) {
+    nivelQuemador = 'bronce';
+    desbloqueadaQuemador = true;
+    metaQuemador = 1.0;
+  }
+
+  medallas.push({
+    id: 'quemador_grasa',
+    categoria: 'grasa',
+    titulo: 'Quemador de Grasa',
+    descripcion: desbloqueadaQuemador
+      ? `Has incinerado ${grasaPerdidaKg} kg de grasa neta mediante entrenamiento disciplinado.`
+      : 'Reduce al menos 1 kg de grasa corporal para desbloquear el nivel Bronce.',
+    nivel: nivelQuemador,
+    icono: 'Flame',
+    desbloqueada: desbloqueadaQuemador,
+    progresoActual: grasaPerdidaKg,
+    metaNivel: metaQuemador,
+    unidad: 'kg grasa',
+    esSecreta: false,
+  });
+
+  // 4. Corazón Sano (Grasa Visceral)
+  let nivelCorazon: NivelMedalla = 'bronce';
+  let desbloqueadaCorazon = false;
+  let metaCorazon = 12;
+
+  if (visceralActual <= 6) {
+    nivelCorazon = 'diamante';
+    desbloqueadaCorazon = true;
+    metaCorazon = 6;
+  } else if (visceralActual <= 8) {
+    nivelCorazon = 'oro';
+    desbloqueadaCorazon = true;
+    metaCorazon = 8;
+  } else if (visceralActual <= 10) {
+    nivelCorazon = 'plata';
+    desbloqueadaCorazon = true;
+    metaCorazon = 10;
+  } else if (visceralActual <= 12) {
+    nivelCorazon = 'bronce';
+    desbloqueadaCorazon = true;
+    metaCorazon = 12;
+  }
+
+  medallas.push({
+    id: 'corazon_sano',
+    categoria: 'salud',
+    titulo: 'Corazón Blindado',
+    descripcion: desbloqueadaCorazon
+      ? `Grasa visceral nivel ${visceralActual}. Tus órganos internos y corazón están en rango seguro.`
+      : 'Lleva tu grasa visceral a nivel 12 o menos para proteger tus órganos vitales.',
+    nivel: nivelCorazon,
+    icono: 'Heart',
+    desbloqueada: desbloqueadaCorazon,
+    progresoActual: visceralActual,
+    metaNivel: metaCorazon,
+    unidad: 'nivel',
+    esSecreta: false,
+  });
+
+  // 5. Fuente de Agua (Hidratación Celular)
+  let nivelAgua: NivelMedalla = 'bronce';
+  let desbloqueadaAgua = false;
+  let metaAgua = 50;
+
+  if (aguaActual >= 65) {
+    nivelAgua = 'diamante';
+    desbloqueadaAgua = true;
+    metaAgua = 65;
+  } else if (aguaActual >= 60) {
+    nivelAgua = 'oro';
+    desbloqueadaAgua = true;
+    metaAgua = 60;
+  } else if (aguaActual >= 55) {
+    nivelAgua = 'plata';
+    desbloqueadaAgua = true;
+    metaAgua = 55;
+  } else if (aguaActual >= 50) {
+    nivelAgua = 'bronce';
+    desbloqueadaAgua = true;
+    metaAgua = 50;
+  }
+
+  medallas.push({
+    id: 'fuente_agua',
+    categoria: 'salud',
+    titulo: 'Hidratación Óptima',
+    descripcion: desbloqueadaAgua
+      ? `Mantienes un ${aguaActual.toFixed(1)}% de agua corporal para máxima recuperación muscular.`
+      : 'Alcanza al menos 50% de hidratación para desbloquear el nivel Bronce.',
+    nivel: nivelAgua,
+    icono: 'Droplets',
+    desbloqueada: desbloqueadaAgua,
+    progresoActual: Number(aguaActual.toFixed(1)),
+    metaNivel: metaAgua,
+    unidad: '% agua',
+    esSecreta: false,
+  });
+
+  // 6. Disciplina y Constancia (Evaluaciones Consecutivas)
+  let nivelDisciplina: NivelMedalla = 'bronce';
+  let desbloqueadaDisciplina = false;
+  let metaDisciplina = 2;
+
+  if (totalEvals >= 12) {
+    nivelDisciplina = 'diamante';
+    desbloqueadaDisciplina = true;
+    metaDisciplina = 12;
+  } else if (totalEvals >= 6) {
+    nivelDisciplina = 'oro';
+    desbloqueadaDisciplina = true;
+    metaDisciplina = 6;
+  } else if (totalEvals >= 4) {
+    nivelDisciplina = 'plata';
+    desbloqueadaDisciplina = true;
+    metaDisciplina = 4;
+  } else if (totalEvals >= 2) {
+    nivelDisciplina = 'bronce';
+    desbloqueadaDisciplina = true;
+    metaDisciplina = 2;
+  }
+
+  medallas.push({
+    id: 'disciplina',
+    categoria: 'constancia',
+    titulo: 'Hábito de Hierro',
+    descripcion: desbloqueadaDisciplina
+      ? `Has completado ${totalEvals} evaluaciones de seguimiento con constancia ejemplar.`
+      : 'Realiza al menos 2 evaluaciones mensuales para desbloquear este reconocimiento.',
+    nivel: nivelDisciplina,
+    icono: 'Calendar',
+    desbloqueada: desbloqueadaDisciplina,
+    progresoActual: totalEvals,
+    metaNivel: metaDisciplina,
+    unidad: 'evaluaciones',
+    esSecreta: false,
+  });
+
+  // ==========================================================================
+  // MEDALLAS SECRETAS
+  // ==========================================================================
+
+  // Secreta 1: Élite Corporal (Score >= 85)
+  const esElite = scoreActual >= 85;
+  medallas.push({
+    id: 'elite_corporal',
+    categoria: 'secreta',
+    titulo: esElite ? 'Élite Corporal' : 'Misterio Oculto',
+    descripcion: esElite
+      ? '¡Fit Score legendario! Tu composición corporal está en el percentil superior del gimnasio.'
+      : 'Alcanza una condición física de élite (Fit Score 85+) para revelar este trofeo.',
+    nivel: 'diamante',
+    icono: 'Trophy',
+    desbloqueada: esElite,
+    progresoActual: scoreActual,
+    metaNivel: 85,
+    unidad: 'Fit Score',
+    esSecreta: !esElite,
+  });
+
+  // Secreta 2: Titán de Acero (Masa Muscular > 50% del peso)
+  const esTitan = pctMusculoActual >= 50;
+  medallas.push({
+    id: 'titan',
+    categoria: 'secreta',
+    titulo: esTitan ? 'Titán de Acero' : 'Misterio Oculto',
+    descripcion: esTitan
+      ? 'Más del 50% de tu peso corporal es músculo activo. Una fuerza imparable.'
+      : 'Desarrolla más del 50% de tu peso en masa muscular magra.',
+    nivel: 'diamante',
+    icono: 'Zap',
+    desbloqueada: esTitan,
+    progresoActual: Number(pctMusculoActual.toFixed(1)),
+    metaNivel: 50,
+    unidad: '% músculo',
+    esSecreta: !esTitan,
+  });
+
+  // Secreta 3: Renacimiento Corporal (Músculo sube, grasa baja, visceral baja)
+  const esRenacimiento =
+    sorted.length >= 2 &&
+    actual.masa_muscular_kg > primera.masa_muscular_kg &&
+    actual.grasa_corporal_kg < primera.grasa_corporal_kg &&
+    actual.grasa_visceral < primera.grasa_visceral;
+
+  medallas.push({
+    id: 'renacimiento',
+    categoria: 'secreta',
+    titulo: esRenacimiento ? 'Renacimiento Corporal' : 'Misterio Oculto',
+    descripcion: esRenacimiento
+      ? '¡Trifecta de recomposición! Subiste músculo, bajaste grasa corporal y redujiste grasa visceral a la vez.'
+      : 'Logra la trifecta corporal: aumenta músculo, quema grasa y baja grasa visceral simultáneamente.',
+    nivel: 'oro',
+    icono: 'Sparkles',
+    desbloqueada: esRenacimiento,
+    progresoActual: esRenacimiento ? 1 : 0,
+    metaNivel: 1,
+    unidad: 'trifecta',
+    esSecreta: !esRenacimiento,
+  });
+
+  // Ordenar: primero desbloqueadas (por nivel: diamante -> oro -> plata -> bronce), luego bloqueadas
+  const pesoNivel: Record<NivelMedalla, number> = {
+    diamante: 4,
+    oro: 3,
+    plata: 2,
+    bronce: 1,
+  };
+
+  return medallas.sort((a, b) => {
+    if (a.desbloqueada && !b.desbloqueada) return -1;
+    if (!a.desbloqueada && b.desbloqueada) return 1;
+    if (a.desbloqueada && b.desbloqueada) {
+      return pesoNivel[b.nivel] - pesoNivel[a.nivel];
+    }
+    // Para bloqueadas, las secretas al final
+    if (a.esSecreta && !b.esSecreta) return 1;
+    if (!a.esSecreta && b.esSecreta) return -1;
+    return (b.progresoActual / (b.metaNivel || 1)) - (a.progresoActual / (a.metaNivel || 1));
+  });
+}
+
+// ==============================================================================
+// MOTOR DEL SIMULADOR DE METAS Y PROYECCIÓN TEMPORAL
+// ==============================================================================
+
+export function calcularProyeccionMeta(
+  evaluaciones: EvaluacionCorporal[],
+  params: ObjetivoSimulador
+): ProyeccionMeta {
+  const { tipo, valorActual, valorObjetivo, frecuenciaSemanal } = params;
+
+  // Frecuencia fisiológica entre 2 y 5 días a la semana
+  const freq = Math.min(5, Math.max(2, frecuenciaSemanal || 3));
+
+  let ritmoSemanal = 0;
+  if (tipo === 'grasa') {
+    // Reducción % de grasa por semana según frecuencia de entrenamiento
+    const tablaGrasa: Record<number, number> = {
+      2: 0.25,
+      3: 0.35,
+      4: 0.48,
+      5: 0.58,
+    };
+    ritmoSemanal = tablaGrasa[freq] || 0.35;
+  } else {
+    // Aumento de masa muscular (kg) por semana según frecuencia de entrenamiento de fuerza
+    const tablaMusculo: Record<number, number> = {
+      2: 0.045,
+      3: 0.065,
+      4: 0.085,
+      5: 0.105,
+    };
+    ritmoSemanal = tablaMusculo[freq] || 0.065;
+  }
+
+  const sorted =
+    evaluaciones && evaluaciones.length > 0
+      ? [...evaluaciones].sort(
+          (a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
+        )
+      : [];
+
+  const valorInicial =
+    sorted.length > 0
+      ? tipo === 'grasa'
+        ? sorted[0].grasa_corporal_pct
+        : sorted[0].masa_muscular_kg
+      : valorActual;
+
+  const distancia = Math.abs(valorActual - valorObjetivo);
+
+  if (distancia < 0.1) {
+    return {
+      tipo,
+      valorInicial,
+      valorActual,
+      valorObjetivo,
+      ritmoSemanalEstimado: ritmoSemanal,
+      semanasRestantes: 0,
+      fechaEstimada: new Date().toISOString(),
+      puntosCurva: [
+        {
+          fecha: new Date().toISOString(),
+          valor: valorActual,
+          esProyectado: false,
+          etiqueta: 'Hoy',
+        },
+      ],
+      mensajeMotivacional:
+        '¡Estás exactamente en tu zona objetivo! Mantén tu constancia para consolidar este nivel.',
+      estadoFactibilidad: 'mantenimiento',
+    };
+  }
+
+  const semanasRestantes = Math.max(1, Math.round(distancia / ritmoSemanal));
+  const msPorSemana = 7 * 24 * 60 * 60 * 1000;
+  const hoyMs = Date.now();
+  const fechaEstimada = new Date(hoyMs + semanasRestantes * msPorSemana).toISOString();
+
+  // Generar puntos para la curva (históricos + checkpoints proyectados)
+  const puntosCurva: PuntoProyeccion[] = [];
+
+  sorted.forEach((ev, idx) => {
+    puntosCurva.push({
+      fecha: ev.fecha,
+      valor: tipo === 'grasa' ? ev.grasa_corporal_pct : ev.masa_muscular_kg,
+      esProyectado: false,
+      etiqueta: idx === sorted.length - 1 ? 'Hoy' : undefined,
+    });
+  });
+
+  if (puntosCurva.length === 0) {
+    puntosCurva.push({
+      fecha: new Date(hoyMs).toISOString(),
+      valor: valorActual,
+      esProyectado: false,
+      etiqueta: 'Hoy',
+    });
+  }
+
+  const numCheckpoints = Math.min(4, Math.max(2, Math.floor(semanasRestantes / 3)));
+  const pasoSemanas = semanasRestantes / numCheckpoints;
+  const pasoValor = (valorObjetivo - valorActual) / numCheckpoints;
+
+  for (let i = 1; i < numCheckpoints; i++) {
+    const sem = Math.round(i * pasoSemanas);
+    const msFuturo = hoyMs + sem * msPorSemana;
+    const valFuturo = Number((valorActual + i * pasoValor).toFixed(1));
+    puntosCurva.push({
+      fecha: new Date(msFuturo).toISOString(),
+      valor: valFuturo,
+      esProyectado: true,
+      etiqueta: `Semana ${sem}`,
+    });
+  }
+
+  puntosCurva.push({
+    fecha: fechaEstimada,
+    valor: valorObjetivo,
+    esProyectado: true,
+    etiqueta: '🎯 Meta',
+  });
+
+  const mesesAprox = (semanasRestantes / 4.3).toFixed(1);
+  const estadoFactibilidad = semanasRestantes > 36 ? 'desafiante' : 'alcanzable';
+
+  let mensajeMotivacional = '';
+  if (tipo === 'grasa') {
+    mensajeMotivacional = `A un ritmo constante de ${freq} sesiones semanales, alcanzarás el ${valorObjetivo}% de grasa en aprox. ${semanasRestantes} semanas (~${mesesAprox} meses). ¡Un objetivo completamente alcanzable con disciplina!`;
+  } else {
+    mensajeMotivacional = `Con ${freq} días de entrenamiento de fuerza por semana, alcanzarás ${valorObjetivo} kg de masa muscular en unas ${semanasRestantes} semanas (~${mesesAprox} meses). ¡Cada repetición cuenta!`;
+  }
+
+  return {
+    tipo,
+    valorInicial,
+    valorActual,
+    valorObjetivo,
+    ritmoSemanalEstimado: ritmoSemanal,
+    semanasRestantes,
+    fechaEstimada,
+    puntosCurva,
+    mensajeMotivacional,
+    estadoFactibilidad,
+  };
+}
+
+

@@ -24,15 +24,18 @@ import {
   obtenerEstandarFitdays,
   calcularProgresoAcumulado,
   generarSintesisSaludCotidiana,
+  calcularMedallasSocio,
 } from '../../lib/bioimpedanceEngine';
 import EvolucionTrendChart from './EvolucionTrendChart';
+import MedallasLogro from './MedallasLogro';
+import SimuladorMetas from './SimuladorMetas';
 
 export interface EvolucionCorporalViewProps {
   socioDni: string;
   socioNombre?: string;
 }
 
-export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalViewProps) {
+export default function EvolucionCorporalView({ socioDni, socioNombre }: EvolucionCorporalViewProps) {
   const [evaluaciones, setEvaluaciones] = useState<EvaluacionCorporal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedEvalIndex, setSelectedEvalIndex] = useState(0);
@@ -133,6 +136,7 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
   const acumulado = calcularProgresoAcumulado(initialEval, currentEval);
   const diagnostico = determinarDiagnostico(deltas, currentEval);
   const sintesis = generarSintesisSaludCotidiana(currentEval);
+  const medallas = calcularMedallasSocio(evaluaciones);
 
   const fechaFormateada = new Date(currentEval.fecha).toLocaleDateString('es-PE', {
     day: 'numeric',
@@ -350,7 +354,10 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
         </div>
       </div>
 
-      {/* 4. Gráfico Táctil de Tendencia Mobile */}
+      {/* 4. Gamificación: Medallas de Logro e Hitos */}
+      <MedallasLogro medallas={medallas} socioNombre={socioNombre} />
+
+      {/* 5. Gráfico Táctil de Tendencia Mobile */}
       <EvolucionTrendChart
         evaluaciones={evaluaciones}
         onSelectEval={(ev) => {
@@ -359,7 +366,10 @@ export default function EvolucionCorporalView({ socioDni }: EvolucionCorporalVie
         }}
       />
 
-      {/* 5. Semáforos de Salud y Consejos en Lenguaje Cotidiano */}
+      {/* 6. Simulador Interactivo de Metas */}
+      <SimuladorMetas evaluaciones={evaluaciones} currentEval={currentEval} />
+
+      {/* 7. Semáforos de Salud y Consejos en Lenguaje Cotidiano */}
       <div className="space-y-3">
         <div className="px-1">
           <span className="text-xs font-mono font-bold uppercase text-amber-400 tracking-wider">
