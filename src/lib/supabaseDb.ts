@@ -99,6 +99,7 @@ export interface ResultadoVentaPOS {
   cliente_nombre?: string;
   cliente_dni?: string;
   fecha?: string;
+  ticket?: AuditoriaVentaItem;
 }
 
 const LOCAL_OFFLINE_QUEUE_KEY = 'trankilandia_asistencias_offline';
@@ -666,6 +667,29 @@ export async function registrarVentaPOS(
           }
         }
 
+        const ticketOnline: AuditoriaVentaItem = {
+          id: String(data.venta_id || data.numero_ticket),
+          numeroTicket: data.numero_ticket,
+          fecha: new Date().toLocaleDateString('es-PE', { timeZone: 'America/Lima' }),
+          hora: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' }),
+          fechaHoraISO: new Date().toISOString(),
+          clienteNombre,
+          clienteDni: clienteDni || undefined,
+          metodoPago,
+          total: totalFinalRpc,
+          subtotal: subtotalRpc,
+          descuento: montoDescuento > 0 ? { monto: montoDescuento, motivo: motivoDescuento } : undefined,
+          esOffline: false,
+          items: items.map((it: any) => ({
+            productoId: it.producto_id,
+            nombreProducto: it.nombre || it.nombre_producto || 'Producto',
+            cantidad: it.cantidad,
+            precioUnitario: Number(it.precio_unitario || 0),
+            subtotal: Number(it.subtotal || (Number(it.precio_unitario || 0) * it.cantidad)),
+          })),
+        };
+        guardarEnHistorialVentasLocal(ticketOnline);
+
         return {
           success: true,
           venta_id: data.venta_id,
@@ -677,6 +701,7 @@ export async function registrarVentaPOS(
           cliente_nombre: clienteNombre,
           cliente_dni: clienteDni,
           fecha: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+          ticket: ticketOnline,
         };
       }
       console.warn('Supabase RPC registrar_venta_pos no disponible, usando procesamiento POS local-first:', error?.message);
@@ -743,10 +768,25 @@ export async function registrarVentaPOS(
   const dateStr = getLocalPeruDateString().replace(/-/g, '');
   const randomTicket = `TK-${dateStr}-${Math.floor(1000 + Math.random() * 9000)}`;
 
+  const itemsConDetalles = items.map((it: any) => {
+    const prod = prods.find((p) => p.id === it.producto_id);
+    const nombre = it.nombre || prod?.nombre || 'Producto';
+    const precio = Number(it.precio_unitario || prod?.precio_venta || 0);
+    const cant = Number(it.cantidad) || 1;
+    return {
+      producto_id: it.producto_id,
+      nombre: nombre,
+      nombre_producto: nombre,
+      cantidad: cant,
+      precio_unitario: precio,
+      subtotal: precio * cant,
+    };
+  });
+
   // Encolar en storage persistente para sincronizar con Supabase al recuperar la red
   const ventaOffline: VentaOfflineQueued = {
     id: `sale-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    items,
+    items: itemsConDetalles as any,
     metodo_pago: metodoPago,
     cliente_nombre: clienteNombreAuditado,
     cliente_dni: clienteDni,
@@ -758,6 +798,31 @@ export async function registrarVentaPOS(
   };
   encolarVentaOffline(ventaOffline);
 
+  const ticketOffline: AuditoriaVentaItem = {
+    id: ventaOffline.id,
+    numeroTicket: randomTicket,
+    fecha: new Date().toLocaleDateString('es-PE', { timeZone: 'America/Lima' }),
+    hora: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' }),
+    fechaHoraISO: ventaOffline.fecha,
+    clienteNombre,
+    clienteDni: clienteDni || undefined,
+    metodoPago,
+    total: totalCalculado,
+    subtotal: subtotalCalculado,
+    descuento: montoDescuento > 0 ? { monto: montoDescuento, motivo: motivoDescuento } : undefined,
+    esOffline: true,
+    items: itemsConDetalles.map((it) => ({
+      productoId: it.producto_id,
+      nombreProducto: it.nombre_producto,
+      cantidad: it.cantidad,
+      precioUnitario: it.precio_unitario,
+      subtotal: it.subtotal,
+    })),
+  };
+
+  // Guardar en historial local permanente para consultas de auditoría
+  guardarEnHistorialVentasLocal(ticketOffline);
+
   return {
     success: true,
     numero_ticket: randomTicket,
@@ -768,6 +833,7 @@ export async function registrarVentaPOS(
     cliente_nombre: clienteNombre,
     cliente_dni: clienteDni,
     fecha: new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+    ticket: ticketOffline,
   };
 }
 
@@ -821,11 +887,22 @@ export async function procesarColaVentasOffline(): Promise<number> {
         } else {
           // Si la RPC registrar_venta_pos no está disponible o falla por RLS,
           // registrar al menos el asiento contable en la tabla ingresos para asegurar el flujo de caja
+          const prodsInv = await obtenerProductosInventario();
+          const itemsTexto = (venta.items || [])
+            .map((it: any) => {
+              const p = prodsInv.find((prod) => prod.id === it.producto_id);
+              const name = it.nombre || it.nombre_producto || p?.nombre || 'Producto';
+              return `${it.cantidad}x ${name}`;
+            })
+            .join(', ');
+
           const { error: ingErr } = await supabase.from('ingresos').insert({
             monto: venta.total,
             metodo_pago: venta.metodo_pago,
             tipo: 'Venta POS Productos',
-            observacion: `Venta offline ticket ${venta.numero_ticket} (${venta.cliente_nombre}) - Sync automática`,
+            observacion: itemsTexto
+              ? `Venta offline ticket ${venta.numero_ticket} [${itemsTexto}] (${venta.cliente_nombre}) - Sync automática`
+              : `Venta offline ticket ${venta.numero_ticket} (${venta.cliente_nombre}) - Sync automática`,
           });
           if (!ingErr) {
             sincronizadasExitosas.add(String(venta.id));
@@ -2850,7 +2927,11 @@ export interface AuditoriaVentaItem {
   clienteDni?: string;
   metodoPago: string;
   total: number;
+  subtotal?: number;
+  descuento?: { monto: number; motivo: string };
   fechaHoraISO?: string;
+  esOffline?: boolean;
+  operador?: string;
   items: {
     productoId: string;
     nombreProducto: string;
@@ -2858,6 +2939,31 @@ export interface AuditoriaVentaItem {
     precioUnitario: number;
     subtotal: number;
   }[];
+}
+
+export const LOCAL_SALES_HISTORY_KEY = 'trankilandia_historial_ventas_pos';
+
+export function guardarEnHistorialVentasLocal(ticket: AuditoriaVentaItem): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const raw = localStorage.getItem(LOCAL_SALES_HISTORY_KEY);
+    const history: AuditoriaVentaItem[] = raw ? JSON.parse(raw) : [];
+    const filtrado = history.filter((h) => h.numeroTicket !== ticket.numeroTicket);
+    filtrado.unshift(ticket);
+    localStorage.setItem(LOCAL_SALES_HISTORY_KEY, JSON.stringify(filtrado.slice(0, 300)));
+  } catch (err) {
+    console.warn('[guardarEnHistorialVentasLocal] Error guardando historial:', err);
+  }
+}
+
+export function obtenerHistorialVentasLocal(): AuditoriaVentaItem[] {
+  try {
+    if (typeof localStorage === 'undefined') return [];
+    const raw = localStorage.getItem(LOCAL_SALES_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
 export interface ResumenVentasPorProducto {
@@ -3005,6 +3111,23 @@ export async function obtenerAuditoriaVentasPOS(
     console.warn('[obtenerAuditoriaVentasPOS] Error leyendo cola local:', offlineErr);
   }
 
+  // 3. Complementar con historial persistente local (asegura que las ventas offline y tickets no pierdan sus ítems)
+  try {
+    const localHistory = obtenerHistorialVentasLocal();
+    localHistory.forEach((hv) => {
+      if (!todasLasVentas.some((v) => v.numeroTicket === hv.numeroTicket)) {
+        const dateObj = hv.fechaHoraISO ? new Date(hv.fechaHoraISO) : new Date();
+        const isoDate = dateObj.toISOString().split('T')[0];
+        if (fechaInicio && isoDate < fechaInicio) return;
+        if (fechaFin && isoDate > fechaFin) return;
+
+        todasLasVentas.push(hv);
+      }
+    });
+  } catch (histErr) {
+    console.warn('[obtenerAuditoriaVentasPOS] Error leyendo historial local:', histErr);
+  }
+
   // 3. Consolidar totales y ranking por producto
   const productoMap = new Map<string, { nombre: string; cantidad: number; total: number }>();
   let totalVendido = 0;
@@ -3057,6 +3180,16 @@ export interface MovimientoCaja {
   monto: number;
   operador: string;
   ticketOBoleta?: string;
+  items?: {
+    productoId?: string;
+    nombreProducto: string;
+    cantidad: number;
+    precioUnitario: number;
+    subtotal: number;
+  }[];
+  subtotal?: number;
+  descuento?: { monto: number; motivo: string };
+  esOffline?: boolean;
 }
 
 export interface ReporteCajaDiario {
@@ -3119,8 +3252,12 @@ export async function obtenerReporteCajaMovimientos(
       concepto: itemsResumen,
       metodoPago: metodo,
       monto: v.total,
-      operador: 'Recepción / POS',
+      operador: v.operador || 'Recepción / POS',
       ticketOBoleta: v.numeroTicket,
+      items: v.items,
+      subtotal: v.subtotal || v.total,
+      descuento: v.descuento,
+      esOffline: v.esOffline || v.numeroTicket.includes('OFFLINE') || (typeof v.id === 'string' && v.id.startsWith('sale-')),
     });
   });
 
@@ -3180,8 +3317,38 @@ export async function obtenerReporteCajaMovimientos(
           const createdDate = new Date(ing.created_at || new Date());
           const horaStr = createdDate.toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Lima' });
 
+          const matchTicket = (ing.observacion || '').match(/TK-[A-Z0-9-]+/i);
           const matchBoleta = (ing.observacion || '').match(/B\d{3}-\d+/i);
-          const ticketOBoleta = matchBoleta ? matchBoleta[0] : undefined;
+          const ticketOBoleta = matchTicket ? matchTicket[0] : (matchBoleta ? matchBoleta[0] : undefined);
+
+          // Buscar el ticket en posAudit.ventas o en historial local para recuperar los items
+          const ticketMatched = ticketOBoleta
+            ? posAudit.ventas.find((v) => v.numeroTicket.toLowerCase() === ticketOBoleta.toLowerCase()) ||
+              obtenerHistorialVentasLocal().find((v) => v.numeroTicket.toLowerCase() === ticketOBoleta.toLowerCase())
+            : undefined;
+
+          let parsedItems = ticketMatched?.items;
+          if (!parsedItems && obs.includes('[')) {
+            const mBracket = obs.match(/\[(.*?)\]/);
+            if (mBracket && mBracket[1]) {
+              parsedItems = mBracket[1].split(',').map((pStr: string) => {
+                const tr = pStr.trim();
+                const mQty = tr.match(/^(\d+)x\s*(.*)/i);
+                return {
+                  productoId: 'prod',
+                  nombreProducto: mQty ? mQty[2] : tr,
+                  cantidad: mQty ? Number(mQty[1]) : 1,
+                  precioUnitario: 0,
+                  subtotal: 0,
+                };
+              });
+            }
+          }
+
+          let conceptoFinal = ing.observacion || ing.tipo || 'Pago recibido';
+          if (parsedItems && parsedItems.length > 0 && obs.includes('venta offline ticket')) {
+            conceptoFinal = `${parsedItems.map((it) => `${it.cantidad}x ${it.nombreProducto}`).join(', ')}`;
+          }
 
           movimientos.push({
             id: `ing-${ing.id}`,
@@ -3191,11 +3358,14 @@ export async function obtenerReporteCajaMovimientos(
             tipoEtiqueta,
             clienteNombre,
             clienteDni,
-            concepto: ing.observacion || ing.tipo || 'Pago recibido',
+            concepto: conceptoFinal,
             metodoPago: metodo,
             monto: Number(ing.monto) || 0,
             operador: obs.includes('recepción') || obs.includes('recepcion') ? 'Recepción' : 'Administración',
             ticketOBoleta,
+            items: parsedItems,
+            subtotal: Number(ing.monto) || 0,
+            esOffline: obs.includes('offline'),
           });
         });
       }

@@ -137,9 +137,14 @@ export async function guardarEvaluacion(
   }
   saveLocalEvaluaciones(locales);
 
-  // Actualizar estatura en el padrón local de socios
-  if (evaluacion.socio_id && evaluacion.estatura_cm) {
-    actualizarEstaturaLocal(evaluacion.socio_id, evaluacion.estatura_cm);
+  // Actualizar biometría completa (estatura, edad y sexo) en el padrón local y en la nube
+  if (evaluacion.socio_id || evaluacion.socio_dni) {
+    actualizarBiometriaSocio(evaluacion.socio_id, {
+      estatura_cm: evaluacion.estatura_cm,
+      edad: evaluacion.edad,
+      sexo: evaluacion.sexo,
+      socio_dni: evaluacion.socio_dni,
+    });
   }
 
   // 2. Si Supabase está disponible, sincronizar en la nube
@@ -154,14 +159,6 @@ export async function guardarEvaluacion(
       if (error) {
         console.warn('[guardarEvaluacion] Error guardando en Supabase, encolando offline:', error.message);
         encolarEvaluacionOffline(evaluacion);
-      } else {
-        // Actualizar estatura en tabla socios de Supabase
-        if (evaluacion.socio_id && evaluacion.estatura_cm) {
-          await supabase
-            .from('socios')
-            .update({ estatura_cm: evaluacion.estatura_cm })
-            .eq('id', evaluacion.socio_id);
-        }
       }
     } catch (err: any) {
       console.warn('[guardarEvaluacion] Excepción sincronizando evaluación, encolando offline:', err);
@@ -322,36 +319,96 @@ export async function obtenerUltimaEvaluacion(socioDni: string): Promise<Evaluac
   return historial.length > 0 ? historial[0] : null;
 }
 
-/**
- * Actualiza la estatura de un socio en el almacenamiento local
- */
-function actualizarEstaturaLocal(socioId: string, estaturaCm: number): void {
-  try {
-    const members = getStoredMembers();
-    const match = members.find((m) => m.id === socioId);
-    if (match) {
-      (match as any).estatura_cm = estaturaCm;
-      saveStoredMembers(members);
-    }
-  } catch {}
+export interface BiometriaSocioPayload {
+  estatura_cm?: number | null;
+  edad?: number | null;
+  sexo?: 'Masculino' | 'Femenino' | string | null;
+  socio_dni?: string | null;
 }
 
 /**
- * Actualiza la estatura del socio tanto en local como en Supabase
+ * Actualiza la biometría completa de un socio (estatura, edad y sexo)
+ * tanto en el padrón local (localStorage) como en Supabase para no tener que volver a preguntarlo.
  */
-export async function actualizarEstaturaSocio(socioId: string, estaturaCm: number): Promise<boolean> {
-  actualizarEstaturaLocal(socioId, estaturaCm);
+export async function actualizarBiometriaSocio(
+  socioId: string,
+  biometria: BiometriaSocioPayload
+): Promise<boolean> {
+  const cleanDni = biometria.socio_dni ? biometria.socio_dni.trim().replace(/\D/g, '').slice(0, 8) : null;
 
+  // 1. Actualizar en almacenamiento local (getStoredMembers / saveStoredMembers)
+  try {
+    const members = getStoredMembers();
+    let updated = false;
+
+    for (const m of members) {
+      const matchId = socioId && m.id === socioId;
+      const matchDni = cleanDni && m.dni && m.dni.trim().replace(/\D/g, '').slice(0, 8) === cleanDni;
+
+      if (matchId || matchDni) {
+        if (biometria.estatura_cm && biometria.estatura_cm > 0) {
+          (m as any).estatura_cm = biometria.estatura_cm;
+        }
+        if (biometria.edad && biometria.edad > 0) {
+          m.age = biometria.edad;
+          (m as any).edad = biometria.edad;
+        }
+        if (biometria.sexo) {
+          m.gender = biometria.sexo;
+          (m as any).sexo = biometria.sexo;
+        }
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      saveStoredMembers(members);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('gym-members-updated'));
+      }
+    }
+  } catch (err) {
+    console.warn('[actualizarBiometriaSocio] Error local:', err);
+  }
+
+  // 2. Actualizar en Supabase tabla socios
   if (isSupabaseConfigured()) {
     try {
-      const { error } = await supabase
-        .from('socios')
-        .update({ estatura_cm: estaturaCm })
-        .eq('id', socioId);
-      return !error;
-    } catch {
+      const updates: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (biometria.estatura_cm && biometria.estatura_cm > 0) updates.estatura_cm = biometria.estatura_cm;
+      if (biometria.edad && biometria.edad > 0) updates.edad = biometria.edad;
+      if (biometria.sexo) updates.sexo = biometria.sexo;
+
+      if (Object.keys(updates).length > 1) {
+        let query = supabase.from('socios').update(updates);
+        if (socioId && !socioId.startsWith('MEM-TEMP-')) {
+          query = query.eq('id', socioId);
+        } else if (cleanDni) {
+          query = query.eq('dni', cleanDni);
+        } else {
+          return true;
+        }
+
+        const { error } = await query;
+        if (error) {
+          console.warn('[actualizarBiometriaSocio] Error en Supabase:', error.message);
+          return false;
+        }
+      }
+    } catch (err) {
+      console.warn('[actualizarBiometriaSocio] Excepción sincronizando biometría:', err);
       return false;
     }
   }
+
   return true;
+}
+
+/**
+ * Actualiza la estatura del socio (mantenido por compatibilidad)
+ */
+export async function actualizarEstaturaSocio(socioId: string, estaturaCm: number): Promise<boolean> {
+  return actualizarBiometriaSocio(socioId, { estatura_cm: estaturaCm });
 }

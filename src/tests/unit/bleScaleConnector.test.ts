@@ -3,7 +3,11 @@ import {
   isWebBluetoothAvailable,
   decodificarTramaPeso,
   decodificarTramaImpedancia,
+  getSavedScaleName,
+  isScaleCurrentlyConnected,
+  forgetPairedScale,
   FITDAYS_SERVICES,
+  STORAGE_KEY_LAST_BLE_NAME,
 } from '../../lib/bleScaleConnector';
 
 describe('Conector Web Bluetooth y Decodificador BLE Balanza EUROMAR G78-BT', () => {
@@ -132,5 +136,20 @@ describe('Conector Web Bluetooth y Decodificador BLE Balanza EUROMAR G78-BT', ()
     expect(res.impedanciaTorso).toBe(42.0);
     expect(res.impedanciaManos).toBe(52.0);
     expect(res.impedanciaPies).toBe(48.0);
+  });
+
+  it('getSavedScaleName debe retornar el nombre guardado en localStorage o null', () => {
+    localStorage.removeItem(STORAGE_KEY_LAST_BLE_NAME);
+    expect(getSavedScaleName()).toBeNull();
+
+    localStorage.setItem(STORAGE_KEY_LAST_BLE_NAME, 'EUROMAR G78');
+    expect(getSavedScaleName()).toBe('EUROMAR G78');
+  });
+
+  it('forgetPairedScale debe limpiar la balanza guardada', () => {
+    localStorage.setItem(STORAGE_KEY_LAST_BLE_NAME, 'EUROMAR G78');
+    forgetPairedScale();
+    expect(getSavedScaleName()).toBeNull();
+    expect(isScaleCurrentlyConnected()).toBe(false);
   });
 });

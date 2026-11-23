@@ -225,11 +225,62 @@ export function decodificarTramaImpedancia(dataView: DataView): BleImpedanceResu
   };
 }
 
+export const STORAGE_KEY_LAST_BLE_ID = 'trankilandia_last_ble_scale_id';
+export const STORAGE_KEY_LAST_BLE_NAME = 'trankilandia_last_ble_scale_name';
+
+// Referencia en memoria del dispositivo emparejado durante la sesión de la app
+let cachedDevice: any = null;
+let activeConnectionHandle: ScaleConnectionHandle | null = null;
+
+/**
+ * Retorna el nombre de la balanza guardada/emparejada previamente, si existe
+ */
+export function getSavedScaleName(): string | null {
+  try {
+    return localStorage.getItem(STORAGE_KEY_LAST_BLE_NAME) || (cachedDevice?.name ?? null);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Retorna si la balanza ya se encuentra conectada activamente vía GATT
+ */
+export function isScaleCurrentlyConnected(): boolean {
+  return Boolean(cachedDevice?.gatt?.connected);
+}
+
+/**
+ * Obtiene el dispositivo actualmente en caché o conectado
+ */
+export function getCachedScaleDevice(): any {
+  return cachedDevice;
+}
+
+/**
+ * Olvida el dispositivo emparejado para forzar un nuevo escaneo desde cero
+ */
+export function forgetPairedScale(): void {
+  try {
+    if (cachedDevice?.gatt?.connected) {
+      cachedDevice.gatt.disconnect();
+    }
+  } catch {}
+  cachedDevice = null;
+  activeConnectionHandle = null;
+  try {
+    localStorage.removeItem(STORAGE_KEY_LAST_BLE_ID);
+    localStorage.removeItem(STORAGE_KEY_LAST_BLE_NAME);
+  } catch {}
+}
+
 /**
  * Inicia la conexión Web Bluetooth con la balanza EUROMAR G78-BT
+ * Si ya se emparejó previamente, se reconecta automáticamente sin diálogo ni popups.
  */
 export async function conectarBalanzaG78(
-  callbacks: BleScaleCallbacks
+  callbacks: BleScaleCallbacks,
+  options?: { forceNewDevice?: boolean }
 ): Promise<ScaleConnectionHandle> {
   if (!isWebBluetoothAvailable()) {
     throw new Error('Web Bluetooth no está disponible en este navegador. Utiliza Google Chrome en Android o Bluefy en iPhone.');
@@ -237,25 +288,70 @@ export async function conectarBalanzaG78(
 
   const nav = navigator as any;
 
-  callbacks.onStatusChange?.('buscando', 'Buscando balanza EUROMAR® G78-BT...');
+  // 1. Si ya tenemos un dispositivo conectado activamente en memoria y no se forzó nuevo dispositivo:
+  if (!options?.forceNewDevice && cachedDevice && cachedDevice.gatt?.connected) {
+    callbacks.onStatusChange?.('conectado', `Balanza conectada y lista: ${cachedDevice.name || 'EUROMAR G78'}`);
+    if (activeConnectionHandle) {
+      return activeConnectionHandle;
+    }
+  }
+
+  callbacks.onStatusChange?.('buscando', 'Conectando con balanza EUROMAR® G78-BT...');
 
   try {
-    let device: any;
-    const optionalServices = [
-      FITDAYS_SERVICES.SERVICE_MAIN,
-      FITDAYS_SERVICES.SERVICE_ALT,
-      FITDAYS_SERVICES.SERVICE_WEIGHT_SCALE,
-      FITDAYS_SERVICES.SERVICE_BODY_COMPOSITION,
-    ];
+    let device: any = null;
+  const optionalServices = [
+    FITDAYS_SERVICES.SERVICE_MAIN,
+    FITDAYS_SERVICES.SERVICE_ALT,
+    FITDAYS_SERVICES.SERVICE_WEIGHT_SCALE,
+    FITDAYS_SERVICES.SERVICE_BODY_COMPOSITION,
+  ];
 
+  // 2. Intentar reconexión automática sin cuadro de diálogo nativo si no se solicitó emparejar otro dispositivo
+  if (!options?.forceNewDevice) {
+    // 2a. Reutilizar cachedDevice si existe en memoria
+    if (cachedDevice && cachedDevice.gatt) {
+      try {
+        callbacks.onStatusChange?.('buscando', `Reconectando a ${cachedDevice.name || 'Balanza guardada'}...`);
+        if (!cachedDevice.gatt.connected) {
+          await cachedDevice.gatt.connect();
+        }
+        device = cachedDevice;
+      } catch (reconnectErr) {
+        console.warn('[BLE] Reconexión en memoria falló, probando getDevices():', reconnectErr);
+      }
+    }
+
+    // 2b. Intentar con navigator.bluetooth.getDevices() (Chrome 85+ / Edge en Android y PC)
+    if (!device && typeof nav.bluetooth.getDevices === 'function') {
+      try {
+        const permittedDevices = await nav.bluetooth.getDevices();
+        if (permittedDevices && permittedDevices.length > 0) {
+          const lastId = localStorage.getItem(STORAGE_KEY_LAST_BLE_ID);
+          const target = (lastId ? permittedDevices.find((d: any) => d.id === lastId) : null) || permittedDevices[0];
+          if (target && target.gatt) {
+            callbacks.onStatusChange?.('buscando', `Reconectando a ${target.name || 'Balanza permitida'}...`);
+            if (!target.gatt.connected) {
+              await target.gatt.connect();
+            }
+            device = target;
+            cachedDevice = target;
+          }
+        }
+      } catch (getDevErr) {
+        console.warn('[BLE] getDevices() auto-connect falló:', getDevErr);
+      }
+    }
+  }
+
+  // 3. Si no hay dispositivo previo o se solicitó forzar uno nuevo: mostrar diálogo nativo
+  if (!device) {
     try {
-      // 1. Intentar con acceptAllDevices: true para garantizar que ninguna balanza quede oculta por discrepancia de nombre
       device = await nav.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices,
       });
     } catch (acceptErr: any) {
-      // Si el usuario canceló explícitamente en el diálogo nativo, propagar la cancelación
       if (
         acceptErr?.name === 'NotFoundError' ||
         acceptErr?.message?.includes('cancelled') ||
@@ -264,7 +360,6 @@ export async function conectarBalanzaG78(
         throw acceptErr;
       }
 
-      // Si el navegador exige filtros en vez de acceptAllDevices, usar lista exhaustiva de prefijos
       device = await nav.bluetooth.requestDevice({
         filters: [
           { namePrefix: 'EUROMAR' },
@@ -287,14 +382,22 @@ export async function conectarBalanzaG78(
         optionalServices,
       });
     }
+  }
 
-    if (!device || !device.gatt) {
-      throw new Error('No se pudo acceder a la interfaz GATT del dispositivo.');
-    }
+  if (!device || !device.gatt) {
+    throw new Error('No se pudo acceder a la interfaz GATT del dispositivo.');
+  }
 
-    callbacks.onStatusChange?.('conectado', `Conectando con ${device.name || 'Balanza Inteligente'}...`);
+  // Guardar dispositivo emparejado para reconexiones automáticas futuras
+  cachedDevice = device;
+  try {
+    localStorage.setItem(STORAGE_KEY_LAST_BLE_ID, device.id);
+    localStorage.setItem(STORAGE_KEY_LAST_BLE_NAME, device.name || 'Balanza EUROMAR G78');
+  } catch {}
 
-    const server = await device.gatt.connect();
+  callbacks.onStatusChange?.('conectado', `Conectado con ${device.name || 'Balanza Inteligente'}`);
+
+  let server = device.gatt.connected ? device.gatt : await device.gatt.connect();
 
     // Localizar servicio primario activo
     let service: any;
@@ -372,18 +475,22 @@ export async function conectarBalanzaG78(
     }
 
     device.addEventListener('gattserverdisconnected', () => {
-      callbacks.onStatusChange?.('desconectado', 'Balanza desconectada.');
+      callbacks.onStatusChange?.('desconectado', 'Balanza desconectada / en reposo.');
     });
 
-    return {
+    const handle: ScaleConnectionHandle = {
       disconnect: () => {
         if (device.gatt?.connected) {
           device.gatt.disconnect();
         }
+        activeConnectionHandle = null;
         callbacks.onStatusChange?.('desconectado', 'Conexión finalizada.');
       },
       isConnected: () => Boolean(device.gatt?.connected),
     };
+
+    activeConnectionHandle = handle;
+    return handle;
   } catch (err: any) {
     callbacks.onStatusChange?.('error', err.message || 'Error enlazando con la balanza.');
     callbacks.onError?.(err);

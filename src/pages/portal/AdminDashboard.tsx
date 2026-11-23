@@ -39,8 +39,10 @@ import {
   ShieldCheck,
   Receipt,
   Coins,
+  Eye,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
+import TicketDetailModal, { TicketVentaModalData } from '../../components/portal/TicketDetailModal';
 import {
   StaffUser,
   getStaffList,
@@ -89,9 +91,12 @@ import {
   subscribeToGymRealtime,
   obtenerAuditoriaVentasPOS,
   AuditoriaVentasPOSResponse,
+  AuditoriaVentaItem,
   obtenerReporteCajaMovimientos,
   ReporteCajaDiario,
+  MovimientoCaja,
 } from '../../lib/supabaseDb';
+import { getLocalPeruDateString } from '../../lib/dateUtils';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
 
 interface MemberRecord {
@@ -350,6 +355,42 @@ export default function AdminDashboard() {
   const [customAbonoAmount, setCustomAbonoAmount] = useState<number>(0);
   const [isSubmittingLiquidate, setIsSubmittingLiquidate] = useState(false);
   const [liquidateMethod, setLiquidateMethod] = useState<'yape' | 'plin' | 'efectivo' | 'tarjeta'>('yape');
+  const [selectedTicketModal, setSelectedTicketModal] = useState<TicketVentaModalData | null>(null);
+
+  const handleAbrirDetalleTicketDeMovimiento = useCallback((m: MovimientoCaja) => {
+    setSelectedTicketModal({
+      numeroTicket: m.ticketOBoleta || m.id,
+      fecha: m.fechaHora ? new Date(m.fechaHora).toLocaleDateString('es-PE', { timeZone: 'America/Lima' }) : getLocalPeruDateString(),
+      hora: m.horaFormateada,
+      clienteNombre: m.clienteNombre,
+      clienteDni: m.clienteDni,
+      metodoPago: m.metodoPago,
+      operador: m.operador,
+      esOffline: m.esOffline,
+      total: m.monto,
+      subtotal: m.subtotal || m.monto,
+      descuento: m.descuento,
+      concepto: m.concepto,
+      items: m.items,
+    });
+  }, []);
+
+  const handleAbrirDetalleTicketDeAuditoria = useCallback((v: AuditoriaVentaItem) => {
+    setSelectedTicketModal({
+      numeroTicket: v.numeroTicket,
+      fecha: v.fecha,
+      hora: v.hora,
+      clienteNombre: v.clienteNombre,
+      clienteDni: v.clienteDni,
+      metodoPago: v.metodoPago,
+      operador: v.operador || 'Recepción / POS',
+      esOffline: v.esOffline,
+      total: v.total,
+      subtotal: v.subtotal || v.total,
+      descuento: v.descuento,
+      items: v.items,
+    });
+  }, []);
 
   // Notificaciones y Feedback Visual
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -1368,19 +1409,20 @@ export default function AdminDashboard() {
                       <th className="py-3 px-4 font-bold">Método</th>
                       <th className="py-3 px-4 font-bold">Encargado</th>
                       <th className="py-3 px-4 font-bold text-right">Monto</th>
+                      <th className="py-3 px-4 font-bold text-center">Ticket</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/5">
                     {isLoadingReporteCaja ? (
                       <tr>
-                        <td colSpan={7} className="py-12 text-center text-zinc-500">
+                        <td colSpan={8} className="py-12 text-center text-zinc-500">
                           <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-400" />
                           Cargando movimientos de caja...
                         </td>
                       </tr>
                     ) : movimientosFiltrados.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-12 text-center text-zinc-500">
+                        <td colSpan={8} className="py-12 text-center text-zinc-500">
                           No se registraron movimientos en este período con los filtros seleccionados.
                         </td>
                       </tr>
@@ -1407,6 +1449,8 @@ export default function AdminDashboard() {
                             ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/30'
                             : 'bg-blue-500/10 text-blue-300 border-blue-500/30';
 
+                        const tieneTicket = esPos || !!m.ticketOBoleta || (m.items && m.items.length > 0);
+
                         return (
                           <tr key={m.id} className="hover:bg-white/[0.02] transition-colors">
                             <td className="py-3 px-4 text-zinc-400 font-bold whitespace-nowrap">
@@ -1428,6 +1472,11 @@ export default function AdminDashboard() {
                               {m.ticketOBoleta && (
                                 <span className="ml-1 text-[10px] text-amber-400 font-mono">({m.ticketOBoleta})</span>
                               )}
+                              {m.esOffline && (
+                                <span className="ml-1 text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase font-mono font-bold">
+                                  Offline
+                                </span>
+                              )}
                             </td>
                             <td className="py-3 px-4 whitespace-nowrap">
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase font-mono border ${metodoBg}`}>
@@ -1439,6 +1488,21 @@ export default function AdminDashboard() {
                             </td>
                             <td className="py-3 px-4 text-right font-black text-sm text-white font-mono whitespace-nowrap">
                               S/. {m.monto.toFixed(2)}
+                            </td>
+                            <td className="py-3 px-4 text-center whitespace-nowrap">
+                              {tieneTicket ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAbrirDetalleTicketDeMovimiento(m)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold transition-all shadow-sm hover:scale-105 active:scale-95 cursor-pointer"
+                                  title="Ver ticket desglosado"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Ver Ticket</span>
+                                </button>
+                              ) : (
+                                <span className="text-zinc-600 text-xs">-</span>
+                              )}
                             </td>
                           </tr>
                         );
@@ -1879,7 +1943,7 @@ export default function AdminDashboard() {
               ) : (
                 /* VISTA 2: LIBRO DIARIO CRONOLÓGICO DE TICKETS */
                 <div className="overflow-x-auto rounded-2xl border border-white/10">
-                  <table className="w-full min-w-[750px] text-left text-xs font-mono">
+                  <table className="w-full min-w-[850px] text-left text-xs font-mono">
                     <thead className="bg-zinc-950 text-zinc-400 uppercase tracking-wider border-b border-white/10">
                       <tr>
                         <th className="py-3 px-4">Hora & Fecha</th>
@@ -1888,6 +1952,7 @@ export default function AdminDashboard() {
                         <th className="py-3 px-4">Encargado / Cliente</th>
                         <th className="py-3 px-4">Método</th>
                         <th className="py-3 px-4 text-right">Total Cobrado</th>
+                        <th className="py-3 px-4 text-center">Acción</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5 font-sans">
@@ -1897,8 +1962,17 @@ export default function AdminDashboard() {
                             <span className="text-white font-bold block">{v.hora}</span>
                             <span className="text-[10px] text-zinc-500">{v.fecha}</span>
                           </td>
-                          <td className="py-3 px-4 font-mono text-amber-400 font-bold">
-                            {v.numeroTicket}
+                          <td className="py-3 px-4 font-mono">
+                            <span className="text-amber-400 font-bold block">{v.numeroTicket}</span>
+                            {v.esOffline ? (
+                              <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold uppercase">
+                                Offline
+                              </span>
+                            ) : (
+                              <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold uppercase">
+                                Sincronizado
+                              </span>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <div className="space-y-0.5">
@@ -1936,6 +2010,17 @@ export default function AdminDashboard() {
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-bold text-white text-sm">
                             S/. {v.total.toFixed(2)}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              type="button"
+                              onClick={() => handleAbrirDetalleTicketDeAuditoria(v)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold cursor-pointer transition-all hover:scale-105 active:scale-95"
+                              title="Ver desglose completo del ticket"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>Detalle</span>
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -3957,6 +4042,13 @@ export default function AdminDashboard() {
           </motion.div>
         </div>
       )}
+      {/* MODAL DETALLE DE TICKET / VENTAS POS Y OFFLINE */}
+      <TicketDetailModal
+        isOpen={!!selectedTicketModal}
+        onClose={() => setSelectedTicketModal(null)}
+        ticket={selectedTicketModal}
+      />
+
       {/* NOTIFICACIÓN TOAST FLOTANTE INFERIOR (SIEMPRE VISIBLE EN CUALQUIER PESTAÑA O SCROLL) */}
       {(toastMessage || actionSuccess) && (
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-emerald-400 text-black font-black text-xs font-mono shadow-2xl flex items-center gap-3 animate-in slide-in-from-bottom-4 duration-200 border-2 border-emerald-300">

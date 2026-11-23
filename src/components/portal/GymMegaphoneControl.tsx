@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ChevronDown,
   Activity,
+  Sparkles,
 } from 'lucide-react';
 import {
   isMicrophoneActive,
@@ -450,8 +451,14 @@ export default function GymMegaphoneControl() {
           </div>
 
           {/* Mensaje Informativo Inferior */}
-          <div className="mt-3.5 pt-2 border-t border-white/5 text-[10px] text-zinc-500 font-mono leading-tight">
-            Transmision directa con filtro de graves y compresor de volumen. La salida utiliza el dispositivo de audio predeterminado de Windows (parlante Bluetooth).
+          <div className="mt-3.5 pt-2 border-t border-white/5 flex flex-col gap-1.5 text-[10px] text-zinc-500 font-mono leading-tight">
+            <div>
+              Transmisión directa con filtro de graves y compresor. Salida en dispositivo predeterminado de Windows (parlante Bluetooth).
+            </div>
+            <div className="flex items-center gap-1 text-[9px] text-emerald-400/90 bg-emerald-950/40 border border-emerald-500/20 px-2 py-1 rounded-md">
+              <Sparkles className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+              <span>Auto-Ducking activo: Atenúa YouTube Music al 15% mientras el micrófono esté abierto.</span>
+            </div>
           </div>
         </div>
       )}

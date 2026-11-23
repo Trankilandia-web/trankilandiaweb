@@ -28,7 +28,8 @@ export interface GymMember {
   registeredAt: string;
   observations?: string | null;
   age?: number | null;
-  gender?: string;
+  gender?: string | null;
+  estatura_cm?: number | null;
   shift?: 'manana' | 'tarde' | 'noche';
   documentStatus?: 'sin_documento' | 'pendiente' | 'verificado' | 'rechazado';
   documentType?: 'dni_escolar' | 'carnet_estudiante' | null;

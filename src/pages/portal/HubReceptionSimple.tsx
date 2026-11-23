@@ -24,9 +24,13 @@ import {
   Sparkles,
   Lock,
   Barcode,
+  Copy,
+  Receipt,
+  Eye,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
+import TicketDetailModal, { TicketVentaModalData } from '../../components/portal/TicketDetailModal';
 import {
   fetchSociosParaRecepcion,
   cargarAsistenciasActivas90Min,
@@ -42,6 +46,8 @@ import {
   procesarColaVentasOffline,
   buscarProductoPorCodigo,
   vincularCodigoBarrasAProducto,
+  obtenerHistorialVentasLocal,
+  AuditoriaVentaItem,
 } from '../../lib/supabaseDb';
 import { GymMember, getStoredMembers, saveStoredMembers, generateNextMemberId } from '../../data/gymStore';
 import { getStoredCatalogPlans, fetchPlansFromSupabase, CatalogPlanOption } from '../../data/plansStore';
@@ -95,10 +101,16 @@ export default function HubReceptionSimple() {
     setDescuentoMotivo,
     totalCarrito,
     isProcessing: isPosProcessing,
+    ultimoTicket,
     agregarAlCarrito,
     modificarCantidad,
     procesarVentaPOS,
   } = usePosCashier();
+
+  // Estados para Detalle de Tickets POS y Auditoría Local/Nube
+  const [selectedTicketModal, setSelectedTicketModal] = useState<TicketVentaModalData | null>(null);
+  const [mostrarHistorialTickets, setMostrarHistorialTickets] = useState(false);
+  const [ticketsHistorial, setTicketsHistorial] = useState<AuditoriaVentaItem[]>([]);
 
   // Modal de Gestión Integral de Socio (Editar nombres con números, DNI, teléfono, plan)
   const [socioParaGestionar, setSocioParaGestionar] = useState<GymMember | null>(null);
@@ -590,8 +602,34 @@ export default function HubReceptionSimple() {
     } else if (socio.balanceDue > 0) {
       mensaje = `Estimado(a) ${socio.name}, le saludamos cordialmente de Trankilandia Gym. Le recordamos que mantiene un saldo pendiente de S/. ${socio.balanceDue}.00 correspondiente a su membresía. Puede cancelarlo en recepción o mediante Yape o Plin al 999 787 489. Muchas gracias por su atención.`;
     } else {
-      mensaje = `Estimado(a) ${socio.name}, le saludamos de Trankilandia Gym. Le recordamos que su membresía finaliza en ${diffDays} días (${socio.expiresAt}). Lo invitamos a renovar con anticipación en recepción para asegurar la continuidad de su entrenamiento. Atentamente, Trankilandia Gym.`;
+      mensaje = `Estimado(a) ${socio.name}, le saludamos de Trankilandia Gym. Le recordamos que su membresía finaliza en ${diffDays} días (${socio.expiresAt}). Puede consultar sus asistencias y portal en https://trankilandiaweb.qatuweb.com ingresando con su DNI como usuario y contraseña. Atentamente, Trankilandia Gym.`;
     }
+
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
+  };
+
+  // ENVÍO DE MENSAJE DE BIENVENIDA / CREDENCIALES AL INSCRIBIR
+  const enviarWhatsAppInscripcion = (socio: GymMember) => {
+    const phone = (socio.phone || '').replace(/\D/g, '');
+    if (!phone || phone.length < 9) {
+      alert(`El socio ${socio.name} no cuenta con un celular de 9 dígitos válido.`);
+      return;
+    }
+    const cleanPhone = phone.length === 9 ? `51${phone}` : phone;
+    const dni = socio.dni || '';
+
+    const mensaje =
+      `¡Hola ${socio.name}! 👋 Bienvenido(a) a Trankilandia Gym 🏋️‍♂️💪\n\n` +
+      `Tu membresía *${socio.plan}* ya se encuentra activa.\n\n` +
+      `🔑 *Tus Credenciales de Acceso al Portal:*\n` +
+      `• Página Web: https://trankilandiaweb.qatuweb.com\n` +
+      `• Usuario: ${dni}\n` +
+      `• Contraseña: ${dni}\n\n` +
+      `Tu usuario y contraseña es tu número de DNI.\n\n` +
+      (socio.balanceDue > 0
+        ? `📌 Saldo pendiente: S/. ${socio.balanceDue}.00 (Fecha límite: ${socio.paymentDueDate || socio.expiresAt})\n\n`
+        : '') +
+      `¡A entrenar con todo! 🔥`;
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
   };
@@ -1811,20 +1849,46 @@ export default function HubReceptionSimple() {
             )}
 
             {formSuccessMsg && (
-              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500 text-emerald-300 font-mono text-xs flex items-center justify-between shadow-lg">
+              <div className="p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500 text-emerald-300 font-mono text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
                   <span>{formSuccessMsg}</span>
                 </div>
-                {formCreatedMember && formCreatedMember.phone && (
-                  <button
-                    type="button"
-                    onClick={() => enviarWhatsApp(formCreatedMember)}
-                    className="px-3 py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs flex items-center gap-1 cursor-pointer shadow-md"
-                  >
-                    <MessageCircle className="w-3.5 h-3.5" />
-                    <span>Enviar Carnet por WhatsApp</span>
-                  </button>
+                {formCreatedMember && (
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    {formCreatedMember.phone && (
+                      <button
+                        type="button"
+                        onClick={() => enviarWhatsAppInscripcion(formCreatedMember)}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Enviar Credenciales por WhatsApp</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const dni = formCreatedMember.dni || '';
+                        const text =
+                          `¡Hola ${formCreatedMember.name}! 👋 Bienvenido(a) a Trankilandia Gym 🏋️‍♂️💪\n\n` +
+                          `Tu membresía *${formCreatedMember.plan}* ya se encuentra activa.\n\n` +
+                          `🔑 *Tus Credenciales de Acceso al Portal:*\n` +
+                          `• Página Web: https://trankilandiaweb.qatuweb.com\n` +
+                          `• Usuario: ${dni}\n` +
+                          `• Contraseña: ${dni}\n\n` +
+                          `Tu usuario y contraseña es tu número de DNI.\n\n` +
+                          `¡A entrenar con todo! 🔥`;
+                        navigator.clipboard.writeText(text);
+                        alert('¡Mensaje con credenciales copiado al portapapeles!');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-white/10 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-md transition-all active:scale-95"
+                      title="Copiar mensaje con credenciales para enviar por otro medio"
+                    >
+                      <Copy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Copiar</span>
+                    </button>
+                  </div>
                 )}
               </div>
             )}
@@ -2559,15 +2623,29 @@ export default function HubReceptionSimple() {
                 </button>
               </form>
 
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <h3 className="text-base font-black text-white font-display uppercase">
                   Toca un producto para agregar a la cuenta:
                 </h3>
-                {catalogoAMostrar.length > 0 && (
-                  <span className="text-xs font-mono text-zinc-400">
-                    {catalogoAMostrar.length} {catalogoAMostrar.length === 1 ? 'producto' : 'productos'} {posSearchQuery ? 'encontrados' : 'en inventario'}
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTicketsHistorial(obtenerHistorialVentasLocal());
+                      setMostrarHistorialTickets(true);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-amber-300 hover:text-amber-200 border border-amber-400/30 text-xs font-mono font-bold cursor-pointer transition-colors shadow-sm"
+                    title="Ver tickets emitidos recientemente (en línea y offline)"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    <span>Historial de Tickets</span>
+                  </button>
+                  {catalogoAMostrar.length > 0 && (
+                    <span className="text-xs font-mono text-zinc-400 hidden md:inline">
+                      ({catalogoAMostrar.length} {catalogoAMostrar.length === 1 ? 'producto' : 'productos'})
+                    </span>
+                  )}
+                </div>
               </div>
 
               {catalogoAMostrar.length === 0 ? (
@@ -2635,8 +2713,33 @@ export default function HubReceptionSimple() {
                 </h3>
 
                 {posSuccessMsg && (
-                  <div className="my-3 p-3 rounded-xl bg-emerald-500/20 border border-emerald-500 text-emerald-300 text-xs font-mono">
-                    {posSuccessMsg}
+                  <div className="my-3 p-3 rounded-xl bg-emerald-500/20 border border-emerald-500 text-emerald-300 text-xs font-mono flex items-center justify-between gap-2">
+                    <span className="flex-1">{posSuccessMsg}</span>
+                    {ultimoTicket && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const t = ultimoTicket.ticket;
+                          setSelectedTicketModal({
+                            numeroTicket: ultimoTicket.numero_ticket,
+                            fecha: t?.fecha || new Date().toLocaleDateString('es-PE'),
+                            hora: t?.hora || ultimoTicket.fecha || new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+                            clienteNombre: ultimoTicket.cliente_nombre || 'Cliente Mostrador',
+                            clienteDni: ultimoTicket.cliente_dni,
+                            metodoPago: ultimoTicket.metodo_pago,
+                            total: ultimoTicket.total,
+                            subtotal: ultimoTicket.subtotal,
+                            descuento: ultimoTicket.descuento ? { monto: ultimoTicket.descuento, motivo: 'Descuento' } : undefined,
+                            items: t?.items,
+                            esOffline: !ultimoTicket.venta_id,
+                          });
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-emerald-400 hover:bg-emerald-300 text-black font-black text-[11px] transition-colors cursor-pointer shrink-0 inline-flex items-center gap-1 shadow-sm"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>Ver Ticket</span>
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -3417,6 +3520,120 @@ export default function HubReceptionSimple() {
           }}
         />
       )}
+
+      {/* MODAL HISTORIAL DE TICKETS RECIENTES (ONLINE & OFFLINE) */}
+      {mostrarHistorialTickets && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-2xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20">
+                  <Receipt className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white font-display uppercase">
+                    Historial de Ventas / Tickets Recientes
+                  </h3>
+                  <p className="text-xs text-zinc-400 font-mono">
+                    Tickets emitidos en este dispositivo (En línea y Offline)
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMostrarHistorialTickets(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 divide-y divide-white/5">
+              {ticketsHistorial.length === 0 ? (
+                <div className="py-12 text-center text-zinc-500 font-mono text-xs">
+                  No hay ventas registradas en el historial local recientemente.
+                </div>
+              ) : (
+                ticketsHistorial.map((t) => (
+                  <div
+                    key={t.id || t.numeroTicket}
+                    className="pt-2.5 pb-2 flex items-center justify-between gap-3 text-xs font-mono hover:bg-white/[0.02] px-2 rounded-xl transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-amber-300">{t.numeroTicket}</span>
+                        {t.esOffline ? (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase font-bold">
+                            Offline
+                          </span>
+                        ) : (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase font-bold">
+                            Nube
+                          </span>
+                        )}
+                        <span className="text-zinc-500 text-[11px]">{t.fecha} {t.hora}</span>
+                      </div>
+                      <div className="text-zinc-300 text-[11px] mt-0.5">
+                        {t.clienteNombre || 'Cliente Mostrador'}
+                        {t.items && t.items.length > 0 && (
+                          <span className="text-zinc-500 ml-2">
+                            ({t.items.reduce((s, it) => s + it.cantidad, 0)} items: {t.items.map((it) => `${it.cantidad}x ${it.nombreProducto}`).join(', ')})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-bold text-white text-sm">
+                        S/. {t.total.toFixed(2)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTicketModal({
+                            numeroTicket: t.numeroTicket,
+                            fecha: t.fecha,
+                            hora: t.hora,
+                            clienteNombre: t.clienteNombre,
+                            clienteDni: t.clienteDni,
+                            metodoPago: t.metodoPago,
+                            operador: t.operador || 'Recepción',
+                            total: t.total,
+                            subtotal: t.subtotal,
+                            descuento: t.descuento,
+                            items: t.items,
+                            esOffline: t.esOffline,
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold cursor-pointer transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ver Ticket</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-white/10 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMostrarHistorialTickets(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DETALLE DE TICKET COMPLETO / IMPRIMIBLE */}
+      <TicketDetailModal
+        isOpen={!!selectedTicketModal}
+        onClose={() => setSelectedTicketModal(null)}
+        ticket={selectedTicketModal}
+      />
 
       {/* NOTIFICACIÓN TOAST FLOTANTE DE GESTIÓN DE SOCIO */}
       {gestionSuccessMsg && (

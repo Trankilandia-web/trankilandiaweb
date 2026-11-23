@@ -55,6 +55,12 @@ export default function ReceiptModal({
         ? `*Saldo Pendiente:* S/. ${member.balanceDue}.00 (Fecha límite: ${member.paymentDueDate})\n`
         : `*Estado:* Membresía cancelada al 100%\n`) +
       `*Sede:* Jr. José Olaya N° 640, Huamanga, Ayacucho\n\n` +
+      (member.dni
+        ? `🔑 *Acceso al Portal Web:* https://trankilandiaweb.qatuweb.com\n` +
+          `• Usuario: ${member.dni}\n` +
+          `• Contraseña: ${member.dni}\n` +
+          `*(Tu usuario y contraseña es tu número de DNI)*\n\n`
+        : '') +
       `Agradecemos su preferencia.`
   );
 

@@ -22,6 +22,7 @@ import {
   obtenerHistorialEvaluaciones,
   obtenerUltimaEvaluacion,
   actualizarEstaturaSocio,
+  actualizarBiometriaSocio,
   STORAGE_KEY_EVALUACIONES,
 } from '../../lib/evaluacionesService';
 import { EvaluacionCorporal, crearSegmentalDataDefault } from '../../types/evaluacion';
@@ -105,5 +106,15 @@ describe('Servicio de Persistencia y Caché Local-First (evaluacionesService)', 
 
   it('actualizarEstaturaSocio debe actualizar la estatura sin lanzar excepciones', async () => {
     await expect(actualizarEstaturaSocio('MEM-TEST-001', 175)).resolves.not.toThrow();
+  });
+
+  it('actualizarBiometriaSocio debe actualizar estatura, edad y sexo localmente y persistir', async () => {
+    const ok = await actualizarBiometriaSocio('MEM-TEST-001', {
+      estatura_cm: 168,
+      edad: 32,
+      sexo: 'Femenino',
+      socio_dni: '99990001',
+    });
+    expect(ok).toBe(true);
   });
 });

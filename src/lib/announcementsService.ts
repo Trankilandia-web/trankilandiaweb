@@ -9,6 +9,7 @@
 
 import { getAlertVolume, isAlertMuted } from './audioVoiceAlerts';
 import { OFFICIAL_ANNOUNCEMENTS_EMBEDDED } from './officialAnnouncementsData';
+import { requestAudioDuck, releaseAudioDuck } from './autoAudioDucker';
 
 export interface GymAnnouncement {
   id: string;
@@ -178,6 +179,9 @@ export function stopAnnouncement(): void {
     currentAudio = null;
   }
 
+  // Restaurar volumen de música de fondo (YouTube / Spotify)
+  releaseAudioDuck('announcement');
+
   if (currentAnnouncementId !== null) {
     currentAnnouncementId = null;
     dispatchStateChange();
@@ -205,6 +209,9 @@ export async function playAnnouncement(id: string): Promise<void> {
   if (typeof window === 'undefined') return;
 
   try {
+    // Atenuar música de fondo (YouTube Music, Spotify, etc.) para que el anuncio se escuche con total nitidez
+    await requestAudioDuck('announcement');
+
     const customSrc = getCustomAnnouncementAudio(id);
     // Prioridad: 1. Audio subido por usuario -> 2. Audio incrustado ElevenLabs -> 3. Ruta pública
     const audioSrc = customSrc || item.embeddedAudio || item.audioPath;
@@ -216,6 +223,7 @@ export async function playAnnouncement(id: string): Promise<void> {
     audio.volume = Math.max(0, Math.min(1, initialVol));
 
     audio.onended = () => {
+      releaseAudioDuck('announcement');
       if (currentAnnouncementId === id) {
         currentAnnouncementId = null;
         currentAudio = null;
@@ -225,6 +233,7 @@ export async function playAnnouncement(id: string): Promise<void> {
 
     audio.onerror = (e) => {
       console.warn(`[announcementsService] Error cargando "${audioSrc}":`, e);
+      releaseAudioDuck('announcement');
       currentAudio = null;
       if (currentAnnouncementId === id) {
         currentAnnouncementId = null;
@@ -235,6 +244,7 @@ export async function playAnnouncement(id: string): Promise<void> {
     await audio.play();
   } catch (err) {
     console.warn('[announcementsService] Error al reproducir audio HTML5:', err);
+    releaseAudioDuck('announcement');
     currentAudio = null;
     if (currentAnnouncementId === id) {
       currentAnnouncementId = null;

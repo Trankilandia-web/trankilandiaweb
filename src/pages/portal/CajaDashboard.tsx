@@ -39,9 +39,11 @@ import {
   Camera,
   Copy,
   Mail,
+  Eye,
 } from 'lucide-react';
 import PortalHeader from '../../components/portal/PortalHeader';
 import ReceiptModal from '../../components/portal/ReceiptModal';
+import TicketDetailModal, { TicketVentaModalData } from '../../components/portal/TicketDetailModal';
 import OmniScanToast from '../../components/portal/OmniScanToast';
 import CameraScannerModal from '../../components/portal/CameraScannerModal';
 import { extraerDniPeru } from '../../lib/dniParser';
@@ -83,6 +85,8 @@ import {
   normalizeDateToISO,
   subscribeToGymRealtime,
   getGymMembers,
+  obtenerHistorialVentasLocal,
+  AuditoriaVentaItem,
 } from '../../lib/supabaseDb';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import MemberProfileModal from '../../components/portal/MemberProfileModal';
@@ -260,6 +264,9 @@ export default function CajaDashboard() {
   const [clienteNombrePOS, setClienteNombrePOS] = useState<string>('Cliente Mostrador');
   const [clienteDniPOS, setClienteDniPOS] = useState<string>('');
   const [ticketModal, setTicketModal] = useState<ResultadoVentaPOS | null>(null);
+  const [mostrarHistorialTickets, setMostrarHistorialTickets] = useState(false);
+  const [ticketsHistorial, setTicketsHistorial] = useState<AuditoriaVentaItem[]>([]);
+  const [selectedTicketDetail, setSelectedTicketDetail] = useState<TicketVentaModalData | null>(null);
   const [isProcessingSale, setIsProcessingSale] = useState(false);
 
   // Buffer del Lector de Código de Barras 1D
@@ -2627,8 +2634,20 @@ export default function CajaDashboard() {
                   />
                 </div>
 
-                {/* Filtro por Categoría */}
+                {/* Filtro por Categoría y Botón Historial */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTicketsHistorial(obtenerHistorialVentasLocal());
+                      setMostrarHistorialTickets(true);
+                    }}
+                    className="px-3 py-1.5 rounded-xl text-xs font-mono font-bold bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 flex items-center gap-1.5 cursor-pointer whitespace-nowrap transition-colors shadow-sm"
+                    title="Ver tickets emitidos recientemente en este equipo"
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    <span>Tickets Recientes</span>
+                  </button>
                   {['Todos', 'Bebidas', 'Energizantes', 'Proteinas', 'Suplementos', 'Snacks'].map((cat) => (
                     <button
                       key={cat}
@@ -4005,70 +4024,137 @@ export default function CajaDashboard() {
       )}
 
       {/* MODAL DE COMPROBANTE TICKET DIGITAL POS */}
-      {ticketModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-sm bg-white text-zinc-900 rounded-3xl p-6 shadow-2xl font-mono text-xs space-y-4 print:p-0"
-          >
-            <div className="text-center border-b border-dashed border-zinc-300 pb-3">
-              <h3 className="font-black text-base uppercase tracking-tight">TRANKILANDIA GYM</h3>
-              <p className="text-[10px] text-zinc-500">Más que un gimnasio · Más cerca de ti</p>
-              <p className="text-[10px] text-zinc-500">José Olaya Nº 640 · Huamanga, Ayacucho</p>
-              <p className="text-[10px] text-zinc-500">RUC: 20608945123 · Tel: 999-787-489</p>
-              <div className="mt-2 text-xs font-bold text-zinc-800">
-                TICKET DE VENTA: {ticketModal.numero_ticket}
-              </div>
-              <div className="text-[10px] text-zinc-500">
-                Fecha: {new Date().toLocaleDateString('es-PE')} {ticketModal.fecha || ''}
-              </div>
-            </div>
+      <TicketDetailModal
+        isOpen={!!ticketModal || !!selectedTicketDetail}
+        onClose={() => {
+          setTicketModal(null);
+          setSelectedTicketDetail(null);
+        }}
+        ticket={
+          selectedTicketDetail
+            ? selectedTicketDetail
+            : ticketModal
+            ? {
+                numeroTicket: ticketModal.numero_ticket,
+                fecha: ticketModal.ticket?.fecha || new Date().toLocaleDateString('es-PE'),
+                hora: ticketModal.ticket?.hora || ticketModal.fecha || new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
+                clienteNombre: ticketModal.cliente_nombre || 'Cliente Mostrador',
+                clienteDni: ticketModal.cliente_dni,
+                metodoPago: ticketModal.metodo_pago,
+                total: ticketModal.total,
+                subtotal: ticketModal.subtotal,
+                descuento: ticketModal.descuento ? { monto: ticketModal.descuento, motivo: 'Descuento' } : undefined,
+                items: ticketModal.ticket?.items,
+                esOffline: !ticketModal.venta_id,
+              }
+            : null
+        }
+      />
 
-            <div className="space-y-1.5 py-1 text-[11px]">
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Cliente:</span>
-                <span className="font-bold">{ticketModal.cliente_nombre || 'Cliente Mostrador'}</span>
-              </div>
-              {ticketModal.cliente_dni && (
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">DNI:</span>
-                  <span className="font-bold">{ticketModal.cliente_dni}</span>
+      {/* MODAL HISTORIAL DE TICKETS RECIENTES (ONLINE & OFFLINE) */}
+      {mostrarHistorialTickets && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+          <div className="w-full max-w-2xl bg-zinc-900 border border-white/10 rounded-3xl p-6 shadow-2xl space-y-4 max-h-[85vh] flex flex-col font-sans">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20">
+                  <Receipt className="w-5 h-5" />
                 </div>
-              )}
-              <div className="flex justify-between">
-                <span className="text-zinc-500">Pago:</span>
-                <span className="font-bold uppercase">{ticketModal.metodo_pago}</span>
+                <div>
+                  <h3 className="text-base font-black text-white font-display uppercase">
+                    Historial de Ventas / Tickets Recientes
+                  </h3>
+                  <p className="text-xs text-zinc-400 font-mono">
+                    Tickets emitidos en este equipo (En línea y Offline)
+                  </p>
+                </div>
               </div>
-            </div>
-
-            <div className="border-t border-b border-dashed border-zinc-300 py-3 flex justify-between items-center text-sm">
-              <span className="font-black">TOTAL COBRADO:</span>
-              <span className="font-black text-lg">S/. {ticketModal.total.toFixed(2)}</span>
-            </div>
-
-            <div className="text-center text-[10px] text-zinc-500">
-              ¡Gracias por tu compra! Consuma productos originales para un mejor rendimiento.
-            </div>
-
-            <div className="flex gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="flex-1 bg-zinc-900 hover:bg-zinc-800 text-white py-2.5 rounded-xl font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                onClick={() => setMostrarHistorialTickets(false)}
+                className="text-zinc-400 hover:text-white p-1 rounded-lg cursor-pointer"
               >
-                <Printer className="w-3.5 h-3.5" />
-                <span>Imprimir</span>
+                <X className="w-5 h-5" />
               </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 divide-y divide-white/5">
+              {ticketsHistorial.length === 0 ? (
+                <div className="py-12 text-center text-zinc-500 font-mono text-xs">
+                  No hay ventas registradas en el historial local recientemente.
+                </div>
+              ) : (
+                ticketsHistorial.map((t) => (
+                  <div
+                    key={t.id || t.numeroTicket}
+                    className="pt-2.5 pb-2 flex items-center justify-between gap-3 text-xs font-mono hover:bg-white/[0.02] px-2 rounded-xl transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-amber-300">{t.numeroTicket}</span>
+                        {t.esOffline ? (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase font-bold">
+                            Offline
+                          </span>
+                        ) : (
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase font-bold">
+                            Nube
+                          </span>
+                        )}
+                        <span className="text-zinc-500 text-[11px]">{t.fecha} {t.hora}</span>
+                      </div>
+                      <div className="text-zinc-300 text-[11px] mt-0.5 font-sans">
+                        {t.clienteNombre || 'Cliente Mostrador'}
+                        {t.items && t.items.length > 0 && (
+                          <span className="text-zinc-500 ml-2 font-mono">
+                            ({t.items.reduce((s, it) => s + it.cantidad, 0)} items: {t.items.map((it) => `${it.cantidad}x ${it.nombreProducto}`).join(', ')})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="font-bold text-white text-sm">
+                        S/. {t.total.toFixed(2)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedTicketDetail({
+                            numeroTicket: t.numeroTicket,
+                            fecha: t.fecha,
+                            hora: t.hora,
+                            clienteNombre: t.clienteNombre,
+                            clienteDni: t.clienteDni,
+                            metodoPago: t.metodoPago,
+                            operador: t.operador || 'Caja / POS',
+                            total: t.total,
+                            subtotal: t.subtotal,
+                            descuento: t.descuento,
+                            items: t.items,
+                            esOffline: t.esOffline,
+                          });
+                        }}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-400/10 hover:bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[11px] font-bold cursor-pointer transition-colors"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ver Ticket</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-white/10 flex justify-end">
               <button
                 type="button"
-                onClick={() => setTicketModal(null)}
-                className="flex-1 bg-zinc-200 hover:bg-zinc-300 text-zinc-800 py-2.5 rounded-xl font-bold cursor-pointer"
+                onClick={() => setMostrarHistorialTickets(false)}
+                className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold cursor-pointer"
               >
                 Cerrar
               </button>
             </div>
-          </motion.div>
+          </div>
         </div>
       )}
 
@@ -4294,9 +4380,13 @@ export default function CajaDashboard() {
                     <span className="text-white font-black text-sm tracking-widest">{credencialesModal.dni}</span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-zinc-900 border border-amber-400/20">
-                    <span className="text-zinc-500 block text-[10px] uppercase">Contraseña Inicial</span>
+                    <span className="text-zinc-500 block text-[10px] uppercase">Contraseña</span>
                     <span className="text-amber-400 font-black text-sm tracking-widest">{credencialesModal.dni}</span>
                   </div>
+                </div>
+
+                <div className="p-2 rounded-xl bg-zinc-900/60 border border-white/5 text-[11px] text-zinc-400 text-center">
+                  🌐 Página Web: <span className="text-amber-400 font-bold">trankilandiaweb.qatuweb.com</span>
                 </div>
 
                 {credencialesModal.email && (
@@ -4329,10 +4419,10 @@ export default function CajaDashboard() {
                       `¡Hola ${credencialesModal.nombre}! 👋 Bienvenido a Trankilandia Gym 🏋️‍♂️💪\n\n` +
                       `Tu membresía *${credencialesModal.plan}* ya se encuentra activa.\n\n` +
                       `🔑 *Tus Credenciales de Acceso al Portal:*\n` +
-                      `• Web: ${window.location.origin}/portal\n` +
+                      `• Página Web: https://trankilandiaweb.qatuweb.com\n` +
                       `• Usuario: ${credencialesModal.dni}\n` +
-                      `• Contraseña Inicial: ${credencialesModal.dni}\n` +
-                      `*(Al ingresar por primera vez se te solicitará cambiar tu contraseña)*\n\n` +
+                      `• Contraseña: ${credencialesModal.dni}\n\n` +
+                      `Tu usuario y contraseña es tu número de DNI.\n\n` +
                       (credencialesModal.asistenciaMarcada
                         ? `✅ *Asistencia de hoy registrada automáticamente a las ${credencialesModal.hora}*\n\n`
                         : '') +
@@ -4354,9 +4444,10 @@ export default function CajaDashboard() {
                       `TRANKILANDIA GYM · CREDENCIALES DE ACCESO\n` +
                       `Socio: ${credencialesModal.nombre}\n` +
                       `Plan: ${credencialesModal.plan}\n` +
+                      `Página Web: https://trankilandiaweb.qatuweb.com\n` +
                       `Usuario: ${credencialesModal.dni}\n` +
-                      `Contraseña Inicial: ${credencialesModal.dni}\n` +
-                      `Portal Web: ${window.location.origin}/portal\n` +
+                      `Contraseña: ${credencialesModal.dni}\n` +
+                      `Tu usuario y contraseña es tu número de DNI.\n` +
                       (credencialesModal.asistenciaMarcada
                         ? `✅ Asistencia de hoy registrada a las ${credencialesModal.hora}\n`
                         : '');

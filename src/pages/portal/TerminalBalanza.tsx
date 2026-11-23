@@ -28,6 +28,9 @@ import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 import {
   isWebBluetoothAvailable,
   conectarBalanzaG78,
+  getSavedScaleName,
+  forgetPairedScale,
+  isScaleCurrentlyConnected,
   ScaleConnectionHandle,
 } from '../../lib/bleScaleConnector';
 import {
@@ -38,6 +41,7 @@ import {
 import {
   guardarEvaluacion,
   obtenerUltimaEvaluacion,
+  actualizarBiometriaSocio,
 } from '../../lib/evaluacionesService';
 import { EvaluacionCorporal, DeltasEvaluacion, DiagnosticoRecomposicion } from '../../types/evaluacion';
 import { verifyStaffPin } from '../../lib/staffStore';
@@ -65,14 +69,18 @@ export default function TerminalBalanza() {
 
   // 3. Parámetros Biométricos
   const [estaturaCm, setEstaturaCm] = useState<number>(170);
+  const [estaturaInput, setEstaturaInput] = useState<string>('170');
   const [edad, setEdad] = useState<number>(25);
+  const [edadInput, setEdadInput] = useState<string>('25');
   const [sexo, setSexo] = useState<'Masculino' | 'Femenino'>('Masculino');
   const [showEstaturaModal, setShowEstaturaModal] = useState(false);
+  const [biometriaSavedBanner, setBiometriaSavedBanner] = useState<string | null>(null);
 
   // 4. Conexión Bluetooth & Pesaje
   const [bleSupported, setBleSupported] = useState(true);
   const [scaleConnection, setScaleConnection] = useState<ScaleConnectionHandle | null>(null);
   const [scaleStatus, setScaleStatus] = useState<string>('desconectado');
+  const [savedScaleName, setSavedScaleName] = useState<string | null>(getSavedScaleName());
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [liveWeight, setLiveWeight] = useState<number>(0);
   const [isWeightLocked, setIsWeightLocked] = useState(false);
@@ -125,11 +133,31 @@ export default function TerminalBalanza() {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
 
-    const localMatches = members.filter((m) => {
-      const matchDni = m.dni && m.dni.toLowerCase().includes(q);
-      const matchName = m.name && m.name.toLowerCase().includes(q);
-      return matchDni || matchName;
+    // Mapear resultados de la nube para enriquecer los locales con biometría fresca de Supabase
+    const cloudMap = new Map<string, GymMember>();
+    cloudSearchResults.forEach((c) => {
+      if (c.id) cloudMap.set(c.id, c);
+      if (c.dni) cloudMap.set(c.dni, c);
     });
+
+    const localMatches = members
+      .filter((m) => {
+        const matchDni = m.dni && m.dni.toLowerCase().includes(q);
+        const matchName = m.name && m.name.toLowerCase().includes(q);
+        return matchDni || matchName;
+      })
+      .map((m) => {
+        const cloud = cloudMap.get(m.id) || (m.dni ? cloudMap.get(m.dni) : null);
+        if (cloud) {
+          return {
+            ...m,
+            estatura_cm: (cloud as any).estatura_cm || (m as any).estatura_cm || null,
+            age: cloud.age || m.age || null,
+            gender: cloud.gender || m.gender || null,
+          };
+        }
+        return m;
+      });
 
     const seenIds = new Set(localMatches.map((m) => m.id));
     const seenDnis = new Set(localMatches.map((m) => m.dni).filter(Boolean));
@@ -243,8 +271,9 @@ export default function TerminalBalanza() {
             coachName: s.coach_asignado || 'Coach Marcos Rivas',
             shift: s.turno || 'manana',
             registeredAt: s.fecha_inicio || '2026-10-01',
-            age: s.edad || null,
+            age: s.edad ? Number(s.edad) : null,
             gender: s.sexo || null,
+            estatura_cm: s.estatura_cm ? Number(s.estatura_cm) : null,
             observations: s.observaciones || null,
           }));
           setCloudSearchResults(mapped);
@@ -262,32 +291,66 @@ export default function TerminalBalanza() {
     };
   }, [searchQuery]);
 
-  // Al seleccionar socio, cargar su estatura y última evaluación
+  // Al seleccionar socio, cargar su estatura, edad, sexo y última evaluación
   useEffect(() => {
     if (!selectedMember) {
       setPreviousEval(null);
       return;
     }
 
-    const memberHeight = (selectedMember as any).estatura_cm;
-    if (memberHeight && Number(memberHeight) > 100) {
-      setEstaturaCm(Number(memberHeight));
-    } else {
-      setShowEstaturaModal(true);
-    }
+    let currentHeight = Number((selectedMember as any).estatura_cm) || 0;
+    let currentAge = Number(selectedMember.age) || 0;
+    let currentGender = selectedMember.gender || (selectedMember as any).sexo;
 
-    if (selectedMember.age) {
-      setEdad(Number(selectedMember.age));
+    if (currentHeight && currentHeight > 100) {
+      setEstaturaCm(currentHeight);
+      setEstaturaInput(String(currentHeight));
     }
-    const memberGender = selectedMember.gender || (selectedMember as any).sexo;
-    if (memberGender === 'Femenino' || memberGender === 'Masculino') {
-      setSexo(memberGender);
+    if (currentAge && currentAge > 0) {
+      setEdad(currentAge);
+      setEdadInput(String(currentAge));
+    }
+    if (currentGender === 'Femenino' || currentGender === 'Masculino') {
+      setSexo(currentGender);
     }
 
     if (selectedMember.dni) {
       obtenerUltimaEvaluacion(selectedMember.dni).then((ult) => {
         setPreviousEval(ult);
+        if (ult) {
+          if (!currentHeight && ult.estatura_cm > 100) {
+            currentHeight = ult.estatura_cm;
+            setEstaturaCm(ult.estatura_cm);
+            setEstaturaInput(String(ult.estatura_cm));
+          }
+          if (!currentAge && ult.edad > 0) {
+            currentAge = ult.edad;
+            setEdad(ult.edad);
+            setEdadInput(String(ult.edad));
+          }
+          if (!currentGender && (ult.sexo === 'Masculino' || ult.sexo === 'Femenino')) {
+            currentGender = ult.sexo;
+            setSexo(ult.sexo);
+          }
+
+          if (ult.estatura_cm || ult.edad || ult.sexo) {
+            actualizarBiometriaSocio(selectedMember.id, {
+              estatura_cm: currentHeight || undefined,
+              edad: currentAge || undefined,
+              sexo: currentGender || undefined,
+              socio_dni: selectedMember.dni,
+            });
+          }
+        }
+
+        if (!currentHeight || currentHeight <= 100) {
+          setShowEstaturaModal(true);
+        } else {
+          setShowEstaturaModal(false);
+        }
       });
+    } else if (!currentHeight || currentHeight <= 100) {
+      setShowEstaturaModal(true);
     }
   }, [selectedMember]);
 
@@ -374,8 +437,8 @@ export default function TerminalBalanza() {
     setMeasuringPhase('completado');
   };
 
-  // Iniciar Pesaje Bluetooth
-  const handleStartBluetoothWeighing = async () => {
+  // Iniciar Pesaje Bluetooth (soporta reconexión automática sin diálogo al dispositivo emparejado)
+  const handleStartBluetoothWeighing = async (forceNewDevice = false) => {
     try {
       if (scanIntervalRef.current) {
         clearInterval(scanIntervalRef.current);
@@ -394,137 +457,179 @@ export default function TerminalBalanza() {
       setScaleStatus('buscando');
       setStatusMessage('Buscando balanza EUROMAR® G78-BT... Enciende la balanza pisándola suavemente');
 
-      const handle = await conectarBalanzaG78({
-        onStatusChange: (estado, msg) => {
-          setScaleStatus(estado);
-          if (msg) setStatusMessage(msg);
-
-          // Si la balanza finaliza la sesión BLE ('completado' o 'desconectado')
-          // y tenemos un peso válido capturado pero aún no se generó el informe:
-          if ((estado === 'completado' || estado === 'desconectado') && selectedMember && !computedEvalRef.current) {
-            const candidateWeight = lockedWeightRef.current || liveWeight || lastWeightRef.current;
-            if (candidateWeight >= 20.0) {
-              ejecutarFinalizacionEvaluacion(candidateWeight);
+      const handle = await conectarBalanzaG78(
+        {
+          onStatusChange: (estado, msg) => {
+            setScaleStatus(estado);
+            if (msg) setStatusMessage(msg);
+            if (estado === 'conectado') {
+              setSavedScaleName(getSavedScaleName());
             }
-          }
-        },
-        onLiveWeight: (peso, estable) => {
-          // Filtro estricto: Si el peso es menor a 15 kg (tara o ruido), ignorar
-          if (peso < 15.0) {
-            return;
-          }
 
-          setLiveWeight(peso);
+            // Si la balanza finaliza la sesión BLE ('completado' o 'desconectado')
+            // y tenemos un peso válido capturado pero aún no se generó el informe:
+            if ((estado === 'completado' || estado === 'desconectado') && selectedMember && !computedEvalRef.current) {
+              const candidateWeight = lockedWeightRef.current || liveWeight || lastWeightRef.current;
+              if (candidateWeight >= 20.0) {
+                ejecutarFinalizacionEvaluacion(candidateWeight);
+              }
+            }
+          },
+          onLiveWeight: (peso, estable) => {
+            // Filtro estricto: Si el peso es menor a 15 kg (tara o ruido), ignorar
+            if (peso < 15.0) {
+              return;
+            }
 
-          // Si ya fijamos el peso y estamos en fase de escaneo, no reiniciar
-          if (lockedWeightRef.current > 0) {
-            return;
-          }
+            setLiveWeight(peso);
 
-          setMeasuringPhase('pesando');
+            // Si ya fijamos el peso y estamos en fase de escaneo, no reiniciar
+            if (lockedWeightRef.current > 0) {
+              return;
+            }
 
-          // Detección de estabilidad híbrida (Firmware de balanza + Detección inteligente por software)
-          const now = Date.now();
-          let esEstableFinal = estable;
+            setMeasuringPhase('pesando');
 
-          if (Math.abs(peso - lastWeightRef.current) <= 0.3) {
-            if (stableSinceRef.current === 0) {
+            // Detección de estabilidad híbrida (Firmware de balanza + Detección inteligente por software)
+            const now = Date.now();
+            let esEstableFinal = estable;
+
+            if (Math.abs(peso - lastWeightRef.current) <= 0.3) {
+              if (stableSinceRef.current === 0) {
+                stableSinceRef.current = now;
+              } else if (now - stableSinceRef.current >= 1200) {
+                esEstableFinal = true;
+              }
+            } else {
+              lastWeightRef.current = peso;
               stableSinceRef.current = now;
-            } else if (now - stableSinceRef.current >= 1200) {
-              esEstableFinal = true;
             }
-          } else {
-            lastWeightRef.current = peso;
-            stableSinceRef.current = now;
-          }
 
-          // Cuando el peso se estabiliza (estable o software estable y peso >= 20 kg)
-          if (esEstableFinal && peso >= 20.0 && selectedMember && !lockedWeightRef.current) {
-            lockedWeightRef.current = peso;
-            setIsWeightLocked(true);
-            setMeasuringPhase('escaneando_bioimpedancia');
-            setStatusMessage(`⚖️ Peso fijado: ${peso.toFixed(2)} kg. Escaneando composición corporal...`);
+            // Cuando el peso se estabiliza (estable o software estable y peso >= 20 kg)
+            if (esEstableFinal && peso >= 20.0 && selectedMember && !lockedWeightRef.current) {
+              lockedWeightRef.current = peso;
+              setIsWeightLocked(true);
+              setMeasuringPhase('escaneando_bioimpedancia');
+              setStatusMessage(`⚖️ Peso fijado: ${peso.toFixed(2)} kg. Escaneando composición corporal...`);
 
-            let progress = 0;
-            setScanProgress(0);
-            setScanStatusText('⚡ Paso 1/3: Detectando electrodos de pies y manillar...');
+              let progress = 0;
+              setScanProgress(0);
+              setScanStatusText('⚡ Paso 1/3: Detectando electrodos de pies y manillar...');
 
-            if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-            const startTime = Date.now();
-            const DURATION_MS = 3500;
+              if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+              const startTime = Date.now();
+              const DURATION_MS = 3500;
 
-            scanIntervalRef.current = setInterval(() => {
-              const elapsed = Date.now() - startTime;
-              progress = Math.min(100, Math.round((elapsed / DURATION_MS) * 100));
-              setScanProgress(progress);
+              scanIntervalRef.current = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                progress = Math.min(100, Math.round((elapsed / DURATION_MS) * 100));
+                setScanProgress(progress);
 
-              if (progress < 30) {
-                setScanStatusText('⚡ Paso 1/3: Detectando electrodos de pies y manillar...');
-              } else if (progress < 70) {
-                setScanStatusText('⚡ Paso 2/3: Analizando impedancia segmentaria (5 zonas)...');
-              } else if (progress < 95) {
-                setScanStatusText('⚡ Paso 3/3: Calculando masa muscular, grasa visceral y agua...');
-              } else {
-                setScanStatusText('✅ ¡Escaneo de 8 electrodos completado!');
-              }
+                if (progress < 30) {
+                  setScanStatusText('⚡ Paso 1/3: Detectando electrodos de pies y manillar...');
+                } else if (progress < 70) {
+                  setScanStatusText('⚡ Paso 2/3: Analizando impedancia segmentaria (5 zonas)...');
+                } else if (progress < 95) {
+                  setScanStatusText('⚡ Paso 3/3: Calculando masa muscular, grasa visceral y agua...');
+                } else {
+                  setScanStatusText('✅ ¡Escaneo de 8 electrodos completado!');
+                }
 
-              if (elapsed >= DURATION_MS) {
-                clearInterval(scanIntervalRef.current);
-                scanIntervalRef.current = null;
-                ejecutarFinalizacionEvaluacion(lockedWeightRef.current || peso);
-              }
-            }, 100);
-          }
-        },
-        onImpedanceData: (imp) => {
-          impedanceDataRef.current = imp;
-          if (computedEvalRef.current && selectedMember) {
-            const ev = calcularMetricasCompletas({
-              socio_id: selectedMember.id,
-              socio_dni: selectedMember.dni || '',
-              peso_kg: computedEvalRef.current.peso_kg,
-              grasa_corporal_pct: imp.grasaCorporalPct || computedEvalRef.current.grasa_corporal_pct,
-              masa_muscular_kg: imp.masaMuscularKg || computedEvalRef.current.masa_muscular_kg,
-              estatura_cm: estaturaCm,
-              edad,
-              sexo,
-              evaluador_id: operatorId || 'staff-luis',
-              evaluador_nombre: operatorName,
-              origen: 'bluetooth_g78',
-            });
-            computedEvalRef.current = ev;
-            setComputedEval(ev);
-            const d = calcularDeltasMensuales(ev, previousEval);
-            setDeltas(d);
-            setDiagnostico(determinarDiagnostico(d, ev));
-          } else {
-            const candidateWeight = lockedWeightRef.current || liveWeight;
-            if (candidateWeight >= 20.0 && selectedMember) {
-              ejecutarFinalizacionEvaluacion(candidateWeight);
+                if (elapsed >= DURATION_MS) {
+                  clearInterval(scanIntervalRef.current);
+                  scanIntervalRef.current = null;
+                  ejecutarFinalizacionEvaluacion(lockedWeightRef.current || peso);
+                }
+              }, 100);
             }
-          }
+          },
+          onImpedanceData: (imp) => {
+            impedanceDataRef.current = imp;
+            if (computedEvalRef.current && selectedMember) {
+              const ev = calcularMetricasCompletas({
+                socio_id: selectedMember.id,
+                socio_dni: selectedMember.dni || '',
+                peso_kg: computedEvalRef.current.peso_kg,
+                grasa_corporal_pct: imp.grasaCorporalPct || computedEvalRef.current.grasa_corporal_pct,
+                masa_muscular_kg: imp.masaMuscularKg || computedEvalRef.current.masa_muscular_kg,
+                estatura_cm: estaturaCm,
+                edad,
+                sexo,
+                evaluador_id: operatorId || 'staff-luis',
+                evaluador_nombre: operatorName,
+                origen: 'bluetooth_g78',
+              });
+              computedEvalRef.current = ev;
+              setComputedEval(ev);
+              const d = calcularDeltasMensuales(ev, previousEval);
+              setDeltas(d);
+              setDiagnostico(determinarDiagnostico(d, ev));
+            } else {
+              const candidateWeight = lockedWeightRef.current || liveWeight;
+              if (candidateWeight >= 20.0 && selectedMember) {
+                ejecutarFinalizacionEvaluacion(candidateWeight);
+              }
+            }
+          },
+          onError: (err) => {
+            if (scanIntervalRef.current) {
+              clearInterval(scanIntervalRef.current);
+              scanIntervalRef.current = null;
+            }
+            if (
+              err.name === 'NotFoundError' ||
+              err.message?.includes('cancelled') ||
+              err.message?.includes('User cancelled')
+            ) {
+              setStatusMessage('Búsqueda cancelada.');
+              setScaleStatus('desconectado');
+            } else {
+              setStatusMessage(`Error Bluetooth: ${err.message}`);
+            }
+          },
         },
-        onError: (err) => {
-          if (scanIntervalRef.current) {
-            clearInterval(scanIntervalRef.current);
-            scanIntervalRef.current = null;
-          }
-          if (
-            err.name === 'NotFoundError' ||
-            err.message?.includes('cancelled') ||
-            err.message?.includes('User cancelled')
-          ) {
-            setStatusMessage('Búsqueda cancelada.');
-            setScaleStatus('desconectado');
-          } else {
-            setStatusMessage(`Error Bluetooth: ${err.message}`);
-          }
-        },
-      });
+        { forceNewDevice }
+      );
 
       setScaleConnection(handle);
+      setSavedScaleName(getSavedScaleName());
     } catch {
       // Error manejado en callback
+    }
+  };
+
+  // Confirmar y persistir biometría (Estatura, Edad y Sexo) en local y Supabase
+  const handleConfirmBiometria = async () => {
+    const finalHeight = parseInt(estaturaInput, 10) || estaturaCm || 170;
+    const finalAge = parseInt(edadInput, 10) || edad || 25;
+    setEstaturaCm(finalHeight);
+    setEstaturaInput(String(finalHeight));
+    setEdad(finalAge);
+    setEdadInput(String(finalAge));
+    setShowEstaturaModal(false);
+
+    if (selectedMember) {
+      (selectedMember as any).estatura_cm = finalHeight;
+      selectedMember.age = finalAge;
+      selectedMember.gender = sexo;
+
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === selectedMember.id
+            ? { ...m, estatura_cm: finalHeight, age: finalAge, gender: sexo }
+            : m
+        )
+      );
+
+      setBiometriaSavedBanner(`✓ Biometría guardada (${finalHeight} cm · ${finalAge} años · ${sexo})`);
+      setTimeout(() => setBiometriaSavedBanner(null), 4000);
+
+      await actualizarBiometriaSocio(selectedMember.id, {
+        estatura_cm: finalHeight,
+        edad: finalAge,
+        sexo,
+        socio_dni: selectedMember.dni,
+      });
     }
   };
 
@@ -572,9 +677,7 @@ export default function TerminalBalanza() {
 
     if (res.success) {
       setSavedSuccess(true);
-      if (scaleConnection) {
-        scaleConnection.disconnect();
-      }
+      // NUNCA desconectamos la balanza: se mantiene la conexión BLE viva para el siguiente socio
     } else {
       alert('Error guardando evaluación: ' + (res.error || 'Intente nuevamente'));
     }
@@ -603,7 +706,13 @@ export default function TerminalBalanza() {
     setManualPeso('');
     setManualGrasa('');
     setManualMusculo('');
-    setScaleStatus('desconectado');
+    // Si la balanza sigue conectada físicamente vía GATT, conservamos el estado 'conectado'
+    if (isScaleCurrentlyConnected()) {
+      setScaleStatus('conectado');
+      setStatusMessage('Balanza conectada y lista para el siguiente socio.');
+    } else {
+      setScaleStatus('desconectado');
+    }
   };
 
   // WhatsApp Share
@@ -919,11 +1028,17 @@ export default function TerminalBalanza() {
               <button
                 type="button"
                 onClick={() => setShowEstaturaModal(true)}
-                className="text-amber-400 hover:underline cursor-pointer font-bold"
+                className="text-amber-400 hover:underline cursor-pointer font-bold px-2 py-1 rounded-lg hover:bg-amber-400/10 transition-colors"
               >
                 Editar Biometría
               </button>
             </div>
+
+            {biometriaSavedBanner && (
+              <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-xs font-mono text-emerald-300 text-center animate-in fade-in">
+                {biometriaSavedBanner}
+              </div>
+            )}
 
             {/* Historial Previo */}
             {previousEval && (
@@ -1143,22 +1258,81 @@ export default function TerminalBalanza() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={handleStartBluetoothWeighing}
+                                  onClick={() => handleStartBluetoothWeighing(false)}
                                   className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold uppercase tracking-wider py-2.5 rounded-xl text-xs transition-all border border-white/10 cursor-pointer flex items-center justify-center gap-1.5 font-mono"
                                 >
                                   <Zap className="w-3.5 h-3.5 text-amber-400" />
-                                  <span>Reconectar / Volver a Pesar</span>
+                                  <span>Volver a Pesar</span>
                                 </button>
                               </>
+                            ) : scaleStatus === 'conectado' ? (
+                              <div className="space-y-2">
+                                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-mono text-xs flex items-center justify-center gap-2 shadow-lg">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                                  <span className="font-bold">
+                                    Balanza Conectada ({savedScaleName || 'EUROMAR G78'}) · Sube descalzo(a) a la plataforma
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-center gap-3 text-[11px] font-mono">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartBluetoothWeighing(true)}
+                                    className="text-zinc-400 hover:text-amber-400 underline cursor-pointer"
+                                  >
+                                    Emparejar otra balanza
+                                  </button>
+                                  <span className="text-zinc-600">·</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      scaleConnection?.disconnect();
+                                      setScaleConnection(null);
+                                      setScaleStatus('desconectado');
+                                      setStatusMessage('Balanza desconectada');
+                                    }}
+                                    className="text-zinc-500 hover:text-red-400 underline cursor-pointer"
+                                  >
+                                    Desconectar
+                                  </button>
+                                </div>
+                              </div>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={handleStartBluetoothWeighing}
-                                className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono"
-                              >
-                                <Zap className="w-4 h-4" />
-                                <span>CONECTAR BALANZA Y PESAR</span>
-                              </button>
+                              <div className="space-y-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartBluetoothWeighing(false)}
+                                  className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase tracking-wider py-4 rounded-2xl text-sm transition-all shadow-xl shadow-amber-400/20 cursor-pointer flex items-center justify-center gap-2 active:scale-98 font-mono"
+                                >
+                                  <Zap className="w-4 h-4" />
+                                  <span>
+                                    {savedScaleName
+                                      ? `CONECTAR A ${savedScaleName.toUpperCase()} (1 TOQUE)`
+                                      : 'CONECTAR BALANZA Y PESAR'}
+                                  </span>
+                                </button>
+                                {savedScaleName && (
+                                  <div className="flex items-center justify-center gap-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleStartBluetoothWeighing(true)}
+                                      className="text-[11px] text-zinc-500 hover:text-zinc-300 font-mono cursor-pointer"
+                                    >
+                                      ⚙️ Emparejar otra balanza
+                                    </button>
+                                    <span className="text-zinc-700">·</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        forgetPairedScale();
+                                        setSavedScaleName(null);
+                                      }}
+                                      className="text-[11px] text-zinc-500 hover:text-red-400 font-mono cursor-pointer"
+                                    >
+                                      ✕ Olvidar
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         </>
@@ -1508,76 +1682,129 @@ export default function TerminalBalanza() {
         )}
       </main>
 
-      {/* Modal para Ajustar Estatura (cm) */}
+      {/* Modal de Biometría (Estatura, Edad y Sexo) */}
       {showEstaturaModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-sm bg-zinc-900 border border-white/20 rounded-3xl p-6 shadow-2xl space-y-4">
+          <div className="w-full max-w-sm bg-zinc-900 border border-amber-400/30 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <h3 className="text-base font-black uppercase text-white font-display">
-                Confirmar Estatura
+                Biometría del Socio
               </h3>
               <button
                 type="button"
                 onClick={() => setShowEstaturaModal(false)}
-                className="text-zinc-400 hover:text-white"
+                className="text-zinc-400 hover:text-white p-1 rounded-lg"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-zinc-400 font-sans">
-              La estatura es fundamental para calcular el % de grasa y masa muscular con la balanza.
+            <p className="text-xs text-zinc-400 font-sans leading-relaxed">
+              Estos datos se guardarán permanentemente en la ficha del socio para que aparezcan completados automáticamente en sus próximas evaluaciones.
             </p>
 
-            <div className="text-center py-2">
-              <span className="text-4xl font-black font-mono text-amber-400">{estaturaCm}</span>
-              <span className="text-lg text-white font-mono ml-1.5">cm</span>
+            {/* Estatura en cm con input directo + botones de ajuste */}
+            <div className="space-y-1.5 text-center py-1">
+              <label className="block text-[10px] font-mono uppercase text-zinc-400">
+                Estatura del Socio
+              </label>
+              <div className="flex items-center justify-center gap-2">
+                <input
+                  type="number"
+                  min="100"
+                  max="230"
+                  value={estaturaInput}
+                  onChange={(e) => {
+                    setEstaturaInput(e.target.value);
+                    const n = parseInt(e.target.value, 10);
+                    if (!isNaN(n) && n >= 100 && n <= 230) setEstaturaCm(n);
+                  }}
+                  onBlur={() => {
+                    const n = parseInt(estaturaInput, 10);
+                    if (isNaN(n) || n < 100 || n > 230) {
+                      setEstaturaInput(String(estaturaCm));
+                    } else {
+                      setEstaturaCm(n);
+                      setEstaturaInput(String(n));
+                    }
+                  }}
+                  className="w-28 bg-zinc-950 border border-amber-400/50 rounded-2xl py-2 px-3 text-center text-3xl font-black font-mono text-amber-400 focus:outline-none focus:border-amber-400"
+                />
+                <span className="text-lg text-white font-mono font-bold">cm</span>
+              </div>
+              <div className="flex items-center justify-center gap-1.5 pt-1">
+                {[-5, -1, +1, +5].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => {
+                      const nuevo = Math.max(100, Math.min(230, estaturaCm + val));
+                      setEstaturaCm(nuevo);
+                      setEstaturaInput(String(nuevo));
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-zinc-950 border border-white/15 text-xs font-mono font-bold hover:border-amber-400 cursor-pointer text-zinc-300"
+                  >
+                    {val > 0 ? `+${val}` : val}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="flex items-center justify-center gap-2">
-              {[-5, -1, +1, +5].map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => setEstaturaCm((c) => Math.max(120, Math.min(220, c + val)))}
-                  className="px-3 py-2 rounded-xl bg-zinc-950 border border-white/15 text-xs font-mono font-bold hover:border-amber-400 cursor-pointer"
-                >
-                  {val > 0 ? `+${val}` : val}
-                </button>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 pt-2">
+            {/* Sexo y Edad */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
               <div>
-                <label className="block text-[10px] font-mono uppercase text-zinc-400 mb-1">Sexo</label>
+                <label className="block text-[10px] font-mono uppercase text-zinc-400 mb-1">
+                  Sexo Biológico
+                </label>
                 <select
                   value={sexo}
                   onChange={(e) => setSexo(e.target.value as any)}
-                  className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-2 text-xs text-white font-mono"
+                  className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-2.5 text-xs text-white font-mono focus:border-amber-400"
                 >
                   <option value="Masculino">Masculino</option>
                   <option value="Femenino">Femenino</option>
                 </select>
               </div>
               <div>
-                <label className="block text-[10px] font-mono uppercase text-zinc-400 mb-1">Edad</label>
-                <input
-                  type="number"
-                  value={edad}
-                  min="12"
-                  max="90"
-                  onChange={(e) => setEdad(parseInt(e.target.value) || 25)}
-                  className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-2 text-xs text-white font-mono"
-                />
+                <label className="block text-[10px] font-mono uppercase text-zinc-400 mb-1">
+                  Edad
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="10"
+                    max="99"
+                    value={edadInput}
+                    onChange={(e) => {
+                      setEdadInput(e.target.value);
+                      const n = parseInt(e.target.value, 10);
+                      if (!isNaN(n) && n >= 10 && n <= 99) {
+                        setEdad(n);
+                      }
+                    }}
+                    onBlur={() => {
+                      const n = parseInt(edadInput, 10);
+                      if (isNaN(n) || n < 10 || n > 99) {
+                        setEdadInput(String(edad));
+                      } else {
+                        setEdad(n);
+                        setEdadInput(String(n));
+                      }
+                    }}
+                    className="w-full bg-zinc-950 border border-white/15 rounded-xl px-3 py-2 text-xs text-white font-mono focus:border-amber-400"
+                    placeholder="25"
+                  />
+                  <span className="absolute right-3 top-2 text-[10px] text-zinc-500 font-mono pointer-events-none">años</span>
+                </div>
               </div>
             </div>
 
             <button
               type="button"
-              onClick={() => setShowEstaturaModal(false)}
-              className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase py-3 rounded-xl text-xs font-mono transition-colors cursor-pointer mt-2"
+              onClick={handleConfirmBiometria}
+              className="w-full bg-amber-400 hover:bg-amber-300 text-black font-black uppercase py-3.5 rounded-xl text-xs font-mono transition-colors cursor-pointer mt-2 shadow-lg shadow-amber-400/20"
             >
-              Confirmar Biometría
+              Guardar y Confirmar Biometría
             </button>
           </div>
         </div>

@@ -12,3 +12,12 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  electronAPI?: {
+    isElectron?: boolean;
+    platform?: string;
+    duckBackgroundAudio?: (level: number) => Promise<{ ok: boolean; output?: string; error?: string }>;
+    unduckBackgroundAudio?: () => Promise<{ ok: boolean; output?: string; error?: string }>;
+  };
+}

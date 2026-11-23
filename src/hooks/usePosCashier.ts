@@ -25,6 +25,8 @@ export interface UsePosCashierReturn {
   totalCarrito: number;
   totalItems: number;
   isProcessing: boolean;
+  ultimoTicket: any | null;
+  setUltimoTicket: React.Dispatch<React.SetStateAction<any | null>>;
   agregarAlCarrito: (prod: any) => void;
   modificarCantidad: (id: string, delta: number) => void;
   procesarVentaPOS: () => Promise<void>;
@@ -38,6 +40,7 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
   const [descuentoMonto, setDescuentoMonto] = useState<number>(0);
   const [descuentoMotivo, setDescuentoMotivo] = useState<string>('');
   const [posSuccessMsg, setPosSuccessMsg] = useState<string | null>(null);
+  const [ultimoTicket, setUltimoTicket] = useState<any | null>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const isProcessingRef = useRef<boolean>(false);
 
@@ -96,7 +99,7 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
     try {
       isProcessingRef.current = true;
       setIsProcessing(true);
-      await registrarVentaPOS(
+      const res = await registrarVentaPOS(
         carrito.map((c) => ({
           producto_id: c.id,
           nombre: c.nombre,
@@ -114,6 +117,7 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
             }
           : undefined
       );
+      setUltimoTicket(res);
       // Descontar inmediatamente el stock en el catálogo reactivo en memoria del POS
       setProductos((prevProds) =>
         prevProds.map((p) => {
@@ -139,7 +143,7 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
       setCarrito([]);
       setDescuentoMonto(0);
       setDescuentoMotivo('');
-      setTimeout(() => setPosSuccessMsg(null), 4000);
+      setTimeout(() => setPosSuccessMsg(null), 6000);
     } catch {
       // Descontar también en caso de fallback offline
       setProductos((prevProds) =>
@@ -161,7 +165,7 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
       setCarrito([]);
       setDescuentoMonto(0);
       setDescuentoMotivo('');
-      setTimeout(() => setPosSuccessMsg(null), 3000);
+      setTimeout(() => setPosSuccessMsg(null), 5000);
     } finally {
       isProcessingRef.current = false;
       setIsProcessing(false);
@@ -184,6 +188,8 @@ export function usePosCashier(initialProducts: any[] = []): UsePosCashierReturn 
     totalCarrito,
     totalItems,
     isProcessing,
+    ultimoTicket,
+    setUltimoTicket,
     agregarAlCarrito,
     modificarCantidad,
     procesarVentaPOS,

@@ -314,15 +314,21 @@ export default function GymAnnouncementsControl() {
           </div>
 
           {/* Pie Informativo de Volumen y Estado */}
-          <div className="mt-3 pt-2.5 border-t border-white/10 flex items-center justify-between text-[10px] text-zinc-400 font-mono">
-            <span className="flex items-center gap-1">
-              <Volume2 className="w-3 h-3 text-amber-400" />
-              Volumen Parlante:
-              <strong className={isMuted ? 'text-red-400' : 'text-amber-400'}>
-                {isMuted ? 'Silenciado' : `${volumePercent}%`}
-              </strong>
-            </span>
-            <span className="text-zinc-500">Audio Oficial ElevenLabs</span>
+          <div className="mt-3 pt-2.5 border-t border-white/10 flex flex-col gap-1.5 text-[10px] text-zinc-400 font-mono">
+            <div className="flex items-center justify-between">
+              <span className="flex items-center gap-1">
+                <Volume2 className="w-3 h-3 text-amber-400" />
+                Volumen Parlante:
+                <strong className={isMuted ? 'text-red-400' : 'text-amber-400'}>
+                  {isMuted ? 'Silenciado' : `${volumePercent}%`}
+                </strong>
+              </span>
+              <span className="text-zinc-500">Audio Oficial ElevenLabs</span>
+            </div>
+            <div className="flex items-center gap-1 text-[9px] text-emerald-400/90 bg-emerald-950/40 border border-emerald-500/20 px-2 py-1 rounded-md">
+              <Sparkles className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+              <span>Auto-Ducking activo: Baja YouTube Music al 15% automáticamente al sonar el aviso</span>
+            </div>
           </div>
         </div>
       )}

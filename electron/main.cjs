@@ -1,5 +1,41 @@
 const { app, BrowserWindow, shell, ipcMain, session } = require('electron');
 const path = require('path');
+const { execFile, execFileSync } = require('child_process');
+
+const duckerPath = path.join(__dirname, 'TrankilandiaDucker.exe').replace('app.asar', 'app.asar.unpacked');
+
+// IPC Handlers para Auto-Ducking (Atenuación automática de música externa en Windows)
+ipcMain.handle('audio:duck', async (_event, level = 0.15) => {
+  return new Promise((resolve) => {
+    execFile(duckerPath, ['duck', String(level), String(process.pid)], (err, stdout) => {
+      if (err) {
+        console.warn('[AutoDucker] Error ducking:', err.message);
+        resolve({ ok: false, error: err.message });
+      } else {
+        resolve({ ok: true, output: stdout?.trim() });
+      }
+    });
+  });
+});
+
+ipcMain.handle('audio:unduck', async () => {
+  return new Promise((resolve) => {
+    execFile(duckerPath, ['restore'], (err, stdout) => {
+      if (err) {
+        console.warn('[AutoDucker] Error restoring:', err.message);
+        resolve({ ok: false, error: err.message });
+      } else {
+        resolve({ ok: true, output: stdout?.trim() });
+      }
+    });
+  });
+});
+
+app.on('before-quit', () => {
+  try {
+    execFileSync(duckerPath, ['restore']);
+  } catch {}
+});
 
 // Bloqueo de instancia única (evita abrir múltiples ventanas del sistema en la recepción)
 const gotTheLock = app.requestSingleInstanceLock();

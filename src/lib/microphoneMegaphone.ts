@@ -16,6 +16,7 @@
  */
 
 import { getSharedAudioContext } from './audioVoiceAlerts';
+import { requestAudioDuck, releaseAudioDuck } from './autoAudioDucker';
 
 export interface MicStatus {
   isActive: boolean;
@@ -171,9 +172,13 @@ export async function playAnnouncementChime(): Promise<void> {
 export async function startMicrophone(options?: { withChime?: boolean }): Promise<boolean> {
   if (isMicActiveState) return true;
 
+  // Atenuar música de fondo (YouTube Music, Spotify, etc.) para que la voz se escuche clara
+  await requestAudioDuck('microphone');
+
   const ctx = getSharedAudioContext();
   if (!ctx) {
     currentMicError = 'AudioContext no soportado en este entorno.';
+    releaseAudioDuck('microphone');
     notifyMicStateChange();
     return false;
   }
@@ -242,6 +247,7 @@ export async function startMicrophone(options?: { withChime?: boolean }): Promis
     return true;
   } catch (err: any) {
     console.error('[startMicrophone] Error al acceder al micrófono:', err);
+    releaseAudioDuck('microphone');
     isMicActiveState = false;
     currentMicError =
       err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError'
@@ -260,6 +266,9 @@ export async function startMicrophone(options?: { withChime?: boolean }): Promis
  * Detiene la transmisión del micrófono de inmediato y apaga los dispositivos físicos.
  */
 export function stopMicrophone(): void {
+  // Restaurar el volumen normal de las aplicaciones de fondo (YouTube / música)
+  releaseAudioDuck('microphone');
+
   try {
     if (micGainNode && getSharedAudioContext()) {
       try {

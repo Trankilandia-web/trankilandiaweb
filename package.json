@@ -25,6 +25,9 @@
       "electron/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "electron/TrankilandiaDucker.exe"
+    ],
     "win": {
       "icon": "build/icon.ico",
       "target": "nsis"
