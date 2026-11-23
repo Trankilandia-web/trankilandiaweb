@@ -4,6 +4,8 @@ import {
   calcularDeltasMensuales,
   determinarDiagnostico,
   calcularPuntuacionCorporal,
+  calcularProgresoAcumulado,
+  generarSintesisSaludCotidiana,
   EntradaMedicion,
 } from '../../lib/bioimpedanceEngine';
 import { EvaluacionCorporal } from '../../types/evaluacion';
@@ -120,5 +122,56 @@ describe('Motor de Bioimpedancia y Diagnóstico de Recomposición (bioimpedanceE
 
     const scoreHombreSedentario = calcularPuntuacionCorporal(95, 32, 33, 'Masculino', 40);
     expect(scoreHombreSedentario).toBeLessThan(70);
+  });
+
+  it('calcularProgresoAcumulado debe calcular el impacto total desde la primera evaluación', () => {
+    const primera: EvaluacionCorporal = {
+      ...calcularMetricasCompletas(mockEntrada),
+      fecha: '2026-08-15T10:00:00.000Z',
+      peso_kg: 82.0,
+      masa_muscular_kg: 33.0,
+      grasa_corporal_kg: 18.0,
+      grasa_corporal_pct: 22.0,
+      grasa_visceral: 9,
+      puntuacion_corporal: 68,
+    };
+
+    const actual: EvaluacionCorporal = {
+      ...calcularMetricasCompletas(mockEntrada),
+      fecha: '2026-11-15T10:00:00.000Z',
+      peso_kg: 75.0,
+      masa_muscular_kg: 35.5,
+      grasa_corporal_kg: 12.0,
+      grasa_corporal_pct: 16.0,
+      grasa_visceral: 6,
+      puntuacion_corporal: 82,
+    };
+
+    const acumulado = calcularProgresoAcumulado(primera, actual);
+    expect(acumulado.delta_grasa_kg).toBe(-6.0); // Perdió 6kg de grasa
+    expect(acumulado.delta_musculo_kg).toBe(2.5); // Ganó 2.5kg de músculo
+    expect(acumulado.delta_peso_kg).toBe(-7.0);
+    expect(acumulado.delta_visceral).toBe(-3);
+    expect(acumulado.dias_totales).toBeGreaterThanOrEqual(90);
+    expect(acumulado.meta_progreso_pct).toBeGreaterThan(0);
+  });
+
+  it('generarSintesisSaludCotidiana debe producir explicaciones claras para móvil sin tecnicismos', () => {
+    const evaluacion = calcularMetricasCompletas({
+      ...mockEntrada,
+      peso_kg: 80.0,
+      grasa_visceral: 6,
+      agua_pct: 54.0,
+      bmr_kcal: 1750,
+    });
+
+    const sintesis = generarSintesisSaludCotidiana(evaluacion);
+    expect(sintesis.visceral.estado).toBe('optimo');
+    expect(sintesis.visceral.titulo).toContain('Seguro');
+    expect(sintesis.metabolismo.bmr_kcal).toBe(1750);
+    expect(sintesis.metabolismo.descripcion).toContain('calorías');
+    expect(sintesis.hidratacion.litros_recomendados).toBeGreaterThan(2);
+    expect(sintesis.proteina.gramos_sugeridos).toBeGreaterThan(50);
+    expect(sintesis.fraseImpacto).toBeTruthy();
   });
 });

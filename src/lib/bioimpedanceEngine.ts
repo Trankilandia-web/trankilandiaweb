@@ -460,3 +460,142 @@ export function determinarDiagnostico(
     tipo: 'mantenimiento',
   };
 }
+
+export interface ProgresoAcumulado {
+  delta_grasa_kg: number;
+  delta_musculo_kg: number;
+  delta_peso_kg: number;
+  delta_visceral: number;
+  delta_score: number;
+  dias_totales: number;
+  meta_progreso_pct: number;
+}
+
+export function calcularProgresoAcumulado(
+  primera: EvaluacionCorporal,
+  actual: EvaluacionCorporal
+): ProgresoAcumulado {
+  const dGrasa = Number((actual.grasa_corporal_kg - primera.grasa_corporal_kg).toFixed(1));
+  const dMusculo = Number((actual.masa_muscular_kg - primera.masa_muscular_kg).toFixed(1));
+  const dPeso = Number((actual.peso_kg - primera.peso_kg).toFixed(1));
+  const dVisceral = actual.grasa_visceral - primera.grasa_visceral;
+  const dScore = actual.puntuacion_corporal - primera.puntuacion_corporal;
+
+  const ms = Math.abs(new Date(actual.fecha).getTime() - new Date(primera.fecha).getTime());
+  const dias = Math.max(1, Math.round(ms / (1000 * 60 * 60 * 24)));
+
+  const pesoInicial = primera.peso_kg;
+  const pesoActual = actual.peso_kg;
+  const pesoObjetivo = actual.peso_objetivo_kg || (22.0 * Math.pow(actual.estatura_cm / 100, 2));
+  const distanciaTotal = Math.abs(pesoInicial - pesoObjetivo);
+  let metaPct = 50;
+  if (distanciaTotal > 0.5) {
+    const recorrido = Math.abs(pesoInicial - pesoActual);
+    metaPct = Math.min(100, Math.max(10, Math.round((recorrido / distanciaTotal) * 100)));
+  }
+
+  return {
+    delta_grasa_kg: dGrasa,
+    delta_musculo_kg: dMusculo,
+    delta_peso_kg: dPeso,
+    delta_visceral: dVisceral,
+    delta_score: dScore,
+    dias_totales: dias,
+    meta_progreso_pct: metaPct,
+  };
+}
+
+export interface SintesisSaludCotidiana {
+  visceral: {
+    nivel: number;
+    estado: 'optimo' | 'atencion' | 'alerta';
+    titulo: string;
+    descripcion: string;
+  };
+  metabolismo: {
+    bmr_kcal: number;
+    calorias_diarias_estimadas: number;
+    descripcion: string;
+  };
+  hidratacion: {
+    pct: number;
+    estado: 'excelente' | 'adecuado' | 'bajo';
+    consejo: string;
+    litros_recomendados: number;
+  };
+  proteina: {
+    gramos_sugeridos: number;
+    consejo: string;
+  };
+  fraseImpacto: string;
+}
+
+export function generarSintesisSaludCotidiana(
+  actual: EvaluacionCorporal
+): SintesisSaludCotidiana {
+  let estadoVisceral: 'optimo' | 'atencion' | 'alerta' = 'optimo';
+  let tituloVisceral = 'Rango Seguro';
+  let descVisceral = 'Tus órganos vitales y corazón están protegidos con un nivel de grasa interna saludable.';
+  if (actual.grasa_visceral > 14) {
+    estadoVisceral = 'alerta';
+    tituloVisceral = 'Riesgo Cardiovascular Elevado';
+    descVisceral = 'La grasa que rodea tus órganos está elevada. Prioriza el cardio y reduce azúcares ultraprocesados.';
+  } else if (actual.grasa_visceral >= 10) {
+    estadoVisceral = 'atencion';
+    tituloVisceral = 'Atención Abdominal';
+    descVisceral = 'Nivel ligeramente elevado. Con entrenamiento de fuerza constante y déficit calórico descenderá rápido.';
+  }
+
+  const bmr = actual.bmr_kcal;
+  const caloriasActivas = Math.round(bmr * 1.45);
+  const descMetabolismo = `Tu masa muscular quema ${bmr} calorías al día solo existiendo. En un día normal de gym quemas aprox. ${caloriasActivas} kcal.`;
+
+  const minAgua = actual.sexo === 'Masculino' ? 55 : 50;
+  let estadoAgua: 'excelente' | 'adecuado' | 'bajo' = 'adecuado';
+  let consejoAgua = 'Buen nivel de hidratación para la recuperación muscular.';
+  if (actual.agua_pct >= minAgua) {
+    estadoAgua = 'excelente';
+    consejoAgua = '¡Excelente hidratación celular! Tus músculos se recuperan al máximo.';
+  } else if (actual.agua_pct < minAgua - 5) {
+    estadoAgua = 'bajo';
+    consejoAgua = 'Toma 1 o 2 vasos más de agua al día para evitar fatiga en tus entrenamientos.';
+  }
+  const litrosRecomendados = Number((actual.peso_kg * 0.035).toFixed(1));
+
+  const gramosProteina = Math.round(Math.max(60, (actual.masa_muscular_kg || actual.peso_kg * 0.7) * 1.8));
+  const consejoProteina = `Apunta a ingerir aprox. ${gramosProteina}g de proteína al día repartidos en tus comidas para tonificar.`;
+
+  let fraseImpacto = '¡Excelente constancia! Tu cuerpo se sigue fortaleciendo.';
+  if (actual.puntuacion_corporal >= 80) {
+    fraseImpacto = '¡Composición atlética superior! Mantén la intensidad y disciplina.';
+  } else if (actual.grasa_visceral <= 9 && actual.masa_muscular_pct >= 55) {
+    fraseImpacto = '¡Base muscular sólida y corazón saludable! Estás en el camino correcto.';
+  } else if (actual.grasa_corporal_pct > 28) {
+    fraseImpacto = '¡Cada sesión en el gym cuenta! Estás activando tu quema de grasa.';
+  }
+
+  return {
+    visceral: {
+      nivel: actual.grasa_visceral,
+      estado: estadoVisceral,
+      titulo: tituloVisceral,
+      descripcion: descVisceral,
+    },
+    metabolismo: {
+      bmr_kcal: bmr,
+      calorias_diarias_estimadas: caloriasActivas,
+      descripcion: descMetabolismo,
+    },
+    hidratacion: {
+      pct: actual.agua_pct,
+      estado: estadoAgua,
+      consejo: consejoAgua,
+      litros_recomendados: litrosRecomendados,
+    },
+    proteina: {
+      gramos_sugeridos: gramosProteina,
+      consejo: consejoProteina,
+    },
+    fraseImpacto,
+  };
+}
