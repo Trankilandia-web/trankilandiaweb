@@ -12,7 +12,6 @@ import {
   Sun,
   Sunset,
   Moon,
-  Clock,
   UserCheck,
   CreditCard,
   Lock,
@@ -419,12 +418,36 @@ export default function ClientePortal() {
   const [isLoadingSocioOnline, setIsLoadingSocioOnline] = useState(false);
   const [codeFormat, setCodeFormat] = useState<'qr' | 'barcode'>('qr');
 
-  // Tab activa del cliente
+  // Tab activa del cliente y sub-pestaña de Mi Perfil
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const [activeTab, setActiveTab] = useState<'carnet' | 'rutina' | 'evolucion' | 'membresia' | 'perfil' | 'seguridad'>(
-    tabParam === 'seguridad' || tabParam === 'rutina' || tabParam === 'evolucion' || tabParam === 'membresia' || tabParam === 'perfil' ? tabParam : 'carnet'
+  const [activeTab, setActiveTab] = useState<'carnet' | 'rutina' | 'evolucion' | 'perfil'>(() => {
+    if (tabParam === 'seguridad' || tabParam === 'perfil') return 'perfil';
+    if (tabParam === 'rutina') return 'rutina';
+    if (tabParam === 'evolucion') return 'evolucion';
+    return 'carnet';
+  });
+  const [subPerfilTab, setSubPerfilTab] = useState<'datos' | 'seguridad'>(
+    tabParam === 'seguridad' ? 'seguridad' : 'datos'
   );
+
+  useEffect(() => {
+    if (tabParam === 'seguridad') {
+      setActiveTab('perfil');
+      setSubPerfilTab('seguridad');
+    } else if (tabParam === 'perfil') {
+      setActiveTab('perfil');
+      setSubPerfilTab('datos');
+    } else if (tabParam === 'membresia') {
+      setActiveTab('carnet');
+    } else if (tabParam === 'rutina') {
+      setActiveTab('rutina');
+    } else if (tabParam === 'evolucion') {
+      setActiveTab('evolucion');
+    } else if (tabParam === 'carnet') {
+      setActiveTab('carnet');
+    }
+  }, [tabParam]);
 
   // Estados para gestión de Mis Datos Personales (Pestaña 'perfil')
   const [perfilNombre, setPerfilNombre] = useState('');
@@ -1160,7 +1183,7 @@ export default function ClientePortal() {
               </div>
             ) : null}
 
-            {/* BARRA DE NAVEGACIÓN DE PESTAÑAS DEL CLIENTE */}
+            {/* BARRA DE NAVEGACIÓN DE PESTAÑAS DEL CLIENTE (4 VISTAS CONSOLIDADAS) */}
             <div className="flex items-center gap-1.5 sm:gap-2 bg-zinc-900/90 p-1.5 rounded-2xl border border-white/10 overflow-x-auto">
               <button
                 type="button"
@@ -1203,19 +1226,6 @@ export default function ClientePortal() {
 
               <button
                 type="button"
-                onClick={() => setActiveTab('membresia')}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'membresia'
-                    ? 'bg-amber-400 text-black shadow-md'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <Clock className="w-4 h-4" />
-                <span>Mi Membresía</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setActiveTab('perfil')}
                 className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
                   activeTab === 'perfil'
@@ -1224,20 +1234,7 @@ export default function ClientePortal() {
                 }`}
               >
                 <User className="w-4 h-4" />
-                <span>Mis Datos</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('seguridad')}
-                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'seguridad'
-                    ? 'bg-amber-400 text-black shadow-md'
-                    : 'text-zinc-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>Seguridad</span>
+                <span>Mi Perfil</span>
               </button>
             </div>
 
@@ -1414,6 +1411,86 @@ export default function ClientePortal() {
                     </div>
                   </div>
                 </div>
+
+                {/* RESUMEN DEL PLAN & ESTADO DE MEMBRESÍA */}
+                <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <span className="text-xs uppercase text-zinc-400 font-bold">Estado del Plan</span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                        isNoMembership
+                          ? 'bg-zinc-800 text-amber-300'
+                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                      }`}
+                    >
+                      {isNoMembership ? 'Inactivo' : 'Activo'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+                    <div>
+                      <span className="text-zinc-500 block">Plan:</span>
+                      <span className="font-bold text-white text-sm mt-0.5 block">{currentMember.plan}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-zinc-500 block">Vencimiento:</span>
+                      <span className="font-bold text-white text-sm mt-0.5 block">{currentMember.expiresAt || '30 Nov 2026'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-zinc-500 block">Estado de Pago:</span>
+                      <span className={`font-bold text-sm mt-0.5 block ${currentMember.balanceDue > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {currentMember.balanceDue > 0 ? `Debe S/. ${currentMember.balanceDue}` : 'Al Día'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowPlansModal(true)}
+                      className="flex-1 py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                    >
+                      Renovar o Cambiar Plan
+                    </button>
+
+                    <a
+                      href={`https://wa.me/51999787489?text=Hola%20Trankilandia%20Gym,%20soy%20${encodeURIComponent(
+                        currentMember.name
+                      )}%20(DNI%20${currentMember.dni}).%20Quisiera%20consultar%20sobre%20mi%20membresía.`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle className="w-4 h-4 text-emerald-400" />
+                      <span>Consultar en Recepción</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* MARCAS PERSONALES (PRs) */}
+                <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 space-y-3">
+                  <h4 className="text-xs font-bold uppercase text-zinc-300">Mis Marcas Personales</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                    <div className="bg-zinc-950 p-3 rounded-2xl border border-white/5">
+                      <span className="text-[10px] text-zinc-500 block">Peso Corporal</span>
+                      <span className="text-lg font-black text-white">{latestProgress?.weightKg ? `${latestProgress.weightKg} kg` : '—'}</span>
+                    </div>
+                    <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
+                      <span className="text-[10px] text-amber-400 block">Press Banca</span>
+                      <span className="text-lg font-black text-amber-400">{latestProgress?.benchPressKg ? `${latestProgress.benchPressKg} kg` : '—'}</span>
+                    </div>
+                    <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
+                      <span className="text-[10px] text-amber-400 block">Sentadilla</span>
+                      <span className="text-lg font-black text-amber-400">{latestProgress?.squatKg ? `${latestProgress.squatKg} kg` : '—'}</span>
+                    </div>
+                    <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
+                      <span className="text-[10px] text-amber-400 block">Peso Muerto</span>
+                      <span className="text-lg font-black text-amber-400">{latestProgress?.deadliftKg ? `${latestProgress.deadliftKg} kg` : '—'}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1559,99 +1636,45 @@ export default function ClientePortal() {
               />
             )}
 
-            {/* PESTAÑA 3: MI MEMBRESÍA & PAGOS */}
-            {activeTab === 'membresia' && (
-              <div className="space-y-5">
-                {/* Resumen del Plan */}
-                <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <span className="text-xs uppercase text-zinc-400 font-bold">Estado del Plan</span>
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                        isNoMembership
-                          ? 'bg-zinc-800 text-amber-300'
-                          : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      }`}
-                    >
-                      {isNoMembership ? 'Inactivo' : 'Activo'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
-                    <div>
-                      <span className="text-zinc-500 block">Plan:</span>
-                      <span className="font-bold text-white text-sm mt-0.5 block">{currentMember.plan}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-zinc-500 block">Vencimiento:</span>
-                      <span className="font-bold text-white text-sm mt-0.5 block">{currentMember.expiresAt || '30 Nov 2026'}</span>
-                    </div>
-
-                    <div>
-                      <span className="text-zinc-500 block">Estado de Pago:</span>
-                      <span className={`font-bold text-sm mt-0.5 block ${currentMember.balanceDue > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                        {currentMember.balanceDue > 0 ? `Debe S/. ${currentMember.balanceDue}` : 'Al Día'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setShowPlansModal(true)}
-                      className="flex-1 py-3 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
-                    >
-                      Renovar o Cambiar Plan
-                    </button>
-
-                    <a
-                      href={`https://wa.me/51999787489?text=Hola%20Trankilandia%20Gym,%20soy%20${encodeURIComponent(
-                        currentMember.name
-                      )}%20(DNI%20${currentMember.dni}).%20Quisiera%20consultar%20sobre%20mi%20membresía.`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="py-3 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
-                    >
-                      <MessageCircle className="w-4 h-4 text-emerald-400" />
-                      <span>Consultar en Recepción</span>
-                    </a>
-                  </div>
-                </div>
-
-                {/* Marcas Personales (PRs) */}
-                <div className="bg-zinc-900 border border-white/10 rounded-3xl p-5 space-y-3">
-                  <h4 className="text-xs font-bold uppercase text-zinc-300">Mis Marcas Personales</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                    <div className="bg-zinc-950 p-3 rounded-2xl border border-white/5">
-                      <span className="text-[10px] text-zinc-500 block">Peso Corporal</span>
-                      <span className="text-lg font-black text-white">{latestProgress?.weightKg ? `${latestProgress.weightKg} kg` : '—'}</span>
-                    </div>
-                    <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
-                      <span className="text-[10px] text-amber-400 block">Press Banca</span>
-                      <span className="text-lg font-black text-amber-400">{latestProgress?.benchPressKg ? `${latestProgress.benchPressKg} kg` : '—'}</span>
-                    </div>
-                    <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
-                      <span className="text-[10px] text-amber-400 block">Sentadilla</span>
-                      <span className="text-lg font-black text-amber-400">{latestProgress?.squatKg ? `${latestProgress.squatKg} kg` : '—'}</span>
-                    </div>
-                    <div className="bg-zinc-950 p-3 rounded-2xl border border-amber-400/20">
-                      <span className="text-[10px] text-amber-400 block">Peso Muerto</span>
-                      <span className="text-lg font-black text-amber-400">{latestProgress?.deadliftKg ? `${latestProgress.deadliftKg} kg` : '—'}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* PESTAÑA: GESTIÓN DE MIS DATOS PERSONALES */}
+            {/* PESTAÑA 4: MI PERFIL (MIS DATOS & SEGURIDAD CONSOLIDADOS) */}
             {activeTab === 'perfil' && (
               <div className="space-y-6">
-                <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
+                {/* SUB-SELECTORES TIPO PILL: MIS DATOS / SEGURIDAD */}
+                <div className="flex items-center gap-2 bg-zinc-900/90 p-1.5 rounded-2xl border border-white/10 w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setSubPerfilTab('datos')}
+                    className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                      subPerfilTab === 'datos'
+                        ? 'bg-amber-400 text-black shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <User className="w-4 h-4" />
+                    <span>Mis Datos</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSubPerfilTab('seguridad')}
+                    className={`py-2 px-4 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer whitespace-nowrap ${
+                      subPerfilTab === 'seguridad'
+                        ? 'bg-amber-400 text-black shadow-md'
+                        : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <KeyRound className="w-4 h-4" />
+                    <span>Seguridad</span>
+                  </button>
+                </div>
+
+                {/* SUB-SECCIÓN: MIS DATOS PERSONALES */}
+                {subPerfilTab === 'datos' && (
+                  <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
                   <div>
                     <div className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-amber-400 mb-1.5">
                       <User className="w-4 h-4" />
-                      <span>Ficha Oficial del Socio</span>
+                      <span>Ficha Oficial</span>
                     </div>
                     <h3 className="text-xl sm:text-2xl font-black uppercase text-white font-display tracking-tight">
                       Gestión de Mis Datos Personales
@@ -1842,29 +1865,27 @@ export default function ClientePortal() {
                         {isSavingPerfil ? (
                           <>
                             <RefreshCw className="w-4 h-4 animate-spin" />
-                            <span>Guardando Mis Datos...</span>
+                            <span>Guardando Cambios...</span>
                           </>
                         ) : (
                           <>
                             <Save className="w-4 h-4" />
-                            <span>Guardar Mis Datos</span>
+                            <span>Guardar Cambios</span>
                           </>
                         )}
                       </button>
                     </div>
                   </form>
                 </div>
-              </div>
-            )}
+                )}
 
-            {/* PESTAÑA 4: SEGURIDAD, CONTRASEÑA & CUENTAS VINCULADAS */}
-            {activeTab === 'seguridad' && (
-              <div className="space-y-6">
-                <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
+                {/* SUB-SECCIÓN: SEGURIDAD Y MÉTODOS DE INGRESO */}
+                {subPerfilTab === 'seguridad' && (
+                  <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 sm:p-7 shadow-xl space-y-6">
                   <div>
                     <div className="inline-flex items-center gap-2 text-xs font-mono font-bold uppercase tracking-wider text-amber-400 mb-1.5">
                       <ShieldCheck className="w-4 h-4" />
-                      <span>Cuenta Única &amp; Doble Acceso</span>
+                      <span>Doble Acceso Protegido</span>
                     </div>
                     <h3 className="text-xl sm:text-2xl font-black uppercase text-white font-display tracking-tight">
                       Seguridad y Métodos de Ingreso
@@ -2040,6 +2061,7 @@ export default function ClientePortal() {
                     </div>
                   </div>
                 </div>
+                )}
               </div>
             )}
         </>
