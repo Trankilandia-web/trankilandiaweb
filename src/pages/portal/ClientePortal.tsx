@@ -440,6 +440,9 @@ export default function ClientePortal() {
       setSubPerfilTab('datos');
     } else if (tabParam === 'membresia') {
       setActiveTab('carnet');
+      setTimeout(() => {
+        document.getElementById('seccion-membresia')?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
     } else if (tabParam === 'rutina') {
       setActiveTab('rutina');
     } else if (tabParam === 'evolucion') {
@@ -1413,7 +1416,7 @@ export default function ClientePortal() {
                 </div>
 
                 {/* RESUMEN DEL PLAN & ESTADO DE MEMBRESÍA */}
-                <div className="bg-zinc-900 border border-white/10 rounded-3xl p-6 space-y-4">
+                <div id="seccion-membresia" className="bg-zinc-900 border border-white/10 rounded-3xl p-6 space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/10">
                     <span className="text-xs uppercase text-zinc-400 font-bold">Estado del Plan</span>
                     <span
