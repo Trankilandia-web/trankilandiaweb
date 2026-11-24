@@ -124,6 +124,18 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // Soporte para abrir DevTools con F12 o Ctrl+Shift+I
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i')) {
+      mainWindow.webContents.toggleDevTools();
+      event.preventDefault();
+    }
+  });
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[Electron] Error cargando URL: ${errorCode} - ${errorDescription} (${validatedURL})`);
+  });
+
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
   const devUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173/#/';
 

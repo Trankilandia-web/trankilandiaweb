@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
-    "electron:build": "npm run build && electron-builder --win --x64"
+    "electron:build": "cross-env IS_ELECTRON=true npm run build && electron-builder --win --x64"
   },
   "build": {
     "appId": "com.trankilandia.hub",
