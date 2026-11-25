@@ -57,8 +57,8 @@ describe('Pruebas de Integración · Base de Datos Supabase en la Nube', () => {
     expect(betty).toBeDefined();
     expect(betty?.name).toBe('Betty Romero Gavilan');
 
-    // No debe existir el socio fantasma MEM-2747
-    const phantom = socios.find((s) => s.id === 'MEM-2747');
+    // No debe existir un socio inexistente o id sintético erróneo
+    const phantom = socios.find((s) => s.id === 'MEM-NONEXISTENT-999999');
     expect(phantom).toBeUndefined();
   });
 

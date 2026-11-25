@@ -4386,7 +4386,7 @@ export default function CajaDashboard() {
                 </div>
 
                 <div className="p-2 rounded-xl bg-zinc-900/60 border border-white/5 text-[11px] text-zinc-400 text-center">
-                  🌐 Página Web: <span className="text-amber-400 font-bold">trankilandiaweb.qatuweb.com</span>
+                  🌐 Página Web: <span className="text-amber-400 font-bold">trankilandiagym.qatuweb.com</span>
                 </div>
 
                 {credencialesModal.email && (
@@ -4419,7 +4419,7 @@ export default function CajaDashboard() {
                       `¡Hola ${credencialesModal.nombre}! 👋 Bienvenido a Trankilandia Gym 🏋️‍♂️💪\n\n` +
                       `Tu membresía *${credencialesModal.plan}* ya se encuentra activa.\n\n` +
                       `🔑 *Tus Credenciales de Acceso al Portal:*\n` +
-                      `• Página Web: https://trankilandiaweb.qatuweb.com\n` +
+                      `• Página Web: https://trankilandiagym.qatuweb.com\n` +
                       `• Usuario: ${credencialesModal.dni}\n` +
                       `• Contraseña: ${credencialesModal.dni}\n\n` +
                       `Tu usuario y contraseña es tu número de DNI.\n\n` +
@@ -4444,7 +4444,7 @@ export default function CajaDashboard() {
                       `TRANKILANDIA GYM · CREDENCIALES DE ACCESO\n` +
                       `Socio: ${credencialesModal.nombre}\n` +
                       `Plan: ${credencialesModal.plan}\n` +
-                      `Página Web: https://trankilandiaweb.qatuweb.com\n` +
+                      `Página Web: https://trankilandiagym.qatuweb.com\n` +
                       `Usuario: ${credencialesModal.dni}\n` +
                       `Contraseña: ${credencialesModal.dni}\n` +
                       `Tu usuario y contraseña es tu número de DNI.\n` +

@@ -605,7 +605,7 @@ export default function HubReceptionSimple() {
     } else if (socio.balanceDue > 0) {
       mensaje = `Estimado(a) ${socio.name}, le saludamos cordialmente de Trankilandia Gym. Le recordamos que mantiene un saldo pendiente de S/. ${socio.balanceDue}.00 correspondiente a su membresía. Puede cancelarlo en recepción o mediante Yape o Plin al 999 787 489. Muchas gracias por su atención.`;
     } else {
-      mensaje = `Estimado(a) ${socio.name}, le saludamos de Trankilandia Gym. Le recordamos que su membresía finaliza en ${diffDays} días (${socio.expiresAt}). Puede consultar sus asistencias y portal en https://trankilandiaweb.qatuweb.com ingresando con su DNI como usuario y contraseña. Atentamente, Trankilandia Gym.`;
+      mensaje = `Estimado(a) ${socio.name}, le saludamos de Trankilandia Gym. Le recordamos que su membresía finaliza en ${diffDays} días (${socio.expiresAt}). Puede consultar sus asistencias y portal en https://trankilandiagym.qatuweb.com ingresando con su DNI como usuario y contraseña. Atentamente, Trankilandia Gym.`;
     }
 
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`, '_blank');
@@ -625,7 +625,7 @@ export default function HubReceptionSimple() {
       `¡Hola ${socio.name}! 👋 Bienvenido(a) a Trankilandia Gym 🏋️‍♂️💪\n\n` +
       `Tu membresía *${socio.plan}* ya se encuentra activa.\n\n` +
       `🔑 *Tus Credenciales de Acceso al Portal:*\n` +
-      `• Página Web: https://trankilandiaweb.qatuweb.com\n` +
+      `• Página Web: https://trankilandiagym.qatuweb.com\n` +
       `• Usuario: ${dni}\n` +
       `• Contraseña: ${dni}\n\n` +
       `Tu usuario y contraseña es tu número de DNI.\n\n` +
@@ -1877,7 +1877,7 @@ export default function HubReceptionSimple() {
                           `¡Hola ${formCreatedMember.name}! 👋 Bienvenido(a) a Trankilandia Gym 🏋️‍♂️💪\n\n` +
                           `Tu membresía *${formCreatedMember.plan}* ya se encuentra activa.\n\n` +
                           `🔑 *Tus Credenciales de Acceso al Portal:*\n` +
-                          `• Página Web: https://trankilandiaweb.qatuweb.com\n` +
+                          `• Página Web: https://trankilandiagym.qatuweb.com\n` +
                           `• Usuario: ${dni}\n` +
                           `• Contraseña: ${dni}\n\n` +
                           `Tu usuario y contraseña es tu número de DNI.\n\n` +

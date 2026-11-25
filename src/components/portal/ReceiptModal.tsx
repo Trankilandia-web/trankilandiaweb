@@ -56,7 +56,7 @@ export default function ReceiptModal({
         : `*Estado:* Membresía cancelada al 100%\n`) +
       `*Sede:* Jr. José Olaya N° 640, Huamanga, Ayacucho\n\n` +
       (member.dni
-        ? `🔑 *Acceso al Portal Web:* https://trankilandiaweb.qatuweb.com\n` +
+        ? `🔑 *Acceso al Portal Web:* https://trankilandiagym.qatuweb.com\n` +
           `• Usuario: ${member.dni}\n` +
           `• Contraseña: ${member.dni}\n` +
           `*(Tu usuario y contraseña es tu número de DNI)*\n\n`
